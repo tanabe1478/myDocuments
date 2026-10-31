@@ -89,13 +89,14 @@ body {
 }
 
 /* 本文面。本文と同じ幅の縦長の面で、不透明度は Preferences の surfaceOpacity。 */
+/* 外観パネルを開いて本文が収まるときは、--md-panel-reserve（パネルの占める幅）だけ右を空けて、残りの中央に置く。 */
 .canvas-surface {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 50%;
+  left: calc((100% - var(--md-panel-reserve, 0px)) / 2);
   z-index: 1;
-  width: min(var(--md-max-width, 680px), 100%);
+  width: min(var(--md-max-width, 680px), calc(100% - var(--md-panel-reserve, 0px)));
   transform: translateX(-50%);
   background: var(--md-color-surface);
   box-shadow: 0 0 0 1px var(--md-color-border);
@@ -107,6 +108,7 @@ body {
   z-index: 2;
   flex: 1;
   min-height: 0;
+  margin-right: var(--md-panel-reserve, 0px);
 }
 
 .topbar,
@@ -429,5 +431,16 @@ body {
 
   .cm-md-dim {
     transition: opacity 0.25s ease;
+  }
+
+  /* 外観パネルの開閉に合わせた、本文の移動。 */
+  .editor-host {
+    transition: margin-right 0.2s ease;
+  }
+
+  .canvas-surface {
+    transition:
+      left 0.2s ease,
+      width 0.2s ease;
   }
 }

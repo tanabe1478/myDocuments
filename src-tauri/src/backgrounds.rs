@@ -74,8 +74,15 @@ pub fn import_from(path: &str, dir: &Path) -> Result<String, CommandError> {
 
 fn import_with_limit(path: &str, dir: &Path, limit: u64) -> Result<String, CommandError> {
     let p = validate_path(path)?;
+    // 開く前に、通常のファイルかを確かめる。Windows ではディレクトリを File::open すると
+    // PermissionDenied（Access denied）になり、macOS / Linux とエラーの種類が変わる。
+    // ここで判定すれば、どの OS でも、ディレクトリや名前付きパイプは InvalidInput、無ければ NotFound。
+    // （名前付きパイプなどは、開くだけで待たされることもあるので、開く前に弾く意味もある。）
+    if !std::fs::metadata(&p)?.is_file() {
+        return Err(invalid("not a regular file"));
+    }
     let file = File::open(&p)?;
-    // 通常のファイルだけ。デバイスや名前付きパイプなど、終わりのないものは読まない。
+    // 確認と open の間に差し替えられた場合に備え、開いたものでもう一度確かめる。
     let meta = file.metadata()?;
     if !meta.is_file() {
         return Err(invalid("not a regular file"));
@@ -226,6 +233,43 @@ mod tests {
             import_from(dir.path("missing.png").to_str().unwrap(), &store).unwrap_err().kind,
             ErrorKind::NotFound
         );
+    }
+
+    /// Windows では、ディレクトリを File::open すると PermissionDenied（Access denied）になる。
+    /// Unix でも、読み取り権限のないディレクトリなら同じ失敗になるので、それで再現する。
+    /// どの OS でも、ディレクトリは InvalidInput でなければならない。
+    #[cfg(unix)]
+    #[test]
+    fn a_directory_that_cannot_be_opened_is_still_invalid_input() {
+        use std::os::unix::fs::PermissionsExt;
+
+        struct Restore(PathBuf);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                let _ = fs::set_permissions(&self.0, fs::Permissions::from_mode(0o755));
+            }
+        }
+
+        let dir = TempDir::new();
+        let store = dir.path("store");
+        let locked = dir.path("locked");
+        fs::create_dir_all(&locked).unwrap();
+        let _restore = Restore(locked.clone());
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+        if File::open(&locked).is_ok() {
+            // root など、権限を無視する実行者では再現できない。
+            return;
+        }
+        assert_eq!(
+            File::open(&locked).unwrap_err().kind(),
+            std::io::ErrorKind::PermissionDenied,
+            "the precondition: opening the directory itself is denied"
+        );
+        assert_eq!(
+            import_from(locked.to_str().unwrap(), &store).unwrap_err().kind,
+            ErrorKind::InvalidInput
+        );
+        assert!(!store.exists());
     }
 
     #[test]

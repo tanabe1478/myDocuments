@@ -752,3 +752,252 @@ test.describe('全画面 (9) とショートカット', () => {
     await expect(page.locator('.cm-search')).toHaveCount(0);
   });
 });
+
+// Run 3.1: フォーカスモードの段落判定、外観パネルと本文の重なり、入力欄でのショートカット、画像以外の背景。
+test.describe('フォーカスモードの段落判定 (a)(b)', () => {
+  const IDLE = { focusMode: true };
+
+  test('(a) カーソルが空行にあっても、直前の段落は dim されず、全行が dim にならない', async ({ page }) => {
+    // 行: 0 最初の段落 / 1 続きの行 / 2 空行 / 3 二番目の段落 / 4 空行 / 5 空白だけの行 / 6 三番目
+    await launchWithDoc(page, '最初の段落\n続きの行\n\n二番目の段落\n\n  \n三番目', IDLE);
+    await page.locator('.cm-content').click();
+    await page.keyboard.press('ControlOrMeta+Home');
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown'); // 空行 (2)
+    await expect.poll(() => dimFlags(page)).toEqual([false, false, true, true, true, true, true]);
+
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown'); // 空行 (4)
+    await expect.poll(() => dimFlags(page)).toEqual([true, true, true, false, true, true, true]);
+    await page.keyboard.press('ArrowDown'); // 空白だけの行 (5)
+    await expect.poll(() => dimFlags(page)).toEqual([true, true, true, false, true, true, true]);
+  });
+
+  test('(a) 先頭が空行のときは直後の段落が対象。空行だけの文書は dim しない', async ({ page }) => {
+    await launchWithDoc(page, '\n\n最初の段落', IDLE);
+    await page.locator('.cm-content').click();
+    await page.keyboard.press('ControlOrMeta+Home');
+    await expect.poll(() => dimFlags(page)).toEqual([true, true, false]);
+
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.press('Delete');
+    await page.keyboard.type('\n\n');
+    await expect.poll(() => dimFlags(page)).toEqual([false, false, false]);
+  });
+
+  test('(b) 見出し行にカーソルがあると、直後の本文は dim される。見出しは 1 行で 1 ブロック', async ({ page }) => {
+    // 行: 0 見出し / 1 本文 / 2 本文の続き / 3 空行 / 4〜6 リスト項目
+    await launchWithDoc(page, '# 見出し\n本文の1行目\n本文の2行目\n\n- 一つ目\n- 二つ目\n- 三つ目', IDLE);
+    await page.locator('.cm-content').click();
+    await page.keyboard.press('ControlOrMeta+Home');
+    await expect.poll(() => dimFlags(page)).toEqual([false, true, true, true, true, true, true]);
+
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(() => dimFlags(page)).toEqual([true, false, false, true, true, true, true]);
+  });
+
+  test('(b) 空行なしで続くリスト項目は、項目ごとに dim が入れ替わる', async ({ page }) => {
+    await launchWithDoc(page, '# 見出し\n本文の1行目\n本文の2行目\n\n- 一つ目\n- 二つ目\n- 三つ目', IDLE);
+    await page.locator('.cm-content').click();
+    await page.keyboard.press('ControlOrMeta+Home');
+    for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowDown'); // 一つ目
+    await expect.poll(() => dimFlags(page)).toEqual([true, true, true, true, false, true, true]);
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(() => dimFlags(page)).toEqual([true, true, true, true, true, false, true]);
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(() => dimFlags(page)).toEqual([true, true, true, true, true, true, false]);
+  });
+
+  test('コードフェンスは中の空行・見出し風の行を含めて 1 ブロック。frontmatter も 1 ブロック', async ({ page }) => {
+    // 行: 0 --- / 1 title / 2 空行 / 3 tags / 4 --- / 5 空行 / 6 本文 / 7 ``` / 8 # コメント / 9 空行 / 10 コード / 11 ```
+    await launchWithDoc(page, '---\ntitle: x\n\ntags: [a]\n---\n\n本文\n```\n# コメント\n\nコード\n```', IDLE);
+    await page.locator('.cm-content').click();
+    await page.keyboard.press('ControlOrMeta+Home');
+    await page.keyboard.press('ArrowDown');
+    const f = false;
+    const t = true;
+    await expect.poll(() => dimFlags(page)).toEqual([f, f, f, f, f, t, t, t, t, t, t, t]);
+
+    for (let i = 0; i < 8; i++) await page.keyboard.press('ArrowDown'); // フェンス内の空行（行 9）
+    await expect.poll(() => dimFlags(page)).toEqual([t, t, t, t, t, t, t, f, f, f, f, f]);
+  });
+});
+
+test.describe('外観パネルと本文の重なり (c)', () => {
+  const box = async (page: Page, selector: string) => {
+    const b = await page.locator(selector).boundingBox();
+    if (b === null) throw new Error(`no box: ${selector}`);
+    return b;
+  };
+
+  test('(c) 広い窓でパネルを開くと、本文の右端がパネルと重ならず、閉じると元の位置に戻る', async ({ page }) => {
+    await launchWithDoc(page, '本文');
+    const closed = await box(page, '.cm-content');
+    await openPanel(page);
+
+    await expect
+      .poll(async () => {
+        const content = await box(page, '.cm-content');
+        const surface = await box(page, '[data-testid="canvas-surface"]');
+        const p = await box(page, '[data-testid="appearance-panel"]');
+        return Math.max(content.x + content.width, surface.x + surface.width) <= p.x;
+      })
+      .toBe(true);
+    const content = await box(page, '.cm-content');
+    expect(content.x).toBeGreaterThanOrEqual(0);
+    expect(content.width).toBe(closed.width);
+
+    await page.keyboard.press('Escape');
+    await expect(panel(page)).toHaveCount(0);
+    await expect.poll(async () => (await box(page, '.cm-content')).x).toBe(closed.x);
+  });
+
+  test('(c) 本文の最大幅を広げると、収まらなくなった時点で重ねる（本文は動かさない）', async ({ page }) => {
+    await launchWithDoc(page, '本文');
+    await openPanel(page);
+    await panel(page).getByLabel('本文の最大幅').fill('1100');
+    // 1280px の窓に、1100px + パネルは収まらない。本文は窓の中央のまま。
+    await expect.poll(async () => (await box(page, '.cm-content')).width).toBe(1100);
+    await expect.poll(async () => (await box(page, '.cm-content')).x).toBe((1280 - 1100) / 2);
+  });
+
+  test('(c) 狭い窓では、今までどおり重ねて表示する（本文は動かさない）', async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 800 });
+    await launchWithDoc(page, '本文');
+    const closed = await box(page, '.cm-content');
+    await openPanel(page);
+    await page.waitForTimeout(400);
+    expect((await box(page, '.cm-content')).x).toBe(closed.x);
+    const p = await box(page, '[data-testid="appearance-panel"]');
+    expect(closed.x + closed.width).toBeGreaterThan(p.x);
+  });
+
+  test('(c) 窓の幅を変えると追従する。Reduced Motion では移動にアニメーションを付けない', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await launchWithDoc(page, '本文');
+    await openPanel(page);
+    const host = page.locator('.editor-host');
+    await expect(host).toHaveCSS('transition-duration', '0s');
+    await expect(page.getByTestId('canvas-surface')).toHaveCSS('transition-duration', '0s');
+    // アニメーションがないので、待たずにすぐ重ならない位置にある。
+    const content = (await page.locator('.cm-content').boundingBox())!;
+    const p = (await page.getByTestId('appearance-panel').boundingBox())!;
+    expect(content.x + content.width).toBeLessThanOrEqual(p.x);
+
+    await page.setViewportSize({ width: 900, height: 800 });
+    await expect.poll(async () => (await page.locator('.cm-content').boundingBox())!.x).toBe((900 - 680) / 2);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect
+      .poll(async () => {
+        const c = (await page.locator('.cm-content').boundingBox())!;
+        const q = (await page.getByTestId('appearance-panel').boundingBox())!;
+        return c.x + c.width <= q.x;
+      })
+      .toBe(true);
+  });
+});
+
+test.describe('入力欄でのショートカット (d)', () => {
+  const modeState = async (page: Page) => ({
+    dim: await dimFlags(page),
+    typewriter: await page.locator('.cm-editor.cm-typewriter').count(),
+    saved: await page.evaluate(() => window.__mdeE2E!.savedPreferences.length),
+  });
+
+  test('(d) パネルの font-family 入力欄で Mod+Shift+F / Mod+Shift+T を押しても、モードは切り替わらない', async ({ page }) => {
+    await launchWithDoc(page, '一つ目\n\n二つ目');
+    await openPanel(page);
+    await panel(page).getByLabel('フォントの種類').selectOption('custom');
+    const free = panel(page).getByLabel('font-family（自由入力）');
+    await free.focus();
+    const before = await modeState(page);
+    expect(before.dim).toEqual([false, false, false]);
+
+    await page.keyboard.press('ControlOrMeta+Shift+F');
+    await page.keyboard.press('ControlOrMeta+Shift+T');
+    await page.waitForTimeout(450);
+    expect(await modeState(page)).toEqual(before);
+    await expect(free).toBeFocused();
+    const saved = await page.evaluate(() => window.__mdeE2E!.savedPreferences.at(-1) as Record<string, unknown> | undefined);
+    expect(saved?.focusMode ?? false).toBe(false);
+    expect(saved?.typewriterMode ?? false).toBe(false);
+  });
+
+  test('(d) 選択欄・数値欄にフォーカスがあるときも無視する', async ({ page }) => {
+    await launchWithDoc(page, '一つ目\n\n二つ目');
+    await openPanel(page);
+    await expect(panel(page).getByLabel('フォントの種類')).toBeFocused();
+    await page.keyboard.press('ControlOrMeta+Shift+F');
+    await panel(page).getByLabel('文字サイズ').focus();
+    await page.keyboard.press('ControlOrMeta+Shift+T');
+    await page.waitForTimeout(450);
+    expect(await dimFlags(page)).toEqual([false, false, false]);
+    await expect(page.locator('.cm-editor.cm-typewriter')).toHaveCount(0);
+  });
+
+  test('(d) 入力欄でも Mod+, と保存系は従来どおり。本文へ戻れば Mod+Shift+F は効く', async ({ page }) => {
+    await launchWithDoc(page, '一つ目\n\n二つ目');
+    // 未保存の変更があるときだけ、保存は bridge まで届く。
+    await page.locator('.cm-content').click();
+    await page.keyboard.press('ControlOrMeta+End');
+    await page.keyboard.type('追記');
+    await openPanel(page);
+    await panel(page).getByLabel('フォントの種類').selectOption('custom');
+    await panel(page).getByLabel('font-family（自由入力）').focus();
+
+    await page.keyboard.press('ControlOrMeta+s');
+    await expect.poll(() => page.evaluate(() => window.__mdeE2E!.calls.save)).toBe(1);
+    await page.keyboard.press('ControlOrMeta+,');
+    await expect(panel(page)).toHaveCount(0);
+
+    await page.locator('.cm-content').click();
+    await page.keyboard.press('ControlOrMeta+Home');
+    await page.keyboard.press('ControlOrMeta+Shift+F');
+    await expect.poll(() => dimFlags(page)).toEqual([false, true, true]);
+  });
+});
+
+test.describe('背景の読み込み (e)', () => {
+  const IMG = '/img/bg.png';
+
+  test('(e) 背景が画像以外のとき、画像を読み込まない。画像に戻したときだけ読み込む', async ({ page }) => {
+    await launch(page, {
+      preferences: { theme: 'light', background: { kind: 'gradient' } },
+      files: { [IMG]: solidPng(8, 8, [20, 60, 120]) },
+      imagePath: IMG,
+    });
+    const reads = () => page.evaluate(() => window.__mdeE2E!.calls.imageRead);
+    await openPanel(page);
+    await panel(page).getByRole('radio', { name: '画像', exact: true }).check();
+    await page.getByTestId('image-pick').click();
+    await expect(page.getByTestId('canvas-bg-image')).toBeVisible();
+    expect(await reads()).toBe(1);
+
+    // imageId を持ったまま、グラデーション・単色へ。再読み込みしない。
+    await panel(page).getByRole('radio', { name: 'グラデーション', exact: true }).check();
+    await expect(page.getByTestId('canvas-bg')).toHaveAttribute('data-kind', 'gradient');
+    await expect(page.getByTestId('canvas-bg-image')).toHaveCount(0);
+    await panel(page).getByRole('radio', { name: '単色' }).check();
+    await expect(page.getByTestId('canvas-bg')).toHaveAttribute('data-kind', 'color');
+    await page.waitForTimeout(200);
+    expect(await reads()).toBe(1);
+
+    // 画像に戻すと、もう一度読み込んで表示する。
+    await panel(page).getByRole('radio', { name: '画像', exact: true }).check();
+    await expect(page.getByTestId('canvas-bg-image')).toBeVisible();
+    expect(await reads()).toBe(2);
+  });
+
+  test('(e) 保存済みの設定が画像以外 + imageId ありで起動しても、画像を読み込まない', async ({ page }) => {
+    await launch(page, {
+      preferences: { theme: 'light', background: { kind: 'gradient', imageId: 'a'.repeat(64) } },
+    });
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => window.__mdeE2E!.calls.imageRead)).toBe(0);
+    await expect(page.getByTestId('canvas-bg')).toHaveAttribute('data-kind', 'gradient');
+
+    await openPanel(page);
+    await panel(page).getByRole('radio', { name: '画像', exact: true }).check();
+    await expect.poll(() => page.evaluate(() => window.__mdeE2E!.calls.imageRead)).toBe(1);
+  });
+});

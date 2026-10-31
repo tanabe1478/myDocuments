@@ -42,6 +42,11 @@ export function imageRepresentative(
   return blend(overlayColor, dimmed, overlayOpacity);
 }
 
+/** 読み込むべき背景画像の imageId。背景の種類が画像のときだけ（それ以外は画像を読み込まない）。 */
+export function backgroundImageId(background: Preferences['background']): string | null {
+  return background.kind === 'image' ? background.imageId : null;
+}
+
 /**
  * Preferences とテーマから、描くべき背景層・本文面の不透明度・コントラストを決める。
  * imageAverage は背景画像の平均色（読み込み前・失敗時は null）。

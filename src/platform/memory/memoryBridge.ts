@@ -32,8 +32,8 @@ export interface E2ESeed {
 /** テストが window.__mdeE2E 経由で観測・操作するもの。 */
 export interface E2EState {
   files: Map<string, Uint8Array>;
-  /** bridge の save / saveAs が呼ばれた回数。 */
-  calls: { save: number; saveAs: number; open: number; fullscreen: number; imageImport: number };
+  /** bridge の save / saveAs などが呼ばれた回数（imageRead は readBackgroundImage）。 */
+  calls: { save: number; saveAs: number; open: number; fullscreen: number; imageImport: number; imageRead: number };
   /** 全画面かどうか（toggleFullscreen が切り替える）。 */
   fullscreen: boolean;
   /** 取り込み済みの背景画像（imageId → 画像）。 */
@@ -63,7 +63,7 @@ export function createMemoryBridge(): DocumentBridge {
   const known = new Set<string>();
   const state: E2EState = {
     files: new Map(Object.entries(seed.files ?? {}).map(([p, b]) => [p, Uint8Array.from(b)])),
-    calls: { save: 0, saveAs: 0, open: 0, fullscreen: 0, imageImport: 0 },
+    calls: { save: 0, saveAs: 0, open: 0, fullscreen: 0, imageImport: 0, imageRead: 0 },
     fullscreen: false,
     images: new Map(),
     imagePath: seed.imagePath ?? null,
@@ -144,6 +144,7 @@ export function createMemoryBridge(): DocumentBridge {
       return id;
     },
     async readBackgroundImage(imageId) {
+      state.calls.imageRead++;
       const image = state.images.get(imageId);
       if (!image) throw new BridgeError('not-found', 'no such image');
       return image;

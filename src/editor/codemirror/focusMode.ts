@@ -1,6 +1,6 @@
 import { RangeSetBuilder, StateEffect, type Extension } from '@codemirror/state';
 import { Decoration, ViewPlugin, type DecorationSet, type EditorView, type ViewUpdate } from '@codemirror/view';
-import { focusRange, isBlankText } from '../focusRange';
+import { focusRange } from '../focusRange';
 
 /** カーソルのある段落以外の行に付ける class（見た目は theme.ts）。 */
 export const DIM_CLASS = 'cm-md-dim';
@@ -15,14 +15,15 @@ const AFTER_COMPOSITION_MS = 60;
 
 function dimDecorations(view: EditorView): DecorationSet {
   const { doc, selection } = view.state;
-  const range = focusRange(doc.lines, (n) => isBlankText(doc.line(n).text), doc.lineAt(selection.main.head).number);
+  const range = focusRange(doc.lines, (n) => doc.line(n).text, doc.lineAt(selection.main.head).number);
   const builder = new RangeSetBuilder<Decoration>();
   let lastFrom = -1;
   for (const { from, to } of view.visibleRanges) {
     let pos = from;
     while (pos <= to) {
       const line = doc.lineAt(pos);
-      if (line.from > lastFrom && (line.number < range.from || line.number > range.to)) {
+      // range が null（空行だけの文書）のときは、どの行も弱くしない。
+      if (range !== null && line.from > lastFrom && (line.number < range.from || line.number > range.to)) {
         builder.add(line.from, line.from, dimLine);
       }
       lastFrom = Math.max(lastFrom, line.from);
@@ -75,7 +76,7 @@ class FocusModePlugin {
 }
 
 /**
- * フォーカスモード（UI-06）: カーソルのある段落（空行区切りのブロック）以外の行を弱く表示する。
+ * フォーカスモード（UI-06）: カーソルのある段落（段落の定義は focusRange.ts）以外の行を弱く表示する。
  * 表示（行の class）だけを変え、本文には触れない。
  */
 export function focusModeExtension(): Extension {

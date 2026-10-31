@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_PREFERENCES, normalizePreferences, type Preferences } from '../preferences/preferences';
-import { averageColor, imageRepresentative, resolveCanvas } from './canvas';
+import { averageColor, backgroundImageId, imageRepresentative, resolveCanvas } from './canvas';
 import { blend, contrastRatio, parseHex, WCAG_AA, WCAG_AAA } from './contrast';
 import { GRADIENTS, gradientCss, gradientVariant, isGradientId, type ThemeMode } from './gradients';
 import { THEME_COLORS, themeRgb } from './palette';
@@ -186,5 +186,24 @@ describe('averageColor', () => {
   it('falls back to mid gray when nothing is visible', () => {
     expect(averageColor([])).toEqual({ r: 128, g: 128, b: 128 });
     expect(averageColor([1, 2, 3, 0])).toEqual({ r: 128, g: 128, b: 128 });
+  });
+});
+
+describe('backgroundImageId', () => {
+  const id = 'a'.repeat(64);
+  const bg = (kind: 'color' | 'gradient' | 'image', imageId: string | null) => ({
+    ...DEFAULT_PREFERENCES.background,
+    kind,
+    imageId,
+  });
+
+  it('is the imageId only when the kind is image', () => {
+    expect(backgroundImageId(bg('image', id))).toBe(id);
+    expect(backgroundImageId(bg('image', null))).toBeNull();
+  });
+
+  it('is null for color and gradient, even if an imageId is kept', () => {
+    expect(backgroundImageId(bg('color', id))).toBeNull();
+    expect(backgroundImageId(bg('gradient', id))).toBeNull();
   });
 });

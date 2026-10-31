@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { resolveCanvas } from './canvas/canvas';
+import { backgroundImageId, resolveCanvas } from './canvas/canvas';
 import { CanvasBackground } from './canvas/CanvasBackground';
 import { countCharacters } from './canvas/charCount';
 import { useBackgroundImage } from './canvas/useBackgroundImage';
@@ -13,7 +13,8 @@ import { normalizePreferences, type Preferences } from './preferences/preference
 import { useResolvedTheme } from './preferences/useResolvedTheme';
 import { AppearancePanel } from './ui/AppearancePanel';
 import { ConfirmDiscardDialog } from './ui/ConfirmDiscardDialog';
-import { isMacPlatform, matchShortcut } from './ui/shortcuts';
+import { panelReserve } from './ui/panelLayout';
+import { isMacPlatform, matchShortcut, shouldHandleShortcut } from './ui/shortcuts';
 import { Toast, type ToastNotice } from './ui/Toast';
 
 /** 設定の変更から保存までの待ち（連続操作をまとめる）。 */
@@ -125,9 +126,12 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
   }, [bridge]);
 
   const theme = useResolvedTheme(prefs.theme);
-  const image = useBackgroundImage(bridge, prefs.background.imageId);
+  const image = useBackgroundImage(bridge, backgroundImageId(prefs.background));
   const canvas = resolveCanvas(prefs, theme, image.average);
   const characters = useMemo(() => countCharacters(state.text), [state.text]);
+
+  const viewportWidth = useViewportWidth();
+  const reserve = panelOpen ? panelReserve(prefs.maxWidthPx, viewportWidth) : 0;
 
   const reveal = useCallback(() => setTyping(false), []);
   const chromeHidden = prefs.autoHideChrome && typing && !panelOpen;
@@ -214,7 +218,7 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
         return;
       }
       const action = matchShortcut(e, mac);
-      if (!action) return;
+      if (!action || !shouldHandleShortcut(action, e.target)) return;
       e.preventDefault();
       switch (action) {
         case 'new':
@@ -259,7 +263,13 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
   };
 
   return (
-    <div className="app" data-chrome={chromeHidden ? 'hidden' : 'visible'} data-theme-mode={theme}>
+    <div
+      className="app"
+      data-chrome={chromeHidden ? 'hidden' : 'visible'}
+      data-theme-mode={theme}
+      data-panel-shift={reserve > 0 ? 'true' : 'false'}
+      style={{ '--md-panel-reserve': `${reserve}px` } as React.CSSProperties}
+    >
       <CanvasBackground layer={canvas.layer} imageUrl={image.url} />
       <div className="canvas-surface" data-testid="canvas-surface" aria-hidden="true" style={{ opacity: canvas.surfaceOpacity }} />
       <header className="topbar" ref={topbarRef} aria-label="上部バー" onFocus={reveal}>
@@ -307,6 +317,17 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
       {confirm && <ConfirmDiscardDialog documentName={confirm.documentName} onChoose={choose} />}
     </div>
   );
+}
+
+/** 窓の幅（resize に追従）。 */
+function useViewportWidth(): number {
+  const [width, setWidth] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const onResize = () => setWidth(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return width;
 }
 
 function firstFocusable(el: HTMLElement | null): HTMLElement | null {

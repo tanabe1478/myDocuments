@@ -62,3 +62,25 @@ export function matchShortcut(e: KeyLike, mac: boolean): ShortcutAction | null {
       return null;
   }
 }
+
+/**
+ * キー入力の対象が、本文以外の文字入力欄（input・textarea・select・contenteditable）か。
+ * CodeMirror の本文（.cm-content）は contenteditable だが、ここには含めない。
+ * 検索パネルの入力欄など、本文の外にある欄は含める。
+ */
+export function isTextEntryTarget(target: EventTarget | null): boolean {
+  if (typeof Element === 'undefined' || !(target instanceof Element)) return false;
+  if (target.closest('.cm-content')) return false;
+  if (target.closest('input, textarea, select')) return true;
+  const editable = target.closest('[contenteditable]');
+  return editable !== null && editable.getAttribute('contenteditable')?.toLowerCase() !== 'false';
+}
+
+/**
+ * ショートカットを実行してよいか。入力欄にフォーカスがあるときは、モードの切替
+ * （フォーカスモード・タイプライターモード）だけ無視する。パネルの開閉・保存・全画面などは従来どおり。
+ */
+export function shouldHandleShortcut(action: ShortcutAction, target: EventTarget | null): boolean {
+  if (action === 'focusMode' || action === 'typewriterMode') return !isTextEntryTarget(target);
+  return true;
+}
