@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
 import {
   bridgeCounters,
   docTitle,
@@ -6,7 +6,9 @@ import {
   fileBytes,
   focusEditorEnd,
   launch,
+  redoKeys,
   setDialogPaths,
+  test,
   toast,
   unsavedMark,
   utf8,
@@ -223,26 +225,39 @@ test.describe('未保存の確認', () => {
 });
 
 test.describe('Undo / Redo (d)', () => {
-  test('入力のまとまりごとに戻せて、やり直せる', async ({ page }) => {
+  test('入力のまとまりごとに戻せて、やり直せる（Redo はその OS の標準のキーすべて）', async ({ page, platform }) => {
+    for (const redoKey of redoKeys(platform)) {
+      // 周回ごとに開き直し、Undo の履歴を空にする。
+      await launch(page);
+      await page.locator('.cm-content').click();
+      await page.keyboard.type('first');
+      // CodeMirror は 500ms 以上あいた入力を別の Undo 単位にする。
+      await page.waitForTimeout(700);
+      await page.keyboard.type('second');
+      expect(await editorText(page), redoKey).toBe('firstsecond');
+
+      await page.keyboard.press('ControlOrMeta+z');
+      expect(await editorText(page), redoKey).toBe('first');
+      await page.keyboard.press('ControlOrMeta+z');
+      expect(await editorText(page), redoKey).toBe('');
+
+      await page.keyboard.press(redoKey);
+      expect(await editorText(page), redoKey).toBe('first');
+      await expect(unsavedMark(page)).toBeVisible();
+      await page.keyboard.press(redoKey);
+      expect(await editorText(page), redoKey).toBe('firstsecond');
+    }
+  });
+
+  test('Redo に割り当てていないキーでは、やり直さない', async ({ page, platform }) => {
     await launch(page);
     await page.locator('.cm-content').click();
     await page.keyboard.type('first');
-    // CodeMirror は 500ms 以上あいた入力を別の Undo 単位にする。
-    await page.waitForTimeout(700);
-    await page.keyboard.type('second');
-    expect(await editorText(page)).toBe('firstsecond');
-
-    await page.keyboard.press('ControlOrMeta+z');
-    expect(await editorText(page)).toBe('first');
     await page.keyboard.press('ControlOrMeta+z');
     expect(await editorText(page)).toBe('');
-    await expect(unsavedMark(page)).toHaveCount(0);
-
-    await page.keyboard.press('ControlOrMeta+Shift+z');
-    expect(await editorText(page)).toBe('first');
-    await expect(unsavedMark(page)).toBeVisible();
-    await page.keyboard.press('ControlOrMeta+Shift+z');
-    expect(await editorText(page)).toBe('firstsecond');
+    // mac の Cmd+Y、Windows / Linux の Ctrl+Shift+Y は Redo ではない。
+    await page.keyboard.press(platform === 'mac' ? 'ControlOrMeta+y' : 'ControlOrMeta+Shift+Y');
+    expect(await editorText(page)).toBe('');
   });
 
   test('文書を開いた後、Undo で前の文書には戻らない', async ({ page }) => {

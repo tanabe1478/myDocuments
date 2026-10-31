@@ -1,5 +1,5 @@
-import { expect, test, type CDPSession, type Page } from '@playwright/test';
-import { docTitle, editorText, fileBytes, launch, unsavedMark, utf8 } from './helpers';
+import { expect, type CDPSession, type Page } from '@playwright/test';
+import { docTitle, editorText, fileBytes, launch, redoKeys, test, unsavedMark, utf8 } from './helpers';
 
 // 日本語 IME の変換を、Chromium の CDP（Input.imeSetComposition / Input.insertText）で再現する。
 // これは「変換中状態を作る」ための模擬で、実際の IME（Microsoft IME、macOS の日本語入力、Mozc）ではない。
@@ -76,17 +76,19 @@ test.describe('日本語 IME の変換 (c)', () => {
     await expect(unsavedMark(page)).toHaveCount(0);
   });
 
-  test('確定した変換は 1 回の Undo で戻り、Redo で復元される', async ({ page }) => {
+  test('確定した変換は 1 回の Undo で戻り、Redo で復元される', async ({ page, platform }) => {
     const client = await openBaseDocument(page);
     await compose(client, 'にほんご');
     await compose(client, '日本語');
     await client.send('Input.insertText', { text: '日本語' });
     expect(await editorText(page)).toBe('前の文。日本語\n後の文。');
 
-    await page.keyboard.press('ControlOrMeta+z');
-    expect(await editorText(page)).toBe(BASE);
-    await page.keyboard.press('ControlOrMeta+Shift+z');
-    expect(await editorText(page)).toBe('前の文。日本語\n後の文。');
+    for (const redoKey of redoKeys(platform)) {
+      await page.keyboard.press('ControlOrMeta+z');
+      expect(await editorText(page), redoKey).toBe(BASE);
+      await page.keyboard.press(redoKey);
+      expect(await editorText(page), redoKey).toBe('前の文。日本語\n後の文。');
+    }
   });
 
   test('変換中の外部 setText は適用されず、変換の終了後に適用される', async ({ page }) => {

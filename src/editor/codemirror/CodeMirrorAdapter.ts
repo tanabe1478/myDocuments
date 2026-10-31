@@ -1,8 +1,9 @@
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import { defaultKeymap, history } from '@codemirror/commands';
 import { search, searchKeymap } from '@codemirror/search';
 import { EditorState, type Extension } from '@codemirror/state';
 import { EditorView, drawSelection, keymap } from '@codemirror/view';
 import type { EditorAdapter, EditorSelection } from '../EditorAdapter';
+import { historyKeymap } from './historyKeymap';
 import { markdownDecorations } from './markdownDecorations';
 import { editorTheme } from './theme';
 
