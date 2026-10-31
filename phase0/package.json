@@ -1,0 +1,10 @@
+{
+  "name": "phase0-harness",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Phase 0 evaluation harness (round-trip fidelity, benchmark). Uses MDE's own node_modules for bundling; only playwright-core is installed here.",
+  "dependencies": {
+    "playwright-core": "^1.64.1"
+  }
+}

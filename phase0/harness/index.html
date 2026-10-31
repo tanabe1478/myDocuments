@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>phase0 harness</title>
+    <style>
+      html, body { margin: 0; height: 100%; }
+      #cm, #md, #plain { position: absolute; inset: 0; width: 100%; height: 100%; overflow: auto; }
+    </style>
+  </head>
+  <body>
+    <div id="cm"></div>
+    <div id="md" style="display:none"></div>
+    <div id="plain" contenteditable="true" style="display:none"></div>
+    <script type="module" src="./harness.ts"></script>
+  </body>
+</html>

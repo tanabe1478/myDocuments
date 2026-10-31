@@ -1,0 +1,1792 @@
+{
+  "mdeCommit": "506c1fd938a7ad4dafa0f51910e5c42ac5854369",
+  "generatedAt": "2026-10-31T11:18:34.125Z",
+  "command": "node phase0/roundtrip/make-fixtures.mjs && (cd phase0/vendor/MDE && npx vite build --config ../../harness/vite.config.mjs) && node phase0/roundtrip/run.mjs chromium,webkit",
+  "environment": {
+    "os": "Darwin 25.6.0",
+    "arch": "arm64",
+    "cpu": "Apple M5",
+    "node": "v24.19.0",
+    "browsers": {
+      "chromium": {
+        "name": "chromium",
+        "version": "156.0.8078.4"
+      },
+      "webkit": {
+        "name": "webkit",
+        "version": "27.2"
+      }
+    },
+    "note": "Tauri IPC の Rust 側のみバイト素通しのスタブ。plugin-fs JS、fileOps.saveFile、EditorManager、MilkdownManager は MDE の実コード。React の App.tsx は通していない。"
+  },
+  "pathLegend": {
+    "a1_noEditSave": "readTextFile -> saveFile (編集なし。App.tsx handleSave が tab.content を書く経路)",
+    "a2_cmNoEditSave": "CodeMirror に読み込んだ後 getContent() の文字列を保存（編集なし）",
+    "a3_cmEditRevertSave": "CodeMirror で 1 文字挿入→削除し、onChange(doc.toString()) の内容を保存",
+    "b1_milkdownSerialized": "Milkdown(Crepe) に読み込み getMarkdown()（編集なし）",
+    "b2_guardedRawSyncNoEdit": "MilkdownManager.getContentForRawSync()（編集なし。MDE の正規化ガード経由）",
+    "b3_afterTypingX": "Milkdown 上で文末に X を実キー入力した後の getContentForRawSync()"
+  },
+  "cases": [
+    {
+      "fixture": "bom-crlf-japanese.md",
+      "browser": "chromium",
+      "source": {
+        "bytes": 532,
+        "bom": true,
+        "eol": "CRLF",
+        "sha256": "90ebd1632d9500e733ccf4c440ce91ad45269465c30655c590864a8451bfc46c"
+      },
+      "paths": {
+        "a1_noEditSave": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 529,
+          "deltaBytes": -3,
+          "bom": false,
+          "eol": "CRLF",
+          "firstDiffOffset": 0,
+          "srcContext": "﻿# 日本語の文書\\r\\n\\r\\n�",
+          "gotContext": "# 日本語の文書\\r\\n\\r\\n吾�",
+          "sha256": "0eeefffca4584781be0965c056779200c08aba327205a5fdd8145e55649aada4"
+        },
+        "a2_cmNoEditSave": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 517,
+          "deltaBytes": -15,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 0,
+          "srcContext": "﻿# 日本語の文書\\r\\n\\r\\n�",
+          "gotContext": "# 日本語の文書\\n\\n吾輩",
+          "sha256": "2ecabc409ac34d3a751179613a6c89af7ace0474b74a601523cbc585e95c2551",
+          "cmEqualsReadString": false
+        },
+        "a3_cmEditRevertSave": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 517,
+          "deltaBytes": -15,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 0,
+          "srcContext": "﻿# 日本語の文書\\r\\n\\r\\n�",
+          "gotContext": "# 日本語の文書\\n\\n吾輩",
+          "sha256": "2ecabc409ac34d3a751179613a6c89af7ace0474b74a601523cbc585e95c2551",
+          "onChangeFired": true
+        },
+        "b1_milkdownSerialized": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 518,
+          "deltaBytes": -14,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 0,
+          "srcContext": "﻿# 日本語の文書\\r\\n\\r\\n�",
+          "gotContext": "# 日本語の文書\\n\\n吾輩",
+          "sha256": "fb1bedec3dd9df13a4944542323de69812b29cb760e29d0087fda5c96e9bc066"
+        },
+        "b2_guardedRawSyncNoEdit": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 529,
+          "deltaBytes": -3,
+          "bom": false,
+          "eol": "CRLF",
+          "firstDiffOffset": 0,
+          "srcContext": "﻿# 日本語の文書\\r\\n\\r\\n�",
+          "gotContext": "# 日本語の文書\\r\\n\\r\\n吾�",
+          "sha256": "0eeefffca4584781be0965c056779200c08aba327205a5fdd8145e55649aada4"
+        },
+        "b3_afterTypingX": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 519,
+          "deltaBytes": -13,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 0,
+          "srcContext": "﻿# 日本語の文書\\r\\n\\r\\n�",
+          "gotContext": "# 日本語の文書\\n\\n吾輩",
+          "sha256": "c40805fb55c0136816187863a32dca763b8900297b8b1b03c1de150ffa48f476",
+          "normalizationOnly": true,
+          "equalIgnoringTypedX": false
+        }
+      }
+    },
+    {
+      "fixture": "bom-lf.md",
+      "browser": "chromium",
+      "source": {
+        "bytes": 213,
+        "bom": true,
+        "eol": "LF",
+        "sha256": "29a93d78463db7c78edd54144e59318fb0bbf3285f572b749c195b25624f92e4"
+      },
+      "paths": {
+        "a1_noEditSave": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 210,
+          "deltaBytes": -3,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 0,
+          "srcContext": "﻿# Plain LF document\\n\\nFirs",
+          "gotContext": "# Plain LF document\\n\\nFirst p",
+          "sha256": "a22c236e5304207dd7bc63f25dd32e3f4837df9f337b07436e0a1124f745624e"
+        },
+        "a2_cmNoEditSave": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 210,
+          "deltaBytes": -3,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 0,
+          "srcContext": "﻿# Plain LF document\\n\\nFirs",
+          "gotContext": "# Plain LF document\\n\\nFirst p",
+          "sha256": "a22c236e5304207dd7bc63f25dd32e3f4837df9f337b07436e0a1124f745624e",
+          "cmEqualsReadString": true
+        },
+        "a3_cmEditRevertSave": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 210,
+          "deltaBytes": -3,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 0,
+          "srcContext": "﻿# Plain LF document\\n\\nFirs",
+          "gotContext": "# Plain LF document\\n\\nFirst p",
+          "sha256": "a22c236e5304207dd7bc63f25dd32e3f4837df9f337b07436e0a1124f745624e",
+          "onChangeFired": true
+        },
+        "b1_milkdownSerialized": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 212,
+          "deltaBytes": -1,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 0,
+          "srcContext": "﻿# Plain LF document\\n\\nFirs",
+          "gotContext": "# Plain LF document\\n\\nFirst p",
+          "sha256": "fe7d0f13960e5da0f598045885fc776d5991cbc126b6dfa72523be33d4edc9df"
+        },
+        "b2_guardedRawSyncNoEdit": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 210,
+          "deltaBytes": -3,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 0,
+          "srcContext": "﻿# Plain LF document\\n\\nFirs",
+          "gotContext": "# Plain LF document\\n\\nFirst p",
+          "sha256": "a22c236e5304207dd7bc63f25dd32e3f4837df9f337b07436e0a1124f745624e"
+        },
+        "b3_afterTypingX": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 213,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 0,
+          "srcContext": "﻿# Plain LF document\\n\\nFirs",
+          "gotContext": "# Plain LF document\\n\\nFirst p",
+          "sha256": "81fc06b1aee90e54eca408ffd617c1806e82771d4c2b0f66f6d3e285d1893916",
+          "normalizationOnly": true,
+          "equalIgnoringTypedX": false
+        }
+      }
+    },
+    {
+      "fixture": "codeblock.md",
+      "browser": "chromium",
+      "source": {
+        "bytes": 190,
+        "bom": false,
+        "eol": "LF",
+        "sha256": "c504a9fe783b74e6d7ecb741e3645ca39dd7f86f961ac8fbe14c90e8f208c1ed"
+      },
+      "paths": {
+        "a1_noEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 190,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "c504a9fe783b74e6d7ecb741e3645ca39dd7f86f961ac8fbe14c90e8f208c1ed"
+        },
+        "a2_cmNoEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 190,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "c504a9fe783b74e6d7ecb741e3645ca39dd7f86f961ac8fbe14c90e8f208c1ed",
+          "cmEqualsReadString": true
+        },
+        "a3_cmEditRevertSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 190,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "c504a9fe783b74e6d7ecb741e3645ca39dd7f86f961ac8fbe14c90e8f208c1ed",
+          "onChangeFired": true
+        },
+        "b1_milkdownSerialized": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 195,
+          "deltaBytes": 5,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 109,
+          "srcContext": "elow\\n}\\n```\\n\\n    indented code block\\n\\n~~~",
+          "gotContext": "elow\\n}\\n```\\n\\n```\\nindented code block\\n```\\n",
+          "sha256": "a3b406f79013459f9b93345618b245532cff174f50f24093e14e8b345770f5ca"
+        },
+        "b2_guardedRawSyncNoEdit": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 190,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "c504a9fe783b74e6d7ecb741e3645ca39dd7f86f961ac8fbe14c90e8f208c1ed"
+        },
+        "b3_afterTypingX": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 196,
+          "deltaBytes": 6,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 109,
+          "srcContext": "elow\\n}\\n```\\n\\n    indented code block\\n\\n~~~",
+          "gotContext": "elow\\n}\\n```\\n\\n```\\nindented code block\\n```\\n",
+          "sha256": "01cb985d61c8bd2d4626cdacab6e3c38dd25bd57fa1f953568e0c32768b73728",
+          "normalizationOnly": true,
+          "equalIgnoringTypedX": false
+        }
+      }
+    },
+    {
+      "fixture": "crlf.md",
+      "browser": "chromium",
+      "source": {
+        "bytes": 224,
+        "bom": false,
+        "eol": "CRLF",
+        "sha256": "c64aa75a25f9aa95644c794ff4097e8ca11d11cf198575b4436aacde5757d104"
+      },
+      "paths": {
+        "a1_noEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 224,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "CRLF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "c64aa75a25f9aa95644c794ff4097e8ca11d11cf198575b4436aacde5757d104"
+        },
+        "a2_cmNoEditSave": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 210,
+          "deltaBytes": -14,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 19,
+          "srcContext": " LF document\\r\\n\\r\\nFirst paragraph with *em",
+          "gotContext": " LF document\\n\\nFirst paragraph with *emph",
+          "sha256": "a22c236e5304207dd7bc63f25dd32e3f4837df9f337b07436e0a1124f745624e",
+          "cmEqualsReadString": false
+        },
+        "a3_cmEditRevertSave": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 210,
+          "deltaBytes": -14,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 19,
+          "srcContext": " LF document\\r\\n\\r\\nFirst paragraph with *em",
+          "gotContext": " LF document\\n\\nFirst paragraph with *emph",
+          "sha256": "a22c236e5304207dd7bc63f25dd32e3f4837df9f337b07436e0a1124f745624e",
+          "onChangeFired": true
+        },
+        "b1_milkdownSerialized": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 212,
+          "deltaBytes": -12,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 19,
+          "srcContext": " LF document\\r\\n\\r\\nFirst paragraph with *em",
+          "gotContext": " LF document\\n\\nFirst paragraph with *emph",
+          "sha256": "fe7d0f13960e5da0f598045885fc776d5991cbc126b6dfa72523be33d4edc9df"
+        },
+        "b2_guardedRawSyncNoEdit": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 224,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "CRLF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "c64aa75a25f9aa95644c794ff4097e8ca11d11cf198575b4436aacde5757d104"
+        },
+        "b3_afterTypingX": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 213,
+          "deltaBytes": -11,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 19,
+          "srcContext": " LF document\\r\\n\\r\\nFirst paragraph with *em",
+          "gotContext": " LF document\\n\\nFirst paragraph with *emph",
+          "sha256": "81fc06b1aee90e54eca408ffd617c1806e82771d4c2b0f66f6d3e285d1893916",
+          "normalizationOnly": true,
+          "equalIgnoringTypedX": false
+        }
+      }
+    },
+    {
+      "fixture": "frontmatter.md",
+      "browser": "chromium",
+      "source": {
+        "bytes": 144,
+        "bom": false,
+        "eol": "LF",
+        "sha256": "3f35f0ad16361ee29b5644bd92c6446a462dc0efaba78aac3530c0c75861e48e"
+      },
+      "paths": {
+        "a1_noEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 144,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "3f35f0ad16361ee29b5644bd92c6446a462dc0efaba78aac3530c0c75861e48e"
+        },
+        "a2_cmNoEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 144,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "3f35f0ad16361ee29b5644bd92c6446a462dc0efaba78aac3530c0c75861e48e",
+          "cmEqualsReadString": true
+        },
+        "a3_cmEditRevertSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 144,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "3f35f0ad16361ee29b5644bd92c6446a462dc0efaba78aac3530c0c75861e48e",
+          "onChangeFired": true
+        },
+        "b1_milkdownSerialized": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 151,
+          "deltaBytes": 7,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 0,
+          "srcContext": "---\\ntitle: \\\"フロントマ�",
+          "gotContext": "***\\n\\ntitle: \\\"フロントマ",
+          "sha256": "089b773fbff3dfb651dc8e945d1428f144c3fbed83b9dbfbaa443e3da94409b5"
+        },
+        "b2_guardedRawSyncNoEdit": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 144,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "3f35f0ad16361ee29b5644bd92c6446a462dc0efaba78aac3530c0c75861e48e"
+        },
+        "b3_afterTypingX": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 152,
+          "deltaBytes": 8,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 0,
+          "srcContext": "---\\ntitle: \\\"フロントマ�",
+          "gotContext": "***\\n\\ntitle: \\\"フロントマ",
+          "sha256": "499f3b43eb989d5f0632bf74159f7250ec4c9a6dc04a59398cd564c76aa7d400",
+          "normalizationOnly": true,
+          "equalIgnoringTypedX": false
+        }
+      }
+    },
+    {
+      "fixture": "htmlblock.md",
+      "browser": "chromium",
+      "source": {
+        "bytes": 241,
+        "bom": false,
+        "eol": "LF",
+        "sha256": "cc126f7ba7ab69903913a1cbd31787b7c333b4498b3f6a7a3d25c26d19928d1a"
+      },
+      "paths": {
+        "a1_noEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 241,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "cc126f7ba7ab69903913a1cbd31787b7c333b4498b3f6a7a3d25c26d19928d1a"
+        },
+        "a2_cmNoEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 241,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "cc126f7ba7ab69903913a1cbd31787b7c333b4498b3f6a7a3d25c26d19928d1a",
+          "cmEqualsReadString": true
+        },
+        "a3_cmEditRevertSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 241,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "cc126f7ba7ab69903913a1cbd31787b7c333b4498b3f6a7a3d25c26d19928d1a",
+          "onChangeFired": true
+        },
+        "b1_milkdownSerialized": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 241,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "cc126f7ba7ab69903913a1cbd31787b7c333b4498b3f6a7a3d25c26d19928d1a"
+        },
+        "b2_guardedRawSyncNoEdit": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 241,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "cc126f7ba7ab69903913a1cbd31787b7c333b4498b3f6a7a3d25c26d19928d1a"
+        },
+        "b3_afterTypingX": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 242,
+          "deltaBytes": 1,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 240,
+          "srcContext": "html</span>.\\n",
+          "gotContext": "html</span>.X\\n",
+          "sha256": "88db383e73ad97f0a83972f4259e17d7ce0b3b5c04ca419637b9d23dfc72cb2a",
+          "normalizationOnly": true,
+          "equalIgnoringTypedX": true
+        }
+      }
+    },
+    {
+      "fixture": "japanese.md",
+      "browser": "chromium",
+      "source": {
+        "bytes": 517,
+        "bom": false,
+        "eol": "LF",
+        "sha256": "2ecabc409ac34d3a751179613a6c89af7ace0474b74a601523cbc585e95c2551"
+      },
+      "paths": {
+        "a1_noEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 517,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "2ecabc409ac34d3a751179613a6c89af7ace0474b74a601523cbc585e95c2551"
+        },
+        "a2_cmNoEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 517,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "2ecabc409ac34d3a751179613a6c89af7ace0474b74a601523cbc585e95c2551",
+          "cmEqualsReadString": true
+        },
+        "a3_cmEditRevertSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 517,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "2ecabc409ac34d3a751179613a6c89af7ace0474b74a601523cbc585e95c2551",
+          "onChangeFired": true
+        },
+        "b1_milkdownSerialized": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 518,
+          "deltaBytes": 1,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 233,
+          "srcContext": "�いる。\\n\\n- 全角スペース　を�",
+          "gotContext": "�いる。\\n\\n* 全角スペース　を�",
+          "sha256": "fb1bedec3dd9df13a4944542323de69812b29cb760e29d0087fda5c96e9bc066"
+        },
+        "b2_guardedRawSyncNoEdit": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 517,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "2ecabc409ac34d3a751179613a6c89af7ace0474b74a601523cbc585e95c2551"
+        },
+        "b3_afterTypingX": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 519,
+          "deltaBytes": 2,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 233,
+          "srcContext": "�いる。\\n\\n- 全角スペース　を�",
+          "gotContext": "�いる。\\n\\n* 全角スペース　を�",
+          "sha256": "c40805fb55c0136816187863a32dca763b8900297b8b1b03c1de150ffa48f476",
+          "normalizationOnly": true,
+          "equalIgnoringTypedX": false
+        }
+      }
+    },
+    {
+      "fixture": "lf.md",
+      "browser": "chromium",
+      "source": {
+        "bytes": 210,
+        "bom": false,
+        "eol": "LF",
+        "sha256": "a22c236e5304207dd7bc63f25dd32e3f4837df9f337b07436e0a1124f745624e"
+      },
+      "paths": {
+        "a1_noEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 210,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "a22c236e5304207dd7bc63f25dd32e3f4837df9f337b07436e0a1124f745624e"
+        },
+        "a2_cmNoEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 210,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "a22c236e5304207dd7bc63f25dd32e3f4837df9f337b07436e0a1124f745624e",
+          "cmEqualsReadString": true
+        },
+        "a3_cmEditRevertSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 210,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "a22c236e5304207dd7bc63f25dd32e3f4837df9f337b07436e0a1124f745624e",
+          "onChangeFired": true
+        },
+        "b1_milkdownSerialized": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 212,
+          "deltaBytes": 2,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 90,
+          "srcContext": "ine code`.\\n\\n- item one\\n- item two\\n  - ne",
+          "gotContext": "ine code`.\\n\\n* item one\\n\\n* item two\\n\\n  * ",
+          "sha256": "fe7d0f13960e5da0f598045885fc776d5991cbc126b6dfa72523be33d4edc9df"
+        },
+        "b2_guardedRawSyncNoEdit": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 210,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "a22c236e5304207dd7bc63f25dd32e3f4837df9f337b07436e0a1124f745624e"
+        },
+        "b3_afterTypingX": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 213,
+          "deltaBytes": 3,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 90,
+          "srcContext": "ine code`.\\n\\n- item one\\n- item two\\n  - ne",
+          "gotContext": "ine code`.\\n\\n* item one\\n\\n* item two\\n\\n  * ",
+          "sha256": "81fc06b1aee90e54eca408ffd617c1806e82771d4c2b0f66f6d3e285d1893916",
+          "normalizationOnly": true,
+          "equalIgnoringTypedX": false
+        }
+      }
+    },
+    {
+      "fixture": "linkdefs.md",
+      "browser": "chromium",
+      "source": {
+        "bytes": 267,
+        "bom": false,
+        "eol": "LF",
+        "sha256": "86e8432e098756ee2619849ec504bcad83399da9b9c96e53291323077acec1d4"
+      },
+      "paths": {
+        "a1_noEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 267,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "86e8432e098756ee2619849ec504bcad83399da9b9c96e53291323077acec1d4"
+        },
+        "a2_cmNoEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 267,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "86e8432e098756ee2619849ec504bcad83399da9b9c96e53291323077acec1d4",
+          "cmEqualsReadString": true
+        },
+        "a3_cmEditRevertSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 267,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "86e8432e098756ee2619849ec504bcad83399da9b9c96e53291323077acec1d4",
+          "onChangeFired": true
+        },
+        "b1_milkdownSerialized": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 219,
+          "deltaBytes": -48,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 44,
+          "srcContext": "e [the spec][spec] and [another one][Oth",
+          "gotContext": "e [the spec](https://spec.commonmark.org",
+          "sha256": "ced024e627708b5b1e66fd683593fd0b56fb24237276fc67eb806f037e191a53"
+        },
+        "b2_guardedRawSyncNoEdit": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 267,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "86e8432e098756ee2619849ec504bcad83399da9b9c96e53291323077acec1d4"
+        },
+        "b3_afterTypingX": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 220,
+          "deltaBytes": -47,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 44,
+          "srcContext": "e [the spec][spec] and [another one][Oth",
+          "gotContext": "e [the spec](https://spec.commonmark.org",
+          "sha256": "01266de70b741ffc9ae578b7b7297d83604b76f4c80e6192e1b487512b1320a2",
+          "normalizationOnly": true,
+          "equalIgnoringTypedX": false
+        }
+      }
+    },
+    {
+      "fixture": "table.md",
+      "browser": "chromium",
+      "source": {
+        "bytes": 145,
+        "bom": false,
+        "eol": "LF",
+        "sha256": "e2a96f957c5f4e5d7358330905e9defa92f5a89ee381c6174ecbc4853232ca90"
+      },
+      "paths": {
+        "a1_noEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 145,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "e2a96f957c5f4e5d7358330905e9defa92f5a89ee381c6174ecbc4853232ca90"
+        },
+        "a2_cmNoEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 145,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "e2a96f957c5f4e5d7358330905e9defa92f5a89ee381c6174ecbc4853232ca90",
+          "cmEqualsReadString": true
+        },
+        "a3_cmEditRevertSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 145,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "e2a96f957c5f4e5d7358330905e9defa92f5a89ee381c6174ecbc4853232ca90",
+          "onChangeFired": true
+        },
+        "b1_milkdownSerialized": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 173,
+          "deltaBytes": 28,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 18,
+          "srcContext": "e\\n\\n| 項目 | 値 | 備考 |\\n|:-----|---",
+          "gotContext": "e\\n\\n| 項目     |   値 |   備考   |\\n|",
+          "sha256": "595276d2e5d78a35dcbd2581731a8d10b80ac2adbd731e58b8d954021e3c0226"
+        },
+        "b2_guardedRawSyncNoEdit": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 145,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "e2a96f957c5f4e5d7358330905e9defa92f5a89ee381c6174ecbc4853232ca90"
+        },
+        "b3_afterTypingX": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 174,
+          "deltaBytes": 29,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 18,
+          "srcContext": "e\\n\\n| 項目 | 値 | 備考 |\\n|:-----|---",
+          "gotContext": "e\\n\\n| 項目     |   値 |   備考   |\\n|",
+          "sha256": "a0afbfd2e74f79e533a02016bb39b981ab5397de17303461f3263dfafdd7d444",
+          "normalizationOnly": true,
+          "equalIgnoringTypedX": false
+        }
+      }
+    },
+    {
+      "fixture": "bom-crlf-japanese.md",
+      "browser": "webkit",
+      "source": {
+        "bytes": 532,
+        "bom": true,
+        "eol": "CRLF",
+        "sha256": "90ebd1632d9500e733ccf4c440ce91ad45269465c30655c590864a8451bfc46c"
+      },
+      "paths": {
+        "a1_noEditSave": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 529,
+          "deltaBytes": -3,
+          "bom": false,
+          "eol": "CRLF",
+          "firstDiffOffset": 0,
+          "srcContext": "﻿# 日本語の文書\\r\\n\\r\\n�",
+          "gotContext": "# 日本語の文書\\r\\n\\r\\n吾�",
+          "sha256": "0eeefffca4584781be0965c056779200c08aba327205a5fdd8145e55649aada4"
+        },
+        "a2_cmNoEditSave": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 517,
+          "deltaBytes": -15,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 0,
+          "srcContext": "﻿# 日本語の文書\\r\\n\\r\\n�",
+          "gotContext": "# 日本語の文書\\n\\n吾輩",
+          "sha256": "2ecabc409ac34d3a751179613a6c89af7ace0474b74a601523cbc585e95c2551",
+          "cmEqualsReadString": false
+        },
+        "a3_cmEditRevertSave": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 517,
+          "deltaBytes": -15,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 0,
+          "srcContext": "﻿# 日本語の文書\\r\\n\\r\\n�",
+          "gotContext": "# 日本語の文書\\n\\n吾輩",
+          "sha256": "2ecabc409ac34d3a751179613a6c89af7ace0474b74a601523cbc585e95c2551",
+          "onChangeFired": true
+        },
+        "b1_milkdownSerialized": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 518,
+          "deltaBytes": -14,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 0,
+          "srcContext": "﻿# 日本語の文書\\r\\n\\r\\n�",
+          "gotContext": "# 日本語の文書\\n\\n吾輩",
+          "sha256": "fb1bedec3dd9df13a4944542323de69812b29cb760e29d0087fda5c96e9bc066"
+        },
+        "b2_guardedRawSyncNoEdit": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 529,
+          "deltaBytes": -3,
+          "bom": false,
+          "eol": "CRLF",
+          "firstDiffOffset": 0,
+          "srcContext": "﻿# 日本語の文書\\r\\n\\r\\n�",
+          "gotContext": "# 日本語の文書\\r\\n\\r\\n吾�",
+          "sha256": "0eeefffca4584781be0965c056779200c08aba327205a5fdd8145e55649aada4"
+        },
+        "b3_afterTypingX": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 519,
+          "deltaBytes": -13,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 0,
+          "srcContext": "﻿# 日本語の文書\\r\\n\\r\\n�",
+          "gotContext": "# 日本語の文書\\n\\n吾輩",
+          "sha256": "c40805fb55c0136816187863a32dca763b8900297b8b1b03c1de150ffa48f476",
+          "normalizationOnly": true,
+          "equalIgnoringTypedX": false
+        }
+      }
+    },
+    {
+      "fixture": "bom-lf.md",
+      "browser": "webkit",
+      "source": {
+        "bytes": 213,
+        "bom": true,
+        "eol": "LF",
+        "sha256": "29a93d78463db7c78edd54144e59318fb0bbf3285f572b749c195b25624f92e4"
+      },
+      "paths": {
+        "a1_noEditSave": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 210,
+          "deltaBytes": -3,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 0,
+          "srcContext": "﻿# Plain LF document\\n\\nFirs",
+          "gotContext": "# Plain LF document\\n\\nFirst p",
+          "sha256": "a22c236e5304207dd7bc63f25dd32e3f4837df9f337b07436e0a1124f745624e"
+        },
+        "a2_cmNoEditSave": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 210,
+          "deltaBytes": -3,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 0,
+          "srcContext": "﻿# Plain LF document\\n\\nFirs",
+          "gotContext": "# Plain LF document\\n\\nFirst p",
+          "sha256": "a22c236e5304207dd7bc63f25dd32e3f4837df9f337b07436e0a1124f745624e",
+          "cmEqualsReadString": true
+        },
+        "a3_cmEditRevertSave": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 210,
+          "deltaBytes": -3,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 0,
+          "srcContext": "﻿# Plain LF document\\n\\nFirs",
+          "gotContext": "# Plain LF document\\n\\nFirst p",
+          "sha256": "a22c236e5304207dd7bc63f25dd32e3f4837df9f337b07436e0a1124f745624e",
+          "onChangeFired": true
+        },
+        "b1_milkdownSerialized": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 212,
+          "deltaBytes": -1,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 0,
+          "srcContext": "﻿# Plain LF document\\n\\nFirs",
+          "gotContext": "# Plain LF document\\n\\nFirst p",
+          "sha256": "fe7d0f13960e5da0f598045885fc776d5991cbc126b6dfa72523be33d4edc9df"
+        },
+        "b2_guardedRawSyncNoEdit": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 210,
+          "deltaBytes": -3,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 0,
+          "srcContext": "﻿# Plain LF document\\n\\nFirs",
+          "gotContext": "# Plain LF document\\n\\nFirst p",
+          "sha256": "a22c236e5304207dd7bc63f25dd32e3f4837df9f337b07436e0a1124f745624e"
+        },
+        "b3_afterTypingX": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 213,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 0,
+          "srcContext": "﻿# Plain LF document\\n\\nFirs",
+          "gotContext": "# Plain LF document\\n\\nFirst p",
+          "sha256": "81fc06b1aee90e54eca408ffd617c1806e82771d4c2b0f66f6d3e285d1893916",
+          "normalizationOnly": true,
+          "equalIgnoringTypedX": false
+        }
+      }
+    },
+    {
+      "fixture": "codeblock.md",
+      "browser": "webkit",
+      "source": {
+        "bytes": 190,
+        "bom": false,
+        "eol": "LF",
+        "sha256": "c504a9fe783b74e6d7ecb741e3645ca39dd7f86f961ac8fbe14c90e8f208c1ed"
+      },
+      "paths": {
+        "a1_noEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 190,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "c504a9fe783b74e6d7ecb741e3645ca39dd7f86f961ac8fbe14c90e8f208c1ed"
+        },
+        "a2_cmNoEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 190,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "c504a9fe783b74e6d7ecb741e3645ca39dd7f86f961ac8fbe14c90e8f208c1ed",
+          "cmEqualsReadString": true
+        },
+        "a3_cmEditRevertSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 190,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "c504a9fe783b74e6d7ecb741e3645ca39dd7f86f961ac8fbe14c90e8f208c1ed",
+          "onChangeFired": true
+        },
+        "b1_milkdownSerialized": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 195,
+          "deltaBytes": 5,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 109,
+          "srcContext": "elow\\n}\\n```\\n\\n    indented code block\\n\\n~~~",
+          "gotContext": "elow\\n}\\n```\\n\\n```\\nindented code block\\n```\\n",
+          "sha256": "a3b406f79013459f9b93345618b245532cff174f50f24093e14e8b345770f5ca"
+        },
+        "b2_guardedRawSyncNoEdit": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 190,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "c504a9fe783b74e6d7ecb741e3645ca39dd7f86f961ac8fbe14c90e8f208c1ed"
+        },
+        "b3_afterTypingX": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 196,
+          "deltaBytes": 6,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 109,
+          "srcContext": "elow\\n}\\n```\\n\\n    indented code block\\n\\n~~~",
+          "gotContext": "elow\\n}\\n```\\n\\n```\\nindented code block\\n```\\n",
+          "sha256": "01cb985d61c8bd2d4626cdacab6e3c38dd25bd57fa1f953568e0c32768b73728",
+          "normalizationOnly": true,
+          "equalIgnoringTypedX": false
+        }
+      }
+    },
+    {
+      "fixture": "crlf.md",
+      "browser": "webkit",
+      "source": {
+        "bytes": 224,
+        "bom": false,
+        "eol": "CRLF",
+        "sha256": "c64aa75a25f9aa95644c794ff4097e8ca11d11cf198575b4436aacde5757d104"
+      },
+      "paths": {
+        "a1_noEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 224,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "CRLF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "c64aa75a25f9aa95644c794ff4097e8ca11d11cf198575b4436aacde5757d104"
+        },
+        "a2_cmNoEditSave": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 210,
+          "deltaBytes": -14,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 19,
+          "srcContext": " LF document\\r\\n\\r\\nFirst paragraph with *em",
+          "gotContext": " LF document\\n\\nFirst paragraph with *emph",
+          "sha256": "a22c236e5304207dd7bc63f25dd32e3f4837df9f337b07436e0a1124f745624e",
+          "cmEqualsReadString": false
+        },
+        "a3_cmEditRevertSave": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 210,
+          "deltaBytes": -14,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 19,
+          "srcContext": " LF document\\r\\n\\r\\nFirst paragraph with *em",
+          "gotContext": " LF document\\n\\nFirst paragraph with *emph",
+          "sha256": "a22c236e5304207dd7bc63f25dd32e3f4837df9f337b07436e0a1124f745624e",
+          "onChangeFired": true
+        },
+        "b1_milkdownSerialized": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 212,
+          "deltaBytes": -12,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 19,
+          "srcContext": " LF document\\r\\n\\r\\nFirst paragraph with *em",
+          "gotContext": " LF document\\n\\nFirst paragraph with *emph",
+          "sha256": "fe7d0f13960e5da0f598045885fc776d5991cbc126b6dfa72523be33d4edc9df"
+        },
+        "b2_guardedRawSyncNoEdit": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 224,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "CRLF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "c64aa75a25f9aa95644c794ff4097e8ca11d11cf198575b4436aacde5757d104"
+        },
+        "b3_afterTypingX": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 213,
+          "deltaBytes": -11,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 19,
+          "srcContext": " LF document\\r\\n\\r\\nFirst paragraph with *em",
+          "gotContext": " LF document\\n\\nFirst paragraph with *emph",
+          "sha256": "81fc06b1aee90e54eca408ffd617c1806e82771d4c2b0f66f6d3e285d1893916",
+          "normalizationOnly": true,
+          "equalIgnoringTypedX": false
+        }
+      }
+    },
+    {
+      "fixture": "frontmatter.md",
+      "browser": "webkit",
+      "source": {
+        "bytes": 144,
+        "bom": false,
+        "eol": "LF",
+        "sha256": "3f35f0ad16361ee29b5644bd92c6446a462dc0efaba78aac3530c0c75861e48e"
+      },
+      "paths": {
+        "a1_noEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 144,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "3f35f0ad16361ee29b5644bd92c6446a462dc0efaba78aac3530c0c75861e48e"
+        },
+        "a2_cmNoEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 144,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "3f35f0ad16361ee29b5644bd92c6446a462dc0efaba78aac3530c0c75861e48e",
+          "cmEqualsReadString": true
+        },
+        "a3_cmEditRevertSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 144,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "3f35f0ad16361ee29b5644bd92c6446a462dc0efaba78aac3530c0c75861e48e",
+          "onChangeFired": true
+        },
+        "b1_milkdownSerialized": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 151,
+          "deltaBytes": 7,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 0,
+          "srcContext": "---\\ntitle: \\\"フロントマ�",
+          "gotContext": "***\\n\\ntitle: \\\"フロントマ",
+          "sha256": "089b773fbff3dfb651dc8e945d1428f144c3fbed83b9dbfbaa443e3da94409b5"
+        },
+        "b2_guardedRawSyncNoEdit": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 144,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "3f35f0ad16361ee29b5644bd92c6446a462dc0efaba78aac3530c0c75861e48e"
+        },
+        "b3_afterTypingX": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 152,
+          "deltaBytes": 8,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 0,
+          "srcContext": "---\\ntitle: \\\"フロントマ�",
+          "gotContext": "***\\n\\ntitle: \\\"フロントマ",
+          "sha256": "499f3b43eb989d5f0632bf74159f7250ec4c9a6dc04a59398cd564c76aa7d400",
+          "normalizationOnly": true,
+          "equalIgnoringTypedX": false
+        }
+      }
+    },
+    {
+      "fixture": "htmlblock.md",
+      "browser": "webkit",
+      "source": {
+        "bytes": 241,
+        "bom": false,
+        "eol": "LF",
+        "sha256": "cc126f7ba7ab69903913a1cbd31787b7c333b4498b3f6a7a3d25c26d19928d1a"
+      },
+      "paths": {
+        "a1_noEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 241,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "cc126f7ba7ab69903913a1cbd31787b7c333b4498b3f6a7a3d25c26d19928d1a"
+        },
+        "a2_cmNoEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 241,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "cc126f7ba7ab69903913a1cbd31787b7c333b4498b3f6a7a3d25c26d19928d1a",
+          "cmEqualsReadString": true
+        },
+        "a3_cmEditRevertSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 241,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "cc126f7ba7ab69903913a1cbd31787b7c333b4498b3f6a7a3d25c26d19928d1a",
+          "onChangeFired": true
+        },
+        "b1_milkdownSerialized": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 241,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "cc126f7ba7ab69903913a1cbd31787b7c333b4498b3f6a7a3d25c26d19928d1a"
+        },
+        "b2_guardedRawSyncNoEdit": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 241,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "cc126f7ba7ab69903913a1cbd31787b7c333b4498b3f6a7a3d25c26d19928d1a"
+        },
+        "b3_afterTypingX": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 242,
+          "deltaBytes": 1,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 240,
+          "srcContext": "html</span>.\\n",
+          "gotContext": "html</span>.X\\n",
+          "sha256": "88db383e73ad97f0a83972f4259e17d7ce0b3b5c04ca419637b9d23dfc72cb2a",
+          "normalizationOnly": true,
+          "equalIgnoringTypedX": true
+        }
+      }
+    },
+    {
+      "fixture": "japanese.md",
+      "browser": "webkit",
+      "source": {
+        "bytes": 517,
+        "bom": false,
+        "eol": "LF",
+        "sha256": "2ecabc409ac34d3a751179613a6c89af7ace0474b74a601523cbc585e95c2551"
+      },
+      "paths": {
+        "a1_noEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 517,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "2ecabc409ac34d3a751179613a6c89af7ace0474b74a601523cbc585e95c2551"
+        },
+        "a2_cmNoEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 517,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "2ecabc409ac34d3a751179613a6c89af7ace0474b74a601523cbc585e95c2551",
+          "cmEqualsReadString": true
+        },
+        "a3_cmEditRevertSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 517,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "2ecabc409ac34d3a751179613a6c89af7ace0474b74a601523cbc585e95c2551",
+          "onChangeFired": true
+        },
+        "b1_milkdownSerialized": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 518,
+          "deltaBytes": 1,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 233,
+          "srcContext": "�いる。\\n\\n- 全角スペース　を�",
+          "gotContext": "�いる。\\n\\n* 全角スペース　を�",
+          "sha256": "fb1bedec3dd9df13a4944542323de69812b29cb760e29d0087fda5c96e9bc066"
+        },
+        "b2_guardedRawSyncNoEdit": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 517,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "2ecabc409ac34d3a751179613a6c89af7ace0474b74a601523cbc585e95c2551"
+        },
+        "b3_afterTypingX": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 519,
+          "deltaBytes": 2,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 233,
+          "srcContext": "�いる。\\n\\n- 全角スペース　を�",
+          "gotContext": "�いる。\\n\\n* 全角スペース　を�",
+          "sha256": "c40805fb55c0136816187863a32dca763b8900297b8b1b03c1de150ffa48f476",
+          "normalizationOnly": true,
+          "equalIgnoringTypedX": false
+        }
+      }
+    },
+    {
+      "fixture": "lf.md",
+      "browser": "webkit",
+      "source": {
+        "bytes": 210,
+        "bom": false,
+        "eol": "LF",
+        "sha256": "a22c236e5304207dd7bc63f25dd32e3f4837df9f337b07436e0a1124f745624e"
+      },
+      "paths": {
+        "a1_noEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 210,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "a22c236e5304207dd7bc63f25dd32e3f4837df9f337b07436e0a1124f745624e"
+        },
+        "a2_cmNoEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 210,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "a22c236e5304207dd7bc63f25dd32e3f4837df9f337b07436e0a1124f745624e",
+          "cmEqualsReadString": true
+        },
+        "a3_cmEditRevertSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 210,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "a22c236e5304207dd7bc63f25dd32e3f4837df9f337b07436e0a1124f745624e",
+          "onChangeFired": true
+        },
+        "b1_milkdownSerialized": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 212,
+          "deltaBytes": 2,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 90,
+          "srcContext": "ine code`.\\n\\n- item one\\n- item two\\n  - ne",
+          "gotContext": "ine code`.\\n\\n* item one\\n\\n* item two\\n\\n  * ",
+          "sha256": "fe7d0f13960e5da0f598045885fc776d5991cbc126b6dfa72523be33d4edc9df"
+        },
+        "b2_guardedRawSyncNoEdit": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 210,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "a22c236e5304207dd7bc63f25dd32e3f4837df9f337b07436e0a1124f745624e"
+        },
+        "b3_afterTypingX": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 213,
+          "deltaBytes": 3,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 90,
+          "srcContext": "ine code`.\\n\\n- item one\\n- item two\\n  - ne",
+          "gotContext": "ine code`.\\n\\n* item one\\n\\n* item two\\n\\n  * ",
+          "sha256": "81fc06b1aee90e54eca408ffd617c1806e82771d4c2b0f66f6d3e285d1893916",
+          "normalizationOnly": true,
+          "equalIgnoringTypedX": false
+        }
+      }
+    },
+    {
+      "fixture": "linkdefs.md",
+      "browser": "webkit",
+      "source": {
+        "bytes": 267,
+        "bom": false,
+        "eol": "LF",
+        "sha256": "86e8432e098756ee2619849ec504bcad83399da9b9c96e53291323077acec1d4"
+      },
+      "paths": {
+        "a1_noEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 267,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "86e8432e098756ee2619849ec504bcad83399da9b9c96e53291323077acec1d4"
+        },
+        "a2_cmNoEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 267,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "86e8432e098756ee2619849ec504bcad83399da9b9c96e53291323077acec1d4",
+          "cmEqualsReadString": true
+        },
+        "a3_cmEditRevertSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 267,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "86e8432e098756ee2619849ec504bcad83399da9b9c96e53291323077acec1d4",
+          "onChangeFired": true
+        },
+        "b1_milkdownSerialized": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 219,
+          "deltaBytes": -48,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 44,
+          "srcContext": "e [the spec][spec] and [another one][Oth",
+          "gotContext": "e [the spec](https://spec.commonmark.org",
+          "sha256": "ced024e627708b5b1e66fd683593fd0b56fb24237276fc67eb806f037e191a53"
+        },
+        "b2_guardedRawSyncNoEdit": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 267,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "86e8432e098756ee2619849ec504bcad83399da9b9c96e53291323077acec1d4"
+        },
+        "b3_afterTypingX": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 220,
+          "deltaBytes": -47,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 44,
+          "srcContext": "e [the spec][spec] and [another one][Oth",
+          "gotContext": "e [the spec](https://spec.commonmark.org",
+          "sha256": "01266de70b741ffc9ae578b7b7297d83604b76f4c80e6192e1b487512b1320a2",
+          "normalizationOnly": true,
+          "equalIgnoringTypedX": false
+        }
+      }
+    },
+    {
+      "fixture": "table.md",
+      "browser": "webkit",
+      "source": {
+        "bytes": 145,
+        "bom": false,
+        "eol": "LF",
+        "sha256": "e2a96f957c5f4e5d7358330905e9defa92f5a89ee381c6174ecbc4853232ca90"
+      },
+      "paths": {
+        "a1_noEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 145,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "e2a96f957c5f4e5d7358330905e9defa92f5a89ee381c6174ecbc4853232ca90"
+        },
+        "a2_cmNoEditSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 145,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "e2a96f957c5f4e5d7358330905e9defa92f5a89ee381c6174ecbc4853232ca90",
+          "cmEqualsReadString": true
+        },
+        "a3_cmEditRevertSave": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 145,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "e2a96f957c5f4e5d7358330905e9defa92f5a89ee381c6174ecbc4853232ca90",
+          "onChangeFired": true
+        },
+        "b1_milkdownSerialized": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 173,
+          "deltaBytes": 28,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 18,
+          "srcContext": "e\\n\\n| 項目 | 値 | 備考 |\\n|:-----|---",
+          "gotContext": "e\\n\\n| 項目     |   値 |   備考   |\\n|",
+          "sha256": "595276d2e5d78a35dcbd2581731a8d10b80ac2adbd731e58b8d954021e3c0226"
+        },
+        "b2_guardedRawSyncNoEdit": {
+          "available": true,
+          "byteEqual": true,
+          "bytes": 145,
+          "deltaBytes": 0,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": null,
+          "srcContext": null,
+          "gotContext": null,
+          "sha256": "e2a96f957c5f4e5d7358330905e9defa92f5a89ee381c6174ecbc4853232ca90"
+        },
+        "b3_afterTypingX": {
+          "available": true,
+          "byteEqual": false,
+          "bytes": 174,
+          "deltaBytes": 29,
+          "bom": false,
+          "eol": "LF",
+          "firstDiffOffset": 18,
+          "srcContext": "e\\n\\n| 項目 | 値 | 備考 |\\n|:-----|---",
+          "gotContext": "e\\n\\n| 項目     |   値 |   備考   |\\n|",
+          "sha256": "a0afbfd2e74f79e533a02016bb39b981ab5397de17303461f3263dfafdd7d444",
+          "normalizationOnly": true,
+          "equalIgnoringTypedX": false
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "mdeCommit": "506c1fd938a7ad4dafa0f51910e5c42ac5854369",
+  "environment": {
+    "os": "Darwin 25.6.0 (26.7.2)",
+    "arch": "arm64",
+    "cpu": "Apple M5",
+    "node": "v24.19.0",
+    "npm": "11.17.0",
+    "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)"
+  },
+  "results": [
+    {
+      "command": "npm ci --registry https://registry.npmjs.org",
+      "exitCode": 0,
+      "durationSec": 6.2,
+      "outputTail": "  npm audit fix\n\nTo address all issues (including breaking changes), run:\n  npm audit fix --force\n\nRun `npm audit` for details.\nnpm warn allow-scripts 2 packages have install scripts not yet covered by allowScripts:\nnpm warn allow-scripts   esbuild@0.27.5 (postinstall: node install.js)\nnpm warn allow-scripts   fsevents@2.3.3 (install: (install scripts present))\nnpm warn allow-scripts\nnpm warn allow-scripts Run `npm approve-scripts --allow-scripts-pending` to review, or `npm approve-scripts <pkg>` to allow.\n"
+    },
+    {
+      "command": "npm test",
+      "exitCode": 0,
+      "durationSec": 4,
+      "outputTail": "> vitest run\n\n\n RUN  v4.1.2 /Users/tanabe.nobuyuki/Documents/repositories/myDocuments/phase0/vendor/MDE\n\n\n Test Files  16 passed (16)\n      Tests  200 passed (200)\n   Start at  20:16:21\n   Duration  2.78s (transform 1.08s, setup 0ms, import 1.84s, tests 818ms, environment 17.60s)\n\n"
+    },
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0,
+      "durationSec": 1.2,
+      "outputTail": "\n> mde@1.4.0 typecheck\n> tsc --noEmit\n\n"
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0,
+      "durationSec": 6.5,
+      "outputTail": "dist/assets/cynefin-VYW2F7L2-C_16VQ-a.js              687.89 kB │ gzip: 154.14 kB\ndist/assets/index-DtGjDBeC.js                         971.40 kB │ gzip: 324.50 kB\n✓ built in 4.99s\n[plugin vite:reporter] \n(!) /Users/tanabe.nobuyuki/Documents/repositories/myDocuments/phase0/vendor/MDE/src/platform.ts is dynamically imported by /Users/tanabe.nobuyuki/Documents/repositories/myDocuments/phase0/vendor/MDE/src/export.ts but also statically imported by /Users/tanabe.nobuyuki/Documents/repositories/myDocuments/phase0/vendor/MDE/src/App.tsx, /Users/tanabe.nobuyuki/Documents/repositories/myDocuments/phase0/vendor/MDE/src/components/MenuBar.tsx, /Users/tanabe.nobuyuki/Documents/repositories/myDocuments/phase0/vendor/MDE/src/components/TitleBar.tsx, /Users/tanabe.nobuyuki/Documents/repositories/myDocuments/phase0/vendor/MDE/src/fileOps.platform.ts, /Users/tanabe.nobuyuki/Documents/repositories/myDocuments/phase0/vendor/MDE/src/updater.ts, dynamic import will not move module into another chunk.\n\n\n(!) Some chunks are larger than 500 kB after minification. Consider:\n- Using dynamic import() to code-split the application\n- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks\n- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.\n"
+    },
+    {
+      "command": "npx tauri build --debug",
+      "exitCode": 1,
+      "durationSec": 48.1,
+      "outputTail": "    Bundling MDE.app (/Users/tanabe.nobuyuki/Documents/repositories/myDocuments/phase0/vendor/MDE/src-tauri/target/debug/bundle/macos/MDE.app)\n    Bundling MDE_1.4.0_aarch64.dmg (/Users/tanabe.nobuyuki/Documents/repositories/myDocuments/phase0/vendor/MDE/src-tauri/target/debug/bundle/dmg/MDE_1.4.0_aarch64.dmg)\n     Running bundle_dmg.sh\n    Bundling /Users/tanabe.nobuyuki/Documents/repositories/myDocuments/phase0/vendor/MDE/src-tauri/target/debug/bundle/macos/MDE.app.tar.gz (/Users/tanabe.nobuyuki/Documents/repositories/myDocuments/phase0/vendor/MDE/src-tauri/target/debug/bundle/macos/MDE.app.tar.gz)\n    Finished 2 bundles at:\n        /Users/tanabe.nobuyuki/Documents/repositories/myDocuments/phase0/vendor/MDE/src-tauri/target/debug/bundle/macos/MDE.app\n        /Users/tanabe.nobuyuki/Documents/repositories/myDocuments/phase0/vendor/MDE/src-tauri/target/debug/bundle/dmg/MDE_1.4.0_aarch64.dmg\n        /Users/tanabe.nobuyuki/Documents/repositories/myDocuments/phase0/vendor/MDE/src-tauri/target/debug/bundle/macos/MDE.app.tar.gz (updater)\n\nA public key has been found, but no private key. Make sure to set `TAURI_SIGNING_PRIVATE_KEY` environment variable.\n       Error A public key has been found, but no private key. Make sure to set `TAURI_SIGNING_PRIVATE_KEY` environment variable.\n"
+    },
+    {
+      "command": "npx tauri build --debug --config {\"bundle\":{\"createUpdaterArtifacts\":false}}",
+      "exitCode": 0,
+      "durationSec": 33.6,
+      "outputTail": "- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.\n   Compiling mde v1.4.0 (/Users/tanabe.nobuyuki/Documents/repositories/myDocuments/phase0/vendor/MDE/src-tauri)\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.27s\n       Built application at: /Users/tanabe.nobuyuki/Documents/repositories/myDocuments/phase0/vendor/MDE/src-tauri/target/debug/mde\n    Bundling MDE.app (/Users/tanabe.nobuyuki/Documents/repositories/myDocuments/phase0/vendor/MDE/src-tauri/target/debug/bundle/macos/MDE.app)\n    Bundling MDE_1.4.0_aarch64.dmg (/Users/tanabe.nobuyuki/Documents/repositories/myDocuments/phase0/vendor/MDE/src-tauri/target/debug/bundle/dmg/MDE_1.4.0_aarch64.dmg)\n     Running bundle_dmg.sh\n    Finished 2 bundles at:\n        /Users/tanabe.nobuyuki/Documents/repositories/myDocuments/phase0/vendor/MDE/src-tauri/target/debug/bundle/macos/MDE.app\n        /Users/tanabe.nobuyuki/Documents/repositories/myDocuments/phase0/vendor/MDE/src-tauri/target/debug/bundle/dmg/MDE_1.4.0_aarch64.dmg\n\n"
+    }
+  ]
+}

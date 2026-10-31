@@ -1,0 +1,46 @@
+{
+  "generator": "scripts/gen-fixtures.mjs",
+  "node": "v24.19.0",
+  "datasets": [
+    {
+      "id": "A",
+      "file": "A-10kb-ja.md",
+      "description": "10KB 日本語の通常文章",
+      "bytes": 10522,
+      "chars": 3564,
+      "lines": 63,
+      "paragraphs": 32,
+      "sha256": "e95c97d9271ff25bea639c86d6ebaf73d77906207caa97fbdb0e9acbf39c5f56"
+    },
+    {
+      "id": "B",
+      "file": "B-100kb-mixed.md",
+      "description": "100KB 見出し・箇条書き・リンク・コードブロック混在",
+      "bytes": 102610,
+      "chars": 46998,
+      "lines": 1121,
+      "paragraphs": 293,
+      "sha256": "aada3eb08edad1896c85cdeebc25cbe394da4525fcf337c189ef9725c8d1e485"
+    },
+    {
+      "id": "C",
+      "file": "C-1mb-longform.md",
+      "description": "1MB 長文、数千段落（.gitignore 対象、再生成可）",
+      "bytes": 1048862,
+      "chars": 422152,
+      "lines": 5569,
+      "paragraphs": 2785,
+      "sha256": "ad18e8261bf921640c41c8f24fcd1673cb5f6eec7f8bd05bf0782b1a2828ac00"
+    },
+    {
+      "id": "D",
+      "file": "D-stress.md",
+      "description": "ストレス：frontmatter・巨大表・コード多数・リンク定義・巨大単一ブロック",
+      "bytes": 579230,
+      "chars": 352496,
+      "lines": 3512,
+      "paragraphs": 52,
+      "sha256": "785dcfced5686957bdefb7c7e31e053347b1077a29936ee7488efbee49ca6778"
+    }
+  ]
+}

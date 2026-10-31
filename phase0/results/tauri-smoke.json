@@ -1,0 +1,419 @@
+{
+  "generatedAt": "2026-10-31T11:40:11.834Z",
+  "command": "RUNS=5 node phase0/bench/tauri-smoke.mjs",
+  "binary": "phase0/vendor/MDE/src-tauri/target/debug/mde (debug build, unoptimized)",
+  "environment": {
+    "os": "macOS 26.7.2",
+    "cpu": "Apple M5",
+    "memoryGiB": 32
+  },
+  "notes": [
+    "debug ビルドであり release ビルドの数値ではない",
+    "cold/warm は制御していない（page cache の purge は sudo が必要なため行わない）。1 回目と 2 回目以降は runs の順で区別できる",
+    "windowVisibleMs は spawn から CGWindowList で高さ 100px 超の窓が出るまで。フロントエンドの frontend-ready で表示される設計（lib.rs）のため、編集可能状態の近似。ファイル引数の読み込み完了時刻は含まない",
+    "WebKit 子プロセスは「起動前に存在しなかった com.apple.WebKit.* プロセス」を当該アプリ分と推定した値。他アプリが同時に WebKit を起動していれば混入する",
+    "起動時引数でファイルを渡している（lib.rs:5-17 extract_file_args）。キー入力・IME 後のメモリは未計測"
+  ],
+  "scenarios": [
+    {
+      "scenario": "empty",
+      "runs": [
+        {
+          "windowVisibleMs": 2037.2,
+          "mainRssMiB": 100.8,
+          "newWebKitProcs": [
+            {
+              "name": "com.apple.WebKit.GPU",
+              "rssMiB": 34.6
+            },
+            {
+              "name": "com.apple.WebKit.Networking",
+              "rssMiB": 13.5
+            },
+            {
+              "name": "com.apple.WebKit.WebContent",
+              "rssMiB": 81.2
+            }
+          ],
+          "totalRssMiB": 230
+        },
+        {
+          "windowVisibleMs": 366.1,
+          "mainRssMiB": 102.5,
+          "newWebKitProcs": [
+            {
+              "name": "com.apple.WebKit.GPU",
+              "rssMiB": 33.5
+            },
+            {
+              "name": "com.apple.WebKit.Networking",
+              "rssMiB": 13.2
+            },
+            {
+              "name": "com.apple.WebKit.WebContent",
+              "rssMiB": 84.1
+            }
+          ],
+          "totalRssMiB": 233.3
+        },
+        {
+          "windowVisibleMs": 369.7,
+          "mainRssMiB": 102.6,
+          "newWebKitProcs": [
+            {
+              "name": "com.apple.WebKit.GPU",
+              "rssMiB": 33.9
+            },
+            {
+              "name": "com.apple.WebKit.Networking",
+              "rssMiB": 13.2
+            },
+            {
+              "name": "com.apple.WebKit.WebContent",
+              "rssMiB": 84.2
+            }
+          ],
+          "totalRssMiB": 233.9
+        },
+        {
+          "windowVisibleMs": 368.3,
+          "mainRssMiB": 102.8,
+          "newWebKitProcs": [
+            {
+              "name": "com.apple.WebKit.GPU",
+              "rssMiB": 33.2
+            },
+            {
+              "name": "com.apple.WebKit.Networking",
+              "rssMiB": 13.2
+            },
+            {
+              "name": "com.apple.WebKit.WebContent",
+              "rssMiB": 82.7
+            }
+          ],
+          "totalRssMiB": 232
+        },
+        {
+          "windowVisibleMs": 363.6,
+          "mainRssMiB": 102.6,
+          "newWebKitProcs": [
+            {
+              "name": "com.apple.WebKit.GPU",
+              "rssMiB": 33.3
+            },
+            {
+              "name": "com.apple.WebKit.Networking",
+              "rssMiB": 13.2
+            },
+            {
+              "name": "com.apple.WebKit.WebContent",
+              "rssMiB": 83.5
+            }
+          ],
+          "totalRssMiB": 232.6
+        }
+      ]
+    },
+    {
+      "scenario": "A-10kb",
+      "runs": [
+        {
+          "windowVisibleMs": 360.6,
+          "mainRssMiB": 104.8,
+          "newWebKitProcs": [
+            {
+              "name": "com.apple.WebKit.GPU",
+              "rssMiB": 37.2
+            },
+            {
+              "name": "com.apple.WebKit.Networking",
+              "rssMiB": 13.1
+            },
+            {
+              "name": "com.apple.WebKit.WebContent",
+              "rssMiB": 99
+            }
+          ],
+          "totalRssMiB": 254.1
+        },
+        {
+          "windowVisibleMs": 350.9,
+          "mainRssMiB": 105.8,
+          "newWebKitProcs": [
+            {
+              "name": "com.apple.WebKit.GPU",
+              "rssMiB": 38.5
+            },
+            {
+              "name": "com.apple.WebKit.Networking",
+              "rssMiB": 13.1
+            },
+            {
+              "name": "com.apple.WebKit.WebContent",
+              "rssMiB": 95.7
+            }
+          ],
+          "totalRssMiB": 253.1
+        },
+        {
+          "windowVisibleMs": 362.4,
+          "mainRssMiB": 105.6,
+          "newWebKitProcs": [
+            {
+              "name": "com.apple.WebKit.GPU",
+              "rssMiB": 37.9
+            },
+            {
+              "name": "com.apple.WebKit.Networking",
+              "rssMiB": 13
+            },
+            {
+              "name": "com.apple.WebKit.WebContent",
+              "rssMiB": 94.4
+            }
+          ],
+          "totalRssMiB": 250.9
+        },
+        {
+          "windowVisibleMs": 383,
+          "mainRssMiB": 103.9,
+          "newWebKitProcs": [
+            {
+              "name": "com.apple.WebKit.GPU",
+              "rssMiB": 37.5
+            },
+            {
+              "name": "com.apple.WebKit.Networking",
+              "rssMiB": 13.3
+            },
+            {
+              "name": "com.apple.WebKit.WebContent",
+              "rssMiB": 97.9
+            }
+          ],
+          "totalRssMiB": 252.6
+        },
+        {
+          "windowVisibleMs": 361.6,
+          "mainRssMiB": 106,
+          "newWebKitProcs": [
+            {
+              "name": "com.apple.WebKit.GPU",
+              "rssMiB": 37.8
+            },
+            {
+              "name": "com.apple.WebKit.Networking",
+              "rssMiB": 13.2
+            },
+            {
+              "name": "com.apple.WebKit.WebContent",
+              "rssMiB": 95.2
+            }
+          ],
+          "totalRssMiB": 252.2
+        }
+      ]
+    },
+    {
+      "scenario": "B-100kb",
+      "runs": [
+        {
+          "windowVisibleMs": 342.7,
+          "mainRssMiB": 104.6,
+          "newWebKitProcs": [
+            {
+              "name": "com.apple.WebKit.GPU",
+              "rssMiB": 40.8
+            },
+            {
+              "name": "com.apple.WebKit.Networking",
+              "rssMiB": 13.2
+            },
+            {
+              "name": "com.apple.WebKit.WebContent",
+              "rssMiB": 124.6
+            }
+          ],
+          "totalRssMiB": 283.1
+        },
+        {
+          "windowVisibleMs": 366.6,
+          "mainRssMiB": 105.9,
+          "newWebKitProcs": [
+            {
+              "name": "com.apple.WebKit.GPU",
+              "rssMiB": 42.9
+            },
+            {
+              "name": "com.apple.WebKit.Networking",
+              "rssMiB": 13.2
+            },
+            {
+              "name": "com.apple.WebKit.WebContent",
+              "rssMiB": 124.6
+            }
+          ],
+          "totalRssMiB": 286.6
+        },
+        {
+          "windowVisibleMs": 376.9,
+          "mainRssMiB": 105.7,
+          "newWebKitProcs": [
+            {
+              "name": "com.apple.WebKit.GPU",
+              "rssMiB": 42.8
+            },
+            {
+              "name": "com.apple.WebKit.Networking",
+              "rssMiB": 13.2
+            },
+            {
+              "name": "com.apple.WebKit.WebContent",
+              "rssMiB": 125.9
+            }
+          ],
+          "totalRssMiB": 287.5
+        },
+        {
+          "windowVisibleMs": 361.1,
+          "mainRssMiB": 105.9,
+          "newWebKitProcs": [
+            {
+              "name": "com.apple.WebKit.GPU",
+              "rssMiB": 42.7
+            },
+            {
+              "name": "com.apple.WebKit.Networking",
+              "rssMiB": 13
+            },
+            {
+              "name": "com.apple.WebKit.WebContent",
+              "rssMiB": 123.4
+            }
+          ],
+          "totalRssMiB": 285
+        },
+        {
+          "windowVisibleMs": 360.9,
+          "mainRssMiB": 106.5,
+          "newWebKitProcs": [
+            {
+              "name": "com.apple.WebKit.GPU",
+              "rssMiB": 43.1
+            },
+            {
+              "name": "com.apple.WebKit.Networking",
+              "rssMiB": 13.2
+            },
+            {
+              "name": "com.apple.WebKit.WebContent",
+              "rssMiB": 126.8
+            }
+          ],
+          "totalRssMiB": 289.6
+        }
+      ]
+    },
+    {
+      "scenario": "C-1mb",
+      "runs": [
+        {
+          "windowVisibleMs": 371.7,
+          "mainRssMiB": 105.6,
+          "newWebKitProcs": [
+            {
+              "name": "com.apple.WebKit.GPU",
+              "rssMiB": 38.7
+            },
+            {
+              "name": "com.apple.WebKit.Networking",
+              "rssMiB": 13.2
+            },
+            {
+              "name": "com.apple.WebKit.WebContent",
+              "rssMiB": 152.7
+            }
+          ],
+          "totalRssMiB": 310.1
+        },
+        {
+          "windowVisibleMs": 339.4,
+          "mainRssMiB": 105.1,
+          "newWebKitProcs": [
+            {
+              "name": "com.apple.WebKit.GPU",
+              "rssMiB": 38.1
+            },
+            {
+              "name": "com.apple.WebKit.Networking",
+              "rssMiB": 13.1
+            },
+            {
+              "name": "com.apple.WebKit.WebContent",
+              "rssMiB": 152.9
+            }
+          ],
+          "totalRssMiB": 309.2
+        },
+        {
+          "windowVisibleMs": 386.3,
+          "mainRssMiB": 105.3,
+          "newWebKitProcs": [
+            {
+              "name": "com.apple.WebKit.GPU",
+              "rssMiB": 38.3
+            },
+            {
+              "name": "com.apple.WebKit.Networking",
+              "rssMiB": 13.2
+            },
+            {
+              "name": "com.apple.WebKit.WebContent",
+              "rssMiB": 152.6
+            }
+          ],
+          "totalRssMiB": 309.4
+        },
+        {
+          "windowVisibleMs": 370.5,
+          "mainRssMiB": 104.8,
+          "newWebKitProcs": [
+            {
+              "name": "com.apple.WebKit.GPU",
+              "rssMiB": 38.2
+            },
+            {
+              "name": "com.apple.WebKit.Networking",
+              "rssMiB": 13.1
+            },
+            {
+              "name": "com.apple.WebKit.WebContent",
+              "rssMiB": 153.2
+            }
+          ],
+          "totalRssMiB": 309.2
+        },
+        {
+          "windowVisibleMs": 346.3,
+          "mainRssMiB": 105.6,
+          "newWebKitProcs": [
+            {
+              "name": "com.apple.WebKit.GPU",
+              "rssMiB": 38.2
+            },
+            {
+              "name": "com.apple.WebKit.Networking",
+              "rssMiB": 13.1
+            },
+            {
+              "name": "com.apple.WebKit.WebContent",
+              "rssMiB": 144.6
+            }
+          ],
+          "totalRssMiB": 301.5
+        }
+      ]
+    }
+  ]
+}

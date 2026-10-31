@@ -1,0 +1,14 @@
+# Phase 0: third-party clone and build artifacts (MDE source is not committed)
+phase0/vendor/
+node_modules/
+dist/
+target/
+*.log
+.DS_Store
+
+# Phase 0: large generated fixtures (regenerate with scripts/gen-fixtures.mjs)
+phase0/fixtures/perf/C-*.md
+
+# Harness build output and dependencies
+phase0/harness/dist/
+phase0/node_modules/
