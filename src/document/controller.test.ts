@@ -17,6 +17,10 @@ function setup(options: { confirm?: DiscardChoice; openPath?: string | null; sav
     saveDocumentAs: vi.fn(async (): Promise<SaveOutcome> => 'written'),
     loadPreferences: vi.fn(async () => null),
     savePreferences: vi.fn(async () => {}),
+    pickImagePath: vi.fn(async () => null),
+    importBackgroundImage: vi.fn(async () => 'a'.repeat(64)),
+    readBackgroundImage: vi.fn(async () => ({ mime: 'image/png', bytes: new Uint8Array() })),
+    toggleFullscreen: vi.fn(async () => true),
     notifyReady: vi.fn(async () => {}),
   } satisfies DocumentBridge;
   const confirmDiscard = vi.fn(async () => options.confirm ?? 'cancel');

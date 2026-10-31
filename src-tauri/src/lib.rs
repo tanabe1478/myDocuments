@@ -1,13 +1,15 @@
+mod backgrounds;
 mod documents;
 mod error;
 mod preferences;
 
+use backgrounds::BackgroundImageDto;
 use documents::{FormatDto, KnownPaths, OpenedDocument, SaveOutcomeDto};
 use error::{CommandError, ErrorKind};
 use std::time::Duration;
 use tauri::{AppHandle, Listener, Manager, State};
 
-// フロントエンドから呼べるコマンドは、この 5 つだけ（build.rs と capabilities/default.json に対応）。
+// フロントエンドから呼べるコマンドは、この 7 つだけ（build.rs と capabilities/default.json に対応）。
 
 #[tauri::command]
 async fn open_document(
@@ -53,6 +55,27 @@ async fn save_preferences(app: AppHandle, prefs: serde_json::Value) -> Result<()
     preferences::save_to(&config_dir(&app)?, &prefs)
 }
 
+fn backgrounds_dir(app: &AppHandle) -> Result<std::path::PathBuf, CommandError> {
+    app.path()
+        .app_data_dir()
+        .map(|d| d.join("backgrounds"))
+        .map_err(|e| CommandError::new(ErrorKind::Io, e.to_string()))
+}
+
+/// ダイアログで選んだ画像を、アプリのデータ領域へコピーする。戻り値は imageId。
+#[tauri::command]
+async fn import_background_image(app: AppHandle, path: String) -> Result<String, CommandError> {
+    backgrounds::import_from(&path, &backgrounds_dir(&app)?)
+}
+
+#[tauri::command]
+async fn read_background_image(
+    app: AppHandle,
+    image_id: String,
+) -> Result<BackgroundImageDto, CommandError> {
+    backgrounds::read_from(&image_id, &backgrounds_dir(&app)?)
+}
+
 /// 窓は非表示で作り、フロントエンドが最初の描画を終えてから表示する（起動時のちらつき対策）。
 /// この方式は MDE（https://github.com/sevenevesai/MDE、MIT）の src-tauri/src/lib.rs を参考にした。
 /// コードは移植していない。
@@ -74,7 +97,9 @@ pub fn run() {
             save_document,
             save_document_as,
             load_preferences,
-            save_preferences
+            save_preferences,
+            import_background_image,
+            read_background_image
         ])
         .setup(|app| {
             let handle = app.handle().clone();

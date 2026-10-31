@@ -46,3 +46,45 @@ describe('matchShortcut', () => {
     expect(matchShortcut({ ...key('s', { ctrlKey: true }), key: 'Process' }, false)).toBe('save');
   });
 });
+
+describe('writing canvas shortcuts', () => {
+  it('Mod+, opens the appearance panel (Cmd on macOS, Ctrl elsewhere)', () => {
+    expect(matchShortcut({ ...key(',', { metaKey: true }), code: 'Comma' }, true)).toBe('appearance');
+    expect(matchShortcut({ ...key(',', { ctrlKey: true }), code: 'Comma' }, false)).toBe('appearance');
+    expect(matchShortcut({ ...key(',', { ctrlKey: true }), code: 'Comma' }, true)).toBeNull();
+    expect(matchShortcut({ ...key(',', { metaKey: true }), code: 'Comma' }, false)).toBeNull();
+    expect(matchShortcut({ ...key(',', { ctrlKey: true, shiftKey: true }), code: 'Comma' }, false)).toBeNull();
+  });
+
+  it('focus mode is Mod+Shift+F and typewriter mode is Mod+Shift+T', () => {
+    expect(matchShortcut(key('F', { metaKey: true, shiftKey: true }), true)).toBe('focusMode');
+    expect(matchShortcut(key('F', { ctrlKey: true, shiftKey: true }), false)).toBe('focusMode');
+    expect(matchShortcut(key('T', { metaKey: true, shiftKey: true }), true)).toBe('typewriterMode');
+    expect(matchShortcut(key('T', { ctrlKey: true, shiftKey: true }), false)).toBe('typewriterMode');
+  });
+
+  it('leaves Mod+F (search) and Mod+T alone', () => {
+    expect(matchShortcut(key('f', { metaKey: true }), true)).toBeNull();
+    expect(matchShortcut(key('f', { ctrlKey: true }), false)).toBeNull();
+    expect(matchShortcut(key('t', { ctrlKey: true }), false)).toBeNull();
+  });
+
+  it('fullscreen is Ctrl+Cmd+F on macOS only', () => {
+    expect(matchShortcut(key('f', { metaKey: true, ctrlKey: true }), true)).toBe('fullscreen');
+    expect(matchShortcut(key('F', { metaKey: true, ctrlKey: true, shiftKey: true }), true)).toBeNull();
+    expect(matchShortcut(key('F11'), true)).toBeNull();
+    expect(matchShortcut(key('f', { metaKey: true, ctrlKey: true }), false)).toBeNull();
+  });
+
+  it('fullscreen is F11 on Windows and Linux only, without modifiers', () => {
+    expect(matchShortcut({ ...key('F11'), code: 'F11' }, false)).toBe('fullscreen');
+    expect(matchShortcut(key('F11', { ctrlKey: true }), false)).toBeNull();
+    expect(matchShortcut(key('F11', { shiftKey: true }), false)).toBeNull();
+    expect(matchShortcut(key('F11', { altKey: true }), false)).toBeNull();
+  });
+
+  it('ignores the new shortcuts during IME composition', () => {
+    expect(matchShortcut(key('F', { ctrlKey: true, shiftKey: true, isComposing: true }), false)).toBeNull();
+    expect(matchShortcut({ ...key('F11'), keyCode: 229 }, false)).toBeNull();
+  });
+});

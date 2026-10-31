@@ -13,6 +13,8 @@ export interface EditorSelection {
  * - IME の変換中（composition 中）は setText を適用せず、変換の終了後に適用する。
  * - onChange はユーザー操作による本文の変化だけを通知する。
  * - on* は購読解除関数を返す。
+ * - setFocusMode / setTypewriterMode は表示だけを変える。本文・履歴・選択範囲には触れない。
+ *   setText で文書を読み込み直しても、設定は保たれる。
  */
 export interface EditorAdapter {
   mount(el: HTMLElement): void;
@@ -21,5 +23,9 @@ export interface EditorAdapter {
   onChange(cb: (text: string) => void): () => void;
   onSelectionChange(cb: (selection: EditorSelection) => void): () => void;
   focus(): void;
+  /** フォーカスモード: カーソルのある段落以外の行を弱く表示する。 */
+  setFocusMode(on: boolean): void;
+  /** タイプライターモード: カーソル行を表示領域の縦中央に保つ。 */
+  setTypewriterMode(on: boolean): void;
   destroy(): void;
 }

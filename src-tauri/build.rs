@@ -8,6 +8,8 @@ fn main() {
             "save_document_as",
             "load_preferences",
             "save_preferences",
+            "import_background_image",
+            "read_background_image",
         ]),
     ))
     .expect("failed to run tauri-build");

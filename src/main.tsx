@@ -22,7 +22,7 @@ async function bootstrap(): Promise<void> {
   if (!root) throw new Error('#root not found');
   createRoot(root).render(
     <StrictMode>
-      <App bridge={bridge} />
+      <App bridge={bridge} initialPreferences={prefs} />
     </StrictMode>,
   );
 }

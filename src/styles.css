@@ -7,7 +7,9 @@
 :root,
 :root[data-theme='light'] {
   --md-color-bg: #f7f4ec;
+  --md-color-surface: #fbf8f0;
   --md-color-text: #2a2824;
+  --md-color-chrome-text: #5d574b;
   --md-color-muted: #8d8678;
   --md-color-mark: #b3ab9b;
   --md-color-link: #1f5f8b;
@@ -25,7 +27,9 @@
 :root[data-theme='dark'] {
   color-scheme: dark;
   --md-color-bg: #1d1f21;
+  --md-color-surface: #202326;
   --md-color-text: #dcd8ce;
+  --md-color-chrome-text: #b3b3a8;
   --md-color-muted: #8a8a82;
   --md-color-mark: #5f6258;
   --md-color-link: #7fb4d9;
@@ -59,16 +63,55 @@ body {
   display: flex;
   flex-direction: column;
   height: 100%;
+  overflow: hidden;
+}
+
+/* 背景層（z 0）→ 本文面（z 1）→ 本文（z 2）→ 上下のバー（z 5）→ 外観パネル（z 8）。 */
+.canvas-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.canvas-bg-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.canvas-bg-overlay {
+  position: absolute;
+  inset: 0;
+}
+
+/* 本文面。本文と同じ幅の縦長の面で、不透明度は Preferences の surfaceOpacity。 */
+.canvas-surface {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  z-index: 1;
+  width: min(var(--md-max-width, 680px), 100%);
+  transform: translateX(-50%);
+  background: var(--md-color-surface);
+  box-shadow: 0 0 0 1px var(--md-color-border);
+  pointer-events: none;
 }
 
 .editor-host {
+  position: relative;
+  z-index: 2;
   flex: 1;
   min-height: 0;
 }
 
-.topbar {
+.topbar,
+.bottombar {
   position: absolute;
-  top: 0;
   left: 0;
   right: 0;
   z-index: 5;
@@ -77,9 +120,68 @@ body {
   gap: 8px;
   padding: 12px 20px;
   font-size: 13px;
-  color: var(--md-color-muted);
+  color: var(--md-color-chrome-text);
   pointer-events: none;
   user-select: none;
+}
+
+.topbar {
+  top: 0;
+}
+
+.bottombar {
+  bottom: 0;
+  justify-content: space-between;
+}
+
+.topbar > *,
+.bottombar > * {
+  pointer-events: auto;
+}
+
+.topbar-spacer,
+.bottombar-slot {
+  flex: 1;
+}
+
+.doc-title,
+.char-count,
+.chrome-button {
+  padding: 3px 11px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--md-color-panel) 88%, transparent);
+}
+
+.chrome-button {
+  border: 1px solid var(--md-color-border);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.chrome-button:hover {
+  color: var(--md-color-text);
+}
+
+.chrome-button:focus-visible,
+.char-count:focus-visible,
+.appearance-panel button:focus-visible,
+.appearance-panel input:focus-visible,
+.appearance-panel select:focus-visible {
+  outline: 2px solid var(--md-color-link);
+  outline-offset: 2px;
+}
+
+/* 自動非表示（UI-05）。display や visibility は変えない: 隠れていてもキーボード（Tab・F6）で届き、
+   フォーカスが入ると再表示される。隠れている間は、ポインタの操作だけを通さない。 */
+.app[data-chrome='hidden'] .topbar,
+.app[data-chrome='hidden'] .bottombar {
+  opacity: 0;
+}
+
+.app[data-chrome='hidden'] .topbar > *,
+.app[data-chrome='hidden'] .bottombar > * {
+  pointer-events: none;
 }
 
 .unsaved-mark {
@@ -173,8 +275,159 @@ body {
   outline-offset: 2px;
 }
 
+/* 外観パネル（非モーダルの dialog）。 */
+.appearance-panel {
+  position: absolute;
+  top: 52px;
+  right: 16px;
+  bottom: 52px;
+  z-index: 8;
+  box-sizing: border-box;
+  width: min(340px, calc(100% - 32px));
+  overflow-y: auto;
+  padding: 12px 16px 16px;
+  border: 1px solid var(--md-color-border);
+  border-radius: 10px;
+  background: var(--md-color-panel);
+  color: var(--md-color-text);
+  font: 13px/1.5 system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI", "Noto Sans CJK JP", sans-serif;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.appearance-panel h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.appearance-panel fieldset {
+  margin: 12px 0 0;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--md-color-border);
+}
+
+.appearance-panel legend {
+  padding: 8px 0 4px;
+  font-weight: 600;
+}
+
+.appearance-panel button,
+.appearance-panel select,
+.appearance-panel input[type='text'] {
+  padding: 4px 10px;
+  border: 1px solid var(--md-color-border);
+  border-radius: 6px;
+  background: var(--md-color-bg);
+  color: inherit;
+  font: inherit;
+}
+
+.appearance-panel button {
+  cursor: pointer;
+}
+
+.panel-close {
+  padding: 0 8px !important;
+  font-size: 18px !important;
+  line-height: 1.4;
+}
+
+.appearance-panel input[type='range'],
+.appearance-panel input[type='radio'],
+.appearance-panel input[type='checkbox'] {
+  accent-color: var(--md-color-link);
+}
+
+.appearance-panel .field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 6px 0;
+}
+
+.appearance-panel .field-head {
+  display: flex;
+  justify-content: space-between;
+}
+
+.appearance-panel .field-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.appearance-panel .value,
+.appearance-panel .hint {
+  color: var(--md-color-chrome-text);
+}
+
+.appearance-panel .hint {
+  margin: 4px 0;
+  font-size: 12px;
+}
+
+.appearance-panel .hint.warn {
+  color: var(--md-color-accent);
+  font-weight: 600;
+}
+
+.appearance-panel input[type='range'] {
+  width: 100%;
+  margin: 2px 0;
+}
+
+.appearance-panel .choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 4px 0;
+}
+
+.appearance-panel .gradient-choices {
+  flex-direction: column;
+}
+
+.appearance-panel .choice,
+.appearance-panel .check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+}
+
+.appearance-panel .swatch {
+  display: inline-block;
+  width: 36px;
+  height: 16px;
+  border: 1px solid var(--md-color-border);
+  border-radius: 4px;
+}
+
+.appearance-panel .image-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0;
+}
+
+/* アニメーションは Reduced Motion でないときだけ（reduce では transition を付けない）。 */
 @media (prefers-reduced-motion: no-preference) {
   .toast {
     transition: opacity 0.2s;
+  }
+
+  .topbar,
+  .bottombar {
+    transition: opacity 0.45s ease;
+  }
+
+  .cm-md-dim {
+    transition: opacity 0.25s ease;
   }
 }

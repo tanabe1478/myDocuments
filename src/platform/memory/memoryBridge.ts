@@ -3,11 +3,17 @@ import type { DocumentFormat } from '../../document/format';
 import type { EditorAdapter } from '../../editor/EditorAdapter';
 import {
   BridgeError,
+  type BackgroundImageData,
   type DocumentBridge,
   type OpenedDocument,
   type SaveOutcome,
 } from '../DocumentBridge';
-import { decodeBytes, encodeText, sameBytes } from './bytes';
+import { decodeBytes, encodeText, sameBytes, sha256Hex, sniffImageMime } from './bytes';
+
+/** 取り込める画像の上限（Rust 側と同じ）。 */
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+/** 設定を再読み込みをまたいで保つ sessionStorage のキー（実アプリの preferences.json の代わり）。 */
+const PREFS_KEY = '__mdeE2E_preferences';
 
 /** テストが addInitScript で window.__E2E_SEED__ に置く初期状態。 */
 export interface E2ESeed {
@@ -19,13 +25,20 @@ export interface E2ESeed {
   savePath?: string | null;
   /** loadPreferences が返す値。 */
   preferences?: unknown;
+  /** 次に「画像を選ぶ」ダイアログが返すパス（null はキャンセル）。画像のバイト列は files に置く。 */
+  imagePath?: string | null;
 }
 
 /** テストが window.__mdeE2E 経由で観測・操作するもの。 */
 export interface E2EState {
   files: Map<string, Uint8Array>;
   /** bridge の save / saveAs が呼ばれた回数。 */
-  calls: { save: number; saveAs: number; open: number };
+  calls: { save: number; saveAs: number; open: number; fullscreen: number; imageImport: number };
+  /** 全画面かどうか（toggleFullscreen が切り替える）。 */
+  fullscreen: boolean;
+  /** 取り込み済みの背景画像（imageId → 画像）。 */
+  images: Map<string, BackgroundImageData>;
+  imagePath: string | null;
   /** 実際にバイト列を書き換えた回数（outcome が written のもの）。 */
   physicalWrites: number;
   /** save / saveAs の呼び出しごとの記録。 */
@@ -50,7 +63,10 @@ export function createMemoryBridge(): DocumentBridge {
   const known = new Set<string>();
   const state: E2EState = {
     files: new Map(Object.entries(seed.files ?? {}).map(([p, b]) => [p, Uint8Array.from(b)])),
-    calls: { save: 0, saveAs: 0, open: 0 },
+    calls: { save: 0, saveAs: 0, open: 0, fullscreen: 0, imageImport: 0 },
+    fullscreen: false,
+    images: new Map(),
+    imagePath: seed.imagePath ?? null,
     physicalWrites: 0,
     log: [],
     savedPreferences: [],
@@ -105,10 +121,37 @@ export function createMemoryBridge(): DocumentBridge {
       return outcome;
     },
     async loadPreferences() {
-      return seed.preferences ?? null;
+      // 保存済み（同じタブでの再読み込み）があればそれ、なければ seed。
+      const saved = sessionStorage.getItem(PREFS_KEY);
+      return saved !== null ? JSON.parse(saved) : (seed.preferences ?? null);
     },
     async savePreferences(prefs) {
       state.savedPreferences.push(prefs);
+      sessionStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+    },
+    async pickImagePath() {
+      return state.imagePath;
+    },
+    async importBackgroundImage(path) {
+      state.calls.imageImport++;
+      const bytes = state.files.get(path);
+      if (!bytes) throw new BridgeError('not-found', 'no such file');
+      if (bytes.length > MAX_IMAGE_BYTES) throw new BridgeError('invalid-input', 'the image is too large');
+      const mime = sniffImageMime(bytes);
+      if (!mime) throw new BridgeError('invalid-input', 'unsupported image format');
+      const id = await sha256Hex(bytes);
+      state.images.set(id, { mime, bytes: bytes.slice() });
+      return id;
+    },
+    async readBackgroundImage(imageId) {
+      const image = state.images.get(imageId);
+      if (!image) throw new BridgeError('not-found', 'no such image');
+      return image;
+    },
+    async toggleFullscreen() {
+      state.calls.fullscreen++;
+      state.fullscreen = !state.fullscreen;
+      return state.fullscreen;
     },
     async notifyReady() {
       document.documentElement.dataset.ready = 'true';

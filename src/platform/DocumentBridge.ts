@@ -29,6 +29,13 @@ export class BridgeError extends Error {
   }
 }
 
+/** 取り込み済みの背景画像。 */
+export interface BackgroundImageData {
+  /** image/png・image/jpeg・image/webp のいずれか。 */
+  readonly mime: string;
+  readonly bytes: Uint8Array;
+}
+
 /**
  * Web UI からネイティブ側（ファイル、ダイアログ、設定）への唯一の入口。
  * Tauri への依存はこの interface の実装（tauriBridge.ts）に閉じ込める。
@@ -46,6 +53,17 @@ export interface DocumentBridge {
   /** 保存済みの Preferences（未検証の JSON）。なければ null。 */
   loadPreferences(): Promise<unknown>;
   savePreferences(prefs: Preferences): Promise<void>;
+  /** 背景画像を選ぶダイアログ（png / jpeg / webp）。キャンセルは null。 */
+  pickImagePath(): Promise<string | null>;
+  /**
+   * 選んだ画像をアプリのデータ領域へコピーし、imageId（内容のハッシュ）を返す。元ファイルは参照しない。
+   * 形式（先頭バイトで判定）・大きさ（20 MiB）に合わなければ BridgeError('invalid-input')。
+   */
+  importBackgroundImage(path: string): Promise<string>;
+  /** 取り込み済みの画像を読む。なければ BridgeError('not-found')。 */
+  readBackgroundImage(imageId: string): Promise<BackgroundImageData>;
+  /** 全画面を切り替え、切替後の状態（true なら全画面）を返す。 */
+  toggleFullscreen(): Promise<boolean>;
   /** 最初の描画が済んだことをネイティブ側へ知らせる（窓の表示）。 */
   notifyReady(): Promise<void>;
 }

@@ -1,3 +1,4 @@
+import { crc32, deflateSync } from 'node:zlib';
 import { expect, test as base, type Page } from '@playwright/test';
 import type { E2ESeed } from '../../src/platform/memory/memoryBridge';
 
@@ -115,3 +116,29 @@ export async function setDialogPaths(page: Page, paths: { open?: string | null; 
 export const unsavedMark = (page: Page) => page.getByTestId('unsaved-mark');
 export const docTitle = (page: Page) => page.getByTestId('doc-title');
 export const toast = (page: Page) => page.getByTestId('toast');
+
+/** 単色の PNG（テスト用の画像。リポジトリには画像を置かず、実行時に作る）。 */
+export function solidPng(width: number, height: number, [r, g, b]: [number, number, number]): number[] {
+  const chunk = (type: string, data: Buffer): Buffer => {
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+    const out = Buffer.alloc(8 + data.length + 4);
+    out.writeUInt32BE(data.length, 0);
+    body.copy(out, 4);
+    out.writeUInt32BE(crc32(body), 8 + data.length);
+    return out;
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; // ビット深度
+  ihdr[9] = 2; // RGB
+  const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: width }, () => [r, g, b]).flat())]);
+  const raw = Buffer.concat(Array.from({ length: height }, () => row));
+  const png = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', deflateSync(raw)),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+  return Array.from(png);
+}

@@ -168,3 +168,121 @@ describe('IME composition', () => {
     expect(adapter.getText()).toBe('now');
   });
 });
+
+const dim = () =>
+  Array.from(host.querySelectorAll('.cm-line')).map((l) => l.classList.contains('cm-md-dim'));
+
+describe('focus mode', () => {
+  const DOC = 'one\ntwo\n\nthree\n\nfour';
+
+  it('is off by default, and dims every line outside the cursor paragraph when on', () => {
+    adapter.mount(host);
+    adapter.setText(DOC);
+    expect(dim()).toEqual([false, false, false, false, false, false]);
+
+    adapter.setFocusMode(true);
+    viewOf().dispatch({ selection: { anchor: 0 } });
+    expect(dim()).toEqual([false, false, true, true, true, true]);
+
+    // 4 行目（three）へ
+    viewOf().dispatch({ selection: { anchor: DOC.indexOf('three') } });
+    expect(dim()).toEqual([true, true, true, false, true, true]);
+
+    adapter.setFocusMode(false);
+    expect(dim()).toEqual([false, false, false, false, false, false]);
+  });
+
+  it('only changes line classes: the text, history and selection are untouched', () => {
+    adapter.mount(host);
+    adapter.setText(DOC);
+    viewOf().dispatch({ selection: { anchor: 2, head: 6 } });
+    adapter.setFocusMode(true);
+    expect(adapter.getText()).toBe(DOC);
+    expect(viewOf().state.selection.main).toMatchObject({ anchor: 2, head: 6 });
+    expect(undo(viewOf())).toBe(false);
+  });
+
+  it('survives setText (loading another document keeps the mode)', () => {
+    adapter.mount(host);
+    adapter.setFocusMode(true);
+    adapter.setText('a\n\nb');
+    viewOf().dispatch({ selection: { anchor: 0 } });
+    expect(dim()).toEqual([false, true, true]);
+  });
+
+  it('can be set before mount', () => {
+    adapter.setFocusMode(true);
+    adapter.mount(host);
+    adapter.setText('a\n\nb');
+    viewOf().dispatch({ selection: { anchor: 0 } });
+    expect(dim()).toEqual([false, true, true]);
+  });
+
+  it('does not recompute while composing, and reflects the change after compositionend', () => {
+    vi.useFakeTimers();
+    adapter.mount(host);
+    adapter.setText(DOC);
+    adapter.setFocusMode(true);
+    viewOf().dispatch({ selection: { anchor: 0 } });
+    expect(dim()).toEqual([false, false, true, true, true, true]);
+    const content = host.querySelector('.cm-content') as HTMLElement;
+
+    content.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+    // 変換中にカーソルが別の段落へ移っても、行の属性は変えない。
+    viewOf().dispatch({ selection: { anchor: DOC.indexOf('three') } });
+    expect(dim()).toEqual([false, false, true, true, true, true]);
+    vi.advanceTimersByTime(500);
+    expect(dim()).toEqual([false, false, true, true, true, true]);
+
+    content.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
+    vi.advanceTimersByTime(200);
+    expect(dim()).toEqual([true, true, true, false, true, true]);
+  });
+
+  it('follows edits made while composing, by position, then settles afterwards', () => {
+    vi.useFakeTimers();
+    adapter.mount(host);
+    adapter.setText('abc\n\ndef');
+    adapter.setFocusMode(true);
+    viewOf().dispatch({ selection: { anchor: 3 } });
+    const content = host.querySelector('.cm-content') as HTMLElement;
+    content.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+    viewOf().dispatch({ changes: { from: 3, insert: 'に' }, selection: { anchor: 4 } });
+    expect(adapter.getText()).toBe('abcに\n\ndef');
+    expect(dim()).toEqual([false, true, true]);
+    content.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
+    vi.advanceTimersByTime(200);
+    expect(dim()).toEqual([false, true, true]);
+  });
+});
+
+describe('typewriter mode', () => {
+  it('adds the typewriter class to the editor while on, and removes it when off', () => {
+    adapter.mount(host);
+    const editor = host.querySelector('.cm-editor') as HTMLElement;
+    expect(editor.classList.contains('cm-typewriter')).toBe(false);
+    adapter.setTypewriterMode(true);
+    expect(editor.classList.contains('cm-typewriter')).toBe(true);
+    adapter.setTypewriterMode(false);
+    expect(editor.classList.contains('cm-typewriter')).toBe(false);
+  });
+
+  it('survives setText, and leaves the text and history alone', () => {
+    adapter.mount(host);
+    adapter.setTypewriterMode(true);
+    adapter.setText('long\ndocument');
+    const editor = host.querySelector('.cm-editor') as HTMLElement;
+    expect(editor.classList.contains('cm-typewriter')).toBe(true);
+    expect(adapter.getText()).toBe('long\ndocument');
+    expect(undo(viewOf())).toBe(false);
+  });
+});
+
+describe('accessibility', () => {
+  it('labels the editable area', () => {
+    adapter.mount(host);
+    const content = host.querySelector('.cm-content');
+    expect(content?.getAttribute('aria-label')).toBe('本文');
+    expect(content?.getAttribute('aria-multiline')).toBe('true');
+  });
+});

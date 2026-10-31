@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-import-background-image"
+description = "Enables the import_background_image command without any pre-configured scope."
+commands.allow = ["import_background_image"]
+
+[[permission]]
+identifier = "deny-import-background-image"
+description = "Denies the import_background_image command without any pre-configured scope."
+commands.deny = ["import_background_image"]

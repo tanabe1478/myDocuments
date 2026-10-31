@@ -1,24 +1,44 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { DocumentController, type DiscardChoice, type Notice } from './document/controller';
+import { resolveCanvas } from './canvas/canvas';
+import { CanvasBackground } from './canvas/CanvasBackground';
+import { countCharacters } from './canvas/charCount';
+import { useBackgroundImage } from './canvas/useBackgroundImage';
+import { DocumentController, describeError, type DiscardChoice, type Notice } from './document/controller';
 import { documentTitle, isDirty } from './document/state';
 import type { EditorAdapter } from './editor/EditorAdapter';
 import { createCodeMirrorAdapter } from './editor/codemirror/CodeMirrorAdapter';
-import type { DocumentBridge } from './platform';
+import { BridgeError, type DocumentBridge } from './platform';
+import { applyPreferences } from './preferences/apply';
+import { normalizePreferences, type Preferences } from './preferences/preferences';
+import { useResolvedTheme } from './preferences/useResolvedTheme';
+import { AppearancePanel } from './ui/AppearancePanel';
 import { ConfirmDiscardDialog } from './ui/ConfirmDiscardDialog';
 import { isMacPlatform, matchShortcut } from './ui/shortcuts';
 import { Toast, type ToastNotice } from './ui/Toast';
+
+/** 設定の変更から保存までの待ち（連続操作をまとめる）。 */
+const SAVE_DEBOUNCE_MS = 300;
 
 interface PendingConfirm {
   documentName: string;
   resolve(choice: DiscardChoice): void;
 }
 
-export function App({ bridge }: { bridge: DocumentBridge }) {
+export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; initialPreferences: Preferences }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const topbarRef = useRef<HTMLElement>(null);
+  const bottombarRef = useRef<HTMLElement>(null);
   const adapterRef = useRef<EditorAdapter | null>(null);
   const noticeId = useRef(0);
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
   const [notice, setNotice] = useState<ToastNotice | null>(null);
+  const [prefs, setPrefs] = useState<Preferences>(initialPreferences);
+  const [panelOpen, setPanelOpen] = useState(false);
+  /** 入力で隠した状態（autoHideChrome が ON のときだけ効く）。ポインタ・フォーカス・F6 で戻る。 */
+  const [typing, setTyping] = useState(false);
+  const panelOriginRef = useRef<HTMLElement | null>(null);
+  const prefsRef = useRef(prefs);
+  prefsRef.current = prefs;
 
   const controller = useMemo(
     () =>
@@ -35,6 +55,13 @@ export function App({ bridge }: { bridge: DocumentBridge }) {
     [bridge],
   );
 
+  const notify = useCallback((n: Notice) => setNotice({ ...n, id: ++noticeId.current }), []);
+
+  const updatePrefs = useCallback(
+    (patch: Partial<Preferences>) => setPrefs((p) => normalizePreferences({ ...p, ...patch })),
+    [],
+  );
+
   const state = useSyncExternalStore(controller.subscribe, controller.getState);
   const dirty = isDirty(state);
   const title = documentTitle(state);
@@ -47,7 +74,12 @@ export function App({ bridge }: { bridge: DocumentBridge }) {
     adapter.mount(host);
     adapter.focus();
     adapterRef.current = adapter;
-    const off = adapter.onChange(controller.handleEdit);
+    adapter.setFocusMode(prefsRef.current.focusMode);
+    adapter.setTypewriterMode(prefsRef.current.typewriterMode);
+    const off = adapter.onChange((text) => {
+      controller.handleEdit(text);
+      setTyping(true);
+    });
     if (__E2E__ && window.__mdeE2E) window.__mdeE2E.editor = adapter;
 
     // 窓は非表示で作られており、非表示の間は requestAnimationFrame が止まる。
@@ -66,6 +98,106 @@ export function App({ bridge }: { bridge: DocumentBridge }) {
     };
   }, [bridge, controller]);
 
+  useEffect(() => adapterRef.current?.setFocusMode(prefs.focusMode), [prefs.focusMode]);
+  useEffect(() => adapterRef.current?.setTypewriterMode(prefs.typewriterMode), [prefs.typewriterMode]);
+
+  // 設定を CSS 変数と data-theme に反映する（即時）。
+  useEffect(() => applyPreferences(prefs), [prefs]);
+
+  // 保存は debounce。ウィンドウを閉じる直前の分は pagehide で出す。
+  const savedRef = useRef(initialPreferences);
+  useEffect(() => {
+    if (prefs === savedRef.current) return;
+    const timer = setTimeout(() => {
+      savedRef.current = prefs;
+      bridge.savePreferences(prefs).catch((e) => notify({ kind: 'error', message: describeError(e) }));
+    }, SAVE_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [prefs, bridge, notify]);
+  useEffect(() => {
+    const flush = () => {
+      if (prefsRef.current === savedRef.current) return;
+      savedRef.current = prefsRef.current;
+      void bridge.savePreferences(prefsRef.current).catch(() => {});
+    };
+    window.addEventListener('pagehide', flush);
+    return () => window.removeEventListener('pagehide', flush);
+  }, [bridge]);
+
+  const theme = useResolvedTheme(prefs.theme);
+  const image = useBackgroundImage(bridge, prefs.background.imageId);
+  const canvas = resolveCanvas(prefs, theme, image.average);
+  const characters = useMemo(() => countCharacters(state.text), [state.text]);
+
+  const reveal = useCallback(() => setTyping(false), []);
+  const chromeHidden = prefs.autoHideChrome && typing && !panelOpen;
+
+  const openPanel = useCallback((origin: HTMLElement | null) => {
+    panelOriginRef.current = origin;
+    setPanelOpen(true);
+  }, []);
+
+  /** 閉じたら、開く前にフォーカスのあった場所へ戻す（なければ本文）。 */
+  const closePanel = useCallback(() => {
+    setPanelOpen(false);
+    const origin = panelOriginRef.current;
+    panelOriginRef.current = null;
+    if (origin?.isConnected && origin !== document.body) origin.focus();
+    else adapterRef.current?.focus();
+  }, []);
+
+  const togglePanel = useCallback(() => {
+    if (panelOpen) closePanel();
+    else openPanel(document.activeElement instanceof HTMLElement ? document.activeElement : null);
+  }, [panelOpen, closePanel, openPanel]);
+
+  const pickImage = useCallback(async () => {
+    try {
+      const path = await bridge.pickImagePath();
+      if (path === null) return;
+      const imageId = await bridge.importBackgroundImage(path);
+      setPrefs((p) =>
+        normalizePreferences({ ...p, background: { ...p.background, kind: 'image', imageId }, hideBackground: false }),
+      );
+    } catch (e) {
+      const message =
+        e instanceof BridgeError && e.kind === 'invalid-input'
+          ? '画像を取り込めませんでした。png・jpeg・webp の 20 MiB 以下の画像を選んでください。'
+          : describeError(e);
+      notify({ kind: 'error', message });
+    }
+  }, [bridge, notify]);
+
+  // 自動非表示: ポインタが動いたら戻す。座標が変わらない通知（描画の変化に伴うものなど）は無視する。
+  useEffect(() => {
+    let x = -1;
+    let y = -1;
+    const onMove = (e: PointerEvent) => {
+      if (e.clientX === x && e.clientY === y) return;
+      x = e.clientX;
+      y = e.clientY;
+      reveal();
+    };
+    window.addEventListener('pointermove', onMove, { passive: true });
+    return () => window.removeEventListener('pointermove', onMove);
+  }, [reveal]);
+
+  const cycleRegion = useCallback(
+    (direction: 1 | -1) => {
+      const regions: Array<{ el: HTMLElement | null; focus(): void }> = [
+        { el: hostRef.current, focus: () => adapterRef.current?.focus() },
+        { el: topbarRef.current, focus: () => firstFocusable(topbarRef.current)?.focus() },
+        { el: bottombarRef.current, focus: () => firstFocusable(bottombarRef.current)?.focus() },
+      ];
+      const active = document.activeElement;
+      const current = regions.findIndex((r) => r.el !== null && active !== null && r.el.contains(active));
+      const next = regions[(Math.max(current, 0) + direction + regions.length) % regions.length];
+      reveal();
+      next?.focus();
+    },
+    [reveal],
+  );
+
   const runCommand = useCallback(async (command: () => Promise<unknown>) => {
     await command();
     adapterRef.current?.focus();
@@ -75,6 +207,12 @@ export function App({ bridge }: { bridge: DocumentBridge }) {
   useEffect(() => {
     const mac = isMacPlatform();
     const onKeyDown = (e: KeyboardEvent) => {
+      // F6: 本文 → 上部バー → 下部バー → 本文（Shift で逆順）。バーが隠れていても届く。
+      if (e.key === 'F6' && !e.isComposing && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        cycleRegion(e.shiftKey ? -1 : 1);
+        return;
+      }
       const action = matchShortcut(e, mac);
       if (!action) return;
       e.preventDefault();
@@ -91,11 +229,23 @@ export function App({ bridge }: { bridge: DocumentBridge }) {
         case 'saveAs':
           void runCommand(controller.saveAs);
           break;
+        case 'appearance':
+          togglePanel();
+          break;
+        case 'focusMode':
+          setPrefs((p) => ({ ...p, focusMode: !p.focusMode }));
+          break;
+        case 'typewriterMode':
+          setPrefs((p) => ({ ...p, typewriterMode: !p.typewriterMode }));
+          break;
+        case 'fullscreen':
+          bridge.toggleFullscreen().catch((err) => notify({ kind: 'error', message: describeError(err) }));
+          break;
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [controller, runCommand]);
+  }, [bridge, controller, runCommand, togglePanel, cycleRegion, notify]);
 
   useEffect(() => {
     document.title = `${dirty ? '● ' : ''}${title} - Immersive Markdown Editor`;
@@ -109,8 +259,10 @@ export function App({ bridge }: { bridge: DocumentBridge }) {
   };
 
   return (
-    <div className="app">
-      <header className="topbar">
+    <div className="app" data-chrome={chromeHidden ? 'hidden' : 'visible'} data-theme-mode={theme}>
+      <CanvasBackground layer={canvas.layer} imageUrl={image.url} />
+      <div className="canvas-surface" data-testid="canvas-surface" aria-hidden="true" style={{ opacity: canvas.surfaceOpacity }} />
+      <header className="topbar" ref={topbarRef} aria-label="上部バー" onFocus={reveal}>
         <span className="doc-title" data-testid="doc-title">
           {title}
         </span>
@@ -119,10 +271,44 @@ export function App({ bridge }: { bridge: DocumentBridge }) {
             ●
           </span>
         )}
+        <span className="topbar-spacer" />
+        <button
+          type="button"
+          className="chrome-button"
+          data-testid="appearance-button"
+          aria-haspopup="dialog"
+          aria-expanded={panelOpen}
+          title={`外観（${isMacPlatform() ? '⌘' : 'Ctrl+'},）`}
+          onClick={(e) => (panelOpen ? closePanel() : openPanel(e.currentTarget))}
+        >
+          外観
+        </button>
       </header>
       <main className="editor-host" ref={hostRef} />
+      <footer className="bottombar" ref={bottombarRef} aria-label="下部バー" onFocus={reveal}>
+        {/* 環境音のコントロールの置き場所（Phase 2）。いまは中身を作らない。 */}
+        <div className="bottombar-slot" data-slot="ambient" />
+        <span className="char-count" data-testid="char-count" tabIndex={0}>
+          {characters.toLocaleString('ja-JP')} 文字
+        </span>
+      </footer>
+      {panelOpen && (
+        <AppearancePanel
+          prefs={prefs}
+          mode={theme}
+          contrast={canvas.contrast}
+          imageStatus={image.status}
+          onChange={updatePrefs}
+          onPickImage={() => void pickImage()}
+          onClose={closePanel}
+        />
+      )}
       <Toast notice={notice} onDismiss={dismissNotice} />
       {confirm && <ConfirmDiscardDialog documentName={confirm.documentName} onChoose={choose} />}
     </div>
   );
+}
+
+function firstFocusable(el: HTMLElement | null): HTMLElement | null {
+  return el?.querySelector<HTMLElement>('button, [tabindex="0"]') ?? null;
 }

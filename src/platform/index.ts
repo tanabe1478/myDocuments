@@ -1,6 +1,12 @@
 import type { DocumentBridge } from './DocumentBridge';
 
-export type { DocumentBridge, OpenedDocument, SaveOutcome, BridgeErrorKind } from './DocumentBridge';
+export type {
+  BackgroundImageData,
+  BridgeErrorKind,
+  DocumentBridge,
+  OpenedDocument,
+  SaveOutcome,
+} from './DocumentBridge';
 export { BridgeError } from './DocumentBridge';
 
 /**

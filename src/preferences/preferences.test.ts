@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_PREFERENCES, RANGES, normalizePreferences } from './preferences';
 import { resolveTheme } from './apply';
 
+const IMAGE_ID = 'ab12'.repeat(16);
+
 describe('normalizePreferences', () => {
   it('uses the defaults for missing or non-object input', () => {
     expect(normalizePreferences(undefined)).toEqual(DEFAULT_PREFERENCES);
@@ -26,6 +28,11 @@ describe('normalizePreferences', () => {
       focusMode: true,
       typewriterMode: true,
       autoHideChrome: true,
+      background: { kind: 'image', color: '#102030', gradientId: 'forest', imageId: IMAGE_ID },
+      imageBrightness: 0.5,
+      overlayOpacity: 0.6,
+      surfaceOpacity: 0.7,
+      hideBackground: true,
     };
     expect(normalizePreferences(valid)).toEqual(valid);
   });
@@ -83,6 +90,110 @@ describe('normalizePreferences', () => {
 
   it('is idempotent', () => {
     const once = normalizePreferences({ fontSizePx: 22, theme: 'light', maxWidthPx: 1 });
+    expect(normalizePreferences(once)).toEqual(once);
+  });
+});
+
+describe('background and accessibility fields (R3-1)', () => {
+  it('has defaults inside the allowed ranges', () => {
+    const d = DEFAULT_PREFERENCES;
+    expect(d.imageBrightness).toBeGreaterThanOrEqual(RANGES.imageBrightness.min);
+    expect(d.imageBrightness).toBeLessThanOrEqual(RANGES.imageBrightness.max);
+    expect(d.overlayOpacity).toBeLessThanOrEqual(RANGES.overlayOpacity.max);
+    expect(d.surfaceOpacity).toBeLessThanOrEqual(RANGES.surfaceOpacity.max);
+    expect(d.hideBackground).toBe(false);
+    expect(d.background.imageId).toBeNull();
+    expect(RANGES.imageBrightness).toEqual({ min: 0.2, max: 1 });
+    expect(RANGES.overlayOpacity).toEqual({ min: 0, max: 0.9 });
+    expect(RANGES.surfaceOpacity).toEqual({ min: 0, max: 1 });
+  });
+
+  it('reads a saved value from before these fields existed (Run 2 format)', () => {
+    const old = {
+      fontFamily: 'serif',
+      fontSizePx: 22,
+      lineHeight: 2,
+      paragraphSpacing: 1,
+      maxWidthPx: 700,
+      theme: 'dark',
+      focusMode: true,
+      typewriterMode: false,
+      autoHideChrome: true,
+    };
+    expect(normalizePreferences(old)).toEqual({
+      ...old,
+      background: DEFAULT_PREFERENCES.background,
+      imageBrightness: DEFAULT_PREFERENCES.imageBrightness,
+      overlayOpacity: DEFAULT_PREFERENCES.overlayOpacity,
+      surfaceOpacity: DEFAULT_PREFERENCES.surfaceOpacity,
+      hideBackground: DEFAULT_PREFERENCES.hideBackground,
+    });
+  });
+
+  it('accepts the range boundaries of the new numbers', () => {
+    expect(normalizePreferences({ imageBrightness: 0.2, overlayOpacity: 0, surfaceOpacity: 0 })).toMatchObject({
+      imageBrightness: 0.2,
+      overlayOpacity: 0,
+      surfaceOpacity: 0,
+    });
+    expect(normalizePreferences({ imageBrightness: 1, overlayOpacity: 0.9, surfaceOpacity: 1 })).toMatchObject({
+      imageBrightness: 1,
+      overlayOpacity: 0.9,
+      surfaceOpacity: 1,
+    });
+  });
+
+  it('resets each out-of-range new number to its own default', () => {
+    const d = DEFAULT_PREFERENCES;
+    const p = normalizePreferences({
+      imageBrightness: 0.19,
+      overlayOpacity: 0.91,
+      surfaceOpacity: 1.01,
+      hideBackground: 'yes',
+      theme: 'dark',
+    });
+    expect(p.imageBrightness).toBe(d.imageBrightness);
+    expect(p.overlayOpacity).toBe(d.overlayOpacity);
+    expect(p.surfaceOpacity).toBe(d.surfaceOpacity);
+    expect(p.hideBackground).toBe(d.hideBackground);
+    expect(p.theme).toBe('dark');
+    expect(normalizePreferences({ surfaceOpacity: -0.1 }).surfaceOpacity).toBe(d.surfaceOpacity);
+    expect(normalizePreferences({ surfaceOpacity: Number.NaN }).surfaceOpacity).toBe(d.surfaceOpacity);
+  });
+
+  it('validates each background field on its own', () => {
+    const d = DEFAULT_PREFERENCES.background;
+    const p = normalizePreferences({
+      background: { kind: 'video', color: 'red', gradientId: 'nope', imageId: '../../x' },
+    });
+    expect(p.background).toEqual(d);
+    // 一部だけ有効なら、有効な項目は残る。
+    const partial = normalizePreferences({ background: { kind: 'color', color: '#ABCDEF', gradientId: 'nope', imageId: 7 } });
+    expect(partial.background).toEqual({ ...d, kind: 'color', color: '#abcdef' });
+  });
+
+  it('accepts only the defined gradient ids, and 64-hex image ids', () => {
+    for (const id of ['paper', 'dusk', 'forest', 'harbor', 'ember']) {
+      expect(normalizePreferences({ background: { gradientId: id } }).background.gradientId).toBe(id);
+    }
+    expect(normalizePreferences({ background: { imageId: IMAGE_ID } }).background.imageId).toBe(IMAGE_ID);
+    for (const bad of ['', 'a'.repeat(63), 'A'.repeat(64), `${'a'.repeat(63)}/`, 'a'.repeat(60) + '.png']) {
+      expect(normalizePreferences({ background: { imageId: bad } }).background.imageId).toBeNull();
+    }
+  });
+
+  it('rejects a background that is not an object', () => {
+    for (const bad of [null, 'color', 1, [1], undefined]) {
+      expect(normalizePreferences({ background: bad }).background).toEqual(DEFAULT_PREFERENCES.background);
+    }
+  });
+
+  it('is idempotent with the new fields', () => {
+    const once = normalizePreferences({
+      background: { kind: 'color', color: '#00ff00' },
+      surfaceOpacity: 0.3,
+      hideBackground: true,
+    });
     expect(normalizePreferences(once)).toEqual(once);
   });
 });

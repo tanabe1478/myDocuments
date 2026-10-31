@@ -1,11 +1,13 @@
 import { defaultKeymap, history } from '@codemirror/commands';
 import { search, searchKeymap } from '@codemirror/search';
-import { EditorState, type Extension } from '@codemirror/state';
+import { Compartment, EditorState, type Extension } from '@codemirror/state';
 import { EditorView, drawSelection, keymap } from '@codemirror/view';
 import type { EditorAdapter, EditorSelection } from '../EditorAdapter';
+import { focusModeExtension } from './focusMode';
 import { historyKeymap } from './historyKeymap';
 import { markdownDecorations } from './markdownDecorations';
 import { editorTheme } from './theme';
+import { typewriterModeExtension } from './typewriterMode';
 
 /** 変換中だった場合に、終了後、保留した setText を試し直す間隔。 */
 const PENDING_RETRY_MS = 50;
@@ -19,6 +21,11 @@ export class CodeMirrorAdapter implements EditorAdapter {
   private pendingTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly changeListeners = new Set<(text: string) => void>();
   private readonly selectionListeners = new Set<(selection: EditorSelection) => void>();
+  private focusMode = false;
+  private typewriterMode = false;
+  // setText は state を作り直すので、モードは Compartment で持ち、作り直しても現在の値で始める。
+  private readonly focusCompartment = new Compartment();
+  private readonly typewriterCompartment = new Compartment();
 
   mount(el: HTMLElement): void {
     if (this.view) throw new Error('CodeMirrorAdapter is already mounted');
@@ -56,6 +63,18 @@ export class CodeMirrorAdapter implements EditorAdapter {
     this.view?.focus();
   }
 
+  setFocusMode(on: boolean): void {
+    if (this.focusMode === on) return;
+    this.focusMode = on;
+    this.view?.dispatch({ effects: this.focusCompartment.reconfigure(this.focusExtension()) });
+  }
+
+  setTypewriterMode(on: boolean): void {
+    if (this.typewriterMode === on) return;
+    this.typewriterMode = on;
+    this.view?.dispatch({ effects: this.typewriterCompartment.reconfigure(this.typewriterExtension()) });
+  }
+
   destroy(): void {
     if (this.pendingTimer !== null) clearTimeout(this.pendingTimer);
     this.pendingTimer = null;
@@ -86,6 +105,14 @@ export class CodeMirrorAdapter implements EditorAdapter {
     }, PENDING_RETRY_MS);
   }
 
+  private focusExtension(): Extension {
+    return this.focusMode ? focusModeExtension() : [];
+  }
+
+  private typewriterExtension(): Extension {
+    return this.typewriterMode ? typewriterModeExtension() : [];
+  }
+
   private createState(doc: string): EditorState {
     return EditorState.create({ doc, extensions: this.extensions() });
   }
@@ -99,6 +126,8 @@ export class CodeMirrorAdapter implements EditorAdapter {
       EditorState.lineSeparator.of('\n'),
       EditorView.lineWrapping,
       markdownDecorations(),
+      this.focusCompartment.of(this.focusExtension()),
+      this.typewriterCompartment.of(this.typewriterExtension()),
       search({ top: true }),
       keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
       editorTheme,
