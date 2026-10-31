@@ -240,6 +240,8 @@ test.describe('Undo / Redo (d)', () => {
       expect(await editorText(page), redoKey).toBe('first');
       await page.keyboard.press('ControlOrMeta+z');
       expect(await editorText(page), redoKey).toBe('');
+      // 2 回 Undo して保存時点の内容（空）に戻ったので、未保存マークは消える。
+      await expect(unsavedMark(page), redoKey).toHaveCount(0);
 
       await page.keyboard.press(redoKey);
       expect(await editorText(page), redoKey).toBe('first');

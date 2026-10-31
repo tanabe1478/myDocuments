@@ -1,0 +1,11 @@
+# 改行はチェックアウト時も LF に固定する（Windows の core.autocrlf による変換を防ぐ）。
+* text=auto eol=lf
+
+# バイト列そのものが意味を持つ fixture（BOM・CRLF・LF の往復検証）は一切変換しない。
+phase0/fixtures/** -text
+
+# バイナリ
+src-tauri/icons/** binary
+*.png binary
+*.ico binary
+*.icns binary
