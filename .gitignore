@@ -12,3 +12,9 @@ phase0/fixtures/perf/C-*.md
 # Harness build output and dependencies
 phase0/harness/dist/
 phase0/node_modules/
+
+# App build output and test artifacts
+dist-e2e/
+test-results/
+playwright-report/
+src-tauri/gen/

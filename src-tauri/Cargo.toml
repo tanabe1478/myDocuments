@@ -1,0 +1,29 @@
+[package]
+name = "immersive-markdown-editor"
+version = "0.0.1"
+description = "没入型 Markdown エディタ（仮称）"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[lib]
+# Windows でバイナリ名と衝突しないよう、lib 名は別にする。
+name = "immersive_markdown_editor_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+docio = { path = "../crates/docio" }
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = "s"
+strip = true
+panic = "abort"

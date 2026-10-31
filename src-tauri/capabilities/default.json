@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "メインウィンドウに許可する権限。ファイル選択ダイアログと、自前のコマンドだけ。",
+  "windows": ["main"],
+  "permissions": [
+    "core:event:allow-emit",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "allow-open-document",
+    "allow-save-document",
+    "allow-save-document-as",
+    "allow-load-preferences",
+    "allow-save-preferences"
+  ]
+}

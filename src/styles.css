@@ -1,0 +1,180 @@
+/* 配色。Preferences の theme が data-theme（light | dark）に解決される（src/preferences/apply.ts）。 */
+:root {
+  --md-font-family-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Noto Sans Mono CJK JP", monospace;
+  color-scheme: light;
+}
+
+:root,
+:root[data-theme='light'] {
+  --md-color-bg: #f7f4ec;
+  --md-color-text: #2a2824;
+  --md-color-muted: #8d8678;
+  --md-color-mark: #b3ab9b;
+  --md-color-link: #1f5f8b;
+  --md-color-code: #7a4a2b;
+  --md-color-quote: #5d6a5d;
+  --md-color-caret: #1f5f8b;
+  --md-color-selection: rgba(31, 95, 139, 0.22);
+  --md-color-panel: #ebe6da;
+  --md-color-border: #d6cfbf;
+  --md-color-match: rgba(240, 190, 60, 0.35);
+  --md-color-match-selected: rgba(240, 150, 40, 0.5);
+  --md-color-accent: #b4532a;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --md-color-bg: #1d1f21;
+  --md-color-text: #dcd8ce;
+  --md-color-muted: #8a8a82;
+  --md-color-mark: #5f6258;
+  --md-color-link: #7fb4d9;
+  --md-color-code: #d9a77c;
+  --md-color-quote: #a3b4a3;
+  --md-color-caret: #7fb4d9;
+  --md-color-selection: rgba(127, 180, 217, 0.3);
+  --md-color-panel: #2a2d30;
+  --md-color-border: #3d4145;
+  --md-color-match: rgba(240, 190, 60, 0.3);
+  --md-color-match-selected: rgba(240, 150, 40, 0.5);
+  --md-color-accent: #e0875f;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--md-color-bg);
+  color: var(--md-color-text);
+  font-family: var(--md-font-family, system-ui, sans-serif);
+  -webkit-font-smoothing: antialiased;
+}
+
+.app {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.editor-host {
+  flex: 1;
+  min-height: 0;
+}
+
+.topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  font-size: 13px;
+  color: var(--md-color-muted);
+  pointer-events: none;
+  user-select: none;
+}
+
+.unsaved-mark {
+  color: var(--md-color-accent);
+  font-size: 12px;
+}
+
+.toast-region {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 20px;
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  max-width: min(90vw, 560px);
+  padding: 10px 16px;
+  border: 1px solid var(--md-color-border);
+  border-radius: 8px;
+  background: var(--md-color-panel);
+  color: var(--md-color-text);
+  font: 14px/1.5 var(--md-font-family);
+  text-align: left;
+  cursor: pointer;
+}
+
+.toast-error {
+  border-color: var(--md-color-accent);
+}
+
+.dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.dialog {
+  width: min(90vw, 400px);
+  padding: 20px 24px;
+  border: 1px solid var(--md-color-border);
+  border-radius: 10px;
+  background: var(--md-color-panel);
+  color: var(--md-color-text);
+  font: 14px/1.6 var(--md-font-family);
+}
+
+.dialog h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.dialog p {
+  margin: 0 0 18px;
+  overflow-wrap: anywhere;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.dialog-actions button {
+  padding: 6px 14px;
+  border: 1px solid var(--md-color-border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.dialog-actions button.primary {
+  border-color: var(--md-color-accent);
+  background: var(--md-color-accent);
+  color: #fff;
+}
+
+.dialog-actions button:focus-visible,
+.toast:focus-visible {
+  outline: 2px solid var(--md-color-link);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .toast {
+    transition: opacity 0.2s;
+  }
+}
