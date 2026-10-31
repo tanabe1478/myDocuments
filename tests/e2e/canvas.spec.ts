@@ -300,6 +300,28 @@ test.describe('タイプライターモード (3)', () => {
     await expect.poll(async () => (await padding()).top).toBe(104);
   });
 
+  /** scrollTop が一定時間（既定 400ms）変わらなくなるまで待つ。 */
+  const waitForStableScroll = (page: Page, quietMs = 400) =>
+    page.evaluate(
+      (quiet) =>
+        new Promise<number>((resolve) => {
+          const scroller = document.querySelector('.cm-scroller')!;
+          let last = scroller.scrollTop;
+          let since = performance.now();
+          const tick = () => {
+            const now = performance.now();
+            if (scroller.scrollTop !== last) {
+              last = scroller.scrollTop;
+              since = now;
+            }
+            if (now - since >= quiet) resolve(last);
+            else requestAnimationFrame(tick);
+          };
+          tick();
+        }),
+      quietMs,
+    );
+
   test('ポインタでのクリックでは動かさない', async ({ page }) => {
     await launchWithDoc(page, TEXT, { typewriterMode: true });
     await page.locator('.cm-content').click();
@@ -308,10 +330,16 @@ test.describe('タイプライターモード (3)', () => {
     // 末尾の行が中央に来るまでスクロールしている
     await expect.poll(scrollTop).toBeGreaterThan(1000);
     await expectCentered(page);
-    const before = await scrollTop();
+    // expectCentered は ±1 行を許すので、中央への収束が終わる前に通り得る。
+    // 収束途中の値を基準にすると、クリックとは無関係なスクロールの調整が差として出るので、止まってから基準値を取る。
+    const before = await waitForStableScroll(page);
 
-    // 表示領域の上のほうの行を、座標でクリックする（要素のクリックは、Playwright 自身がスクロールするため使わない）
-    const y = await page.evaluate(() => document.querySelector('.cm-scroller')!.getBoundingClientRect().top + 90);
+    // 表示領域の縦 1/3 付近の行を、座標でクリックする（要素のクリックは、Playwright 自身がスクロールするため使わない）。
+    // 端（上端から 90px など）だと、カーソルを見える範囲へ入れる CodeMirror のスクロールが働き得るので避ける。
+    const y = await page.evaluate(() => {
+      const r = document.querySelector('.cm-scroller')!.getBoundingClientRect();
+      return r.top + r.height / 3;
+    });
     await page.mouse.click(640, y);
     await page.waitForTimeout(200);
     expect(await scrollTop()).toBe(before);

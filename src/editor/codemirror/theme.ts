@@ -38,7 +38,9 @@ export const editorTheme = EditorView.theme({
   '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground': {
     background: 'var(--md-color-selection)',
   },
-  '.cm-md-heading': { marginTop: 'calc(var(--md-paragraph-spacing) * 0.8)' },
+  // 見出し前の間隔は padding で付ける。CodeMirror は行の高さを getBoundingClientRect().height（margin を含まない）
+  // で測るため、行の margin は内部の高さ情報に入らず、上下キーのカーソル移動が行を飛ばす（ED-03）。
+  '.cm-md-heading': { paddingTop: 'calc(var(--md-paragraph-spacing) * 0.8)' },
   '.cm-md-h1': { fontSize: '1.75em', lineHeight: '1.4' },
   '.cm-md-h2': { fontSize: '1.45em', lineHeight: '1.45' },
   '.cm-md-h3': { fontSize: '1.25em', lineHeight: '1.5' },
