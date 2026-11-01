@@ -20,7 +20,7 @@ import { normalizePreferences, type Preferences } from './preferences/preference
 import { useResolvedTheme } from './preferences/useResolvedTheme';
 import { charsPerLine, columnWidth } from './editor/layout';
 import { AppearancePanel } from './ui/AppearancePanel';
-import { ConflictBar } from './ui/ConflictBar';
+import { ConflictBar, isConflictBarVisible } from './ui/ConflictBar';
 import { ConfirmDiscardDialog } from './ui/ConfirmDiscardDialog';
 import { ConfirmRecreateDialog } from './ui/ConfirmRecreateDialog';
 import { DiffDialog } from './ui/DiffDialog';
@@ -28,6 +28,7 @@ import { RecoveryDialog } from './ui/RecoveryDialog';
 import { panelReserve } from './ui/panelLayout';
 import { isMacPlatform, matchShortcut, shouldHandleShortcut } from './ui/shortcuts';
 import { Toast, type ToastNotice } from './ui/Toast';
+import { toastLayout } from './ui/toastLayout';
 
 /** 設定の変更から保存までの待ち（連続操作をまとめる）。 */
 const SAVE_DEBOUNCE_MS = 300;
@@ -188,6 +189,10 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
     prefs.letterSpacing,
   );
 
+  // トースト: 列の外に場所があれば右下、なければ本文に重ねる。重ねている間は、覆う高さをエディタのスクロール余白に渡す。
+  const toast = useMemo(() => toastLayout(viewportWidth - reserve, prefs.maxWidthPx), [viewportWidth, reserve, prefs.maxWidthPx]);
+  const setCoveredHeight = useCallback((px: number) => adapterRef.current?.setBottomInset(px), []);
+
   const reveal = useCallback(() => setTyping(false), []);
   const chromeHidden = prefs.autoHideChrome && typing && !panelOpen;
 
@@ -342,6 +347,7 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
       data-chrome={chromeHidden ? 'hidden' : 'visible'}
       data-theme-mode={theme}
       data-panel-shift={reserve > 0 ? 'true' : 'false'}
+      data-conflict={isConflictBarVisible(external) ? 'true' : 'false'}
       style={{ '--md-panel-reserve': `${reserve}px` } as React.CSSProperties}
     >
       <CanvasBackground layer={canvas.layer} imageUrl={image.url} />
@@ -399,7 +405,7 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
           onClose={closePanel}
         />
       )}
-      <Toast notice={notice} onDismiss={dismissNotice} />
+      <Toast notice={notice} layout={toast} onDismiss={dismissNotice} onCoveredHeight={setCoveredHeight} />
       {diskTextForDiff !== null && <DiffDialog mine={state.text} disk={diskTextForDiff} onClose={closeDiff} />}
       {confirm && <ConfirmDiscardDialog documentName={confirm.documentName} onChoose={choose} />}
       {recreate && <ConfirmRecreateDialog documentName={recreate.documentName} onChoose={chooseRecreate} />}

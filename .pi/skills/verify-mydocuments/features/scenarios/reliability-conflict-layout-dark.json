@@ -53,6 +53,14 @@
       "note": "出現のフェードが終わるまで待つ（途中で撮ると、バーが薄く写る）"
     },
     {
+      "expect": {
+        "testId": "toast",
+        "read": "visible",
+        "equals": true
+      },
+      "note": "競合を知らせるトーストが出ている（6 秒で消えるので、続く確認と撮影を急ぐ）"
+    },
+    {
       "screenshot": "reliability-conflict-layout-dark"
     },
     {
@@ -71,6 +79,20 @@
       "note": "本文の 1 行目が表示されている"
     },
     {
+      "expect": {
+        "eval": "(() => { const bar = document.querySelector('[data-testid=conflict-bar]').getBoundingClientRect(); const first = document.querySelector('.cm-line').getBoundingClientRect(); const lh = parseFloat(getComputedStyle(document.querySelector('.cm-line')).lineHeight); const gap = first.top - bar.bottom; return gap > 0 && gap <= lh * 2; })()",
+        "equals": true
+      },
+      "note": "競合バーの下端と本文 1 行目の間が、0 より大きく行高の 2 倍以下（バーの表示中は本文の上の余白を詰める）"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const hit = (a, b) => a.top < b.bottom && a.bottom > b.top && a.left < b.right && a.right > b.left; const t = document.querySelector('[data-testid=toast]').getBoundingClientRect(); const c = document.querySelector('.cm-content').getBoundingClientRect(); return !hit(t, c) && t.left >= c.right; })()",
+        "equals": true
+      },
+      "note": "トーストは本文の列（.cm-content）の外の右側にあり、列に重ならない"
+    },
+    {
       "observe": "reliability-conflict-layout-dark",
       "files": [
         "/docs/note.md"
@@ -78,7 +100,10 @@
       "eval": {
         "barRect": "JSON.stringify(document.querySelector('[data-testid=conflict-bar]').getBoundingClientRect())",
         "scrollerRect": "JSON.stringify(document.querySelector('.cm-scroller').getBoundingClientRect())",
-        "firstLine": "JSON.stringify(document.querySelector('.cm-line').getBoundingClientRect())"
+        "firstLine": "JSON.stringify(document.querySelector('.cm-line').getBoundingClientRect())",
+        "toastRect": "JSON.stringify(document.querySelector('[data-testid=toast]').getBoundingClientRect())",
+        "contentRect": "JSON.stringify(document.querySelector('.cm-content').getBoundingClientRect())",
+        "contentPaddingTop": "getComputedStyle(document.querySelector('.cm-content')).paddingTop"
       }
     }
   ]

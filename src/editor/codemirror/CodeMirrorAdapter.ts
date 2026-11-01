@@ -15,6 +15,8 @@ import { verticalMotionExtension } from './verticalMotion';
 
 /** 変換中だった場合に、終了後、保留した setText を試し直す間隔。 */
 const PENDING_RETRY_MS = 50;
+/** 覆う要素（トースト）の上端から、カーソル行を離す余白（px）。 */
+const BOTTOM_INSET_GAP_PX = 12;
 
 export class CodeMirrorAdapter implements EditorAdapter {
   private view: EditorView | null = null;
@@ -27,6 +29,8 @@ export class CodeMirrorAdapter implements EditorAdapter {
   private readonly selectionListeners = new Set<(selection: EditorSelection) => void>();
   private focusMode = false;
   private typewriterMode = false;
+  /** 本文の下側を覆う要素（トースト）の高さ。scrollMargins の下側に使う（レイアウトは変えない）。 */
+  private bottomInset = 0;
   // setText は state を作り直すので、モードは Compartment で持ち、作り直しても現在の値で始める。
   private readonly focusCompartment = new Compartment();
   private readonly typewriterCompartment = new Compartment();
@@ -77,6 +81,23 @@ export class CodeMirrorAdapter implements EditorAdapter {
     if (this.typewriterMode === on) return;
     this.typewriterMode = on;
     this.view?.dispatch({ effects: this.typewriterCompartment.reconfigure(this.typewriterExtension()) });
+  }
+
+  setBottomInset(px: number): void {
+    const previous = this.bottomInset;
+    this.bottomInset = Math.max(0, px);
+    const view = this.view;
+    if (!view || this.bottomInset <= previous) return;
+    // すでに見えているカーソル行が、新しく覆われた帯に入るときだけ、見える位置までスクロールする。
+    // もともと見えていなかったカーソルは動かさない（離れた位置を、勝手に引き戻さない）。
+    const head = view.state.selection.main.head;
+    const coords = view.coordsAtPos(head);
+    if (!coords) return;
+    const area = view.scrollDOM.getBoundingClientRect();
+    const wasVisible = coords.top >= area.top && coords.bottom <= area.bottom;
+    if (wasVisible && coords.bottom > area.bottom - this.bottomInset) {
+      view.dispatch({ effects: EditorView.scrollIntoView(head, { y: 'nearest', yMargin: BOTTOM_INSET_GAP_PX }) });
+    }
   }
 
   destroy(): void {
@@ -135,6 +156,8 @@ export class CodeMirrorAdapter implements EditorAdapter {
       search({ top: true }),
       readingPositionExtension(),
       keepCursorVisibleExtension(),
+      // 下側を覆う要素（トースト）の分。カーソルの移動や入力のスクロールが、その上に収める。
+      EditorView.scrollMargins.of(() => (this.bottomInset > 0 ? { bottom: this.bottomInset } : null)),
       indentKeymap(),
       verticalMotionExtension(),
       keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),

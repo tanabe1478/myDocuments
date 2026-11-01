@@ -37,6 +37,11 @@ interface BarView {
  * 1 行目にメッセージ、2 行目に操作ボタン。幅は本文の列に揃える（styles.css の .conflict-bar）。
  * キーボード: Tab で本文の前に並ぶボタンへ届く。F6 の巡回（本文 → 上部バー → 競合バー → 下部バー）にも含める。
  */
+/** 競合バーを表示する状態か。表示中は、本文の上の余白を詰める（styles.css の data-conflict）。 */
+export function isConflictBarVisible(external: ExternalState): boolean {
+  return isDeleted(external) || external.kind === 'conflict';
+}
+
 export function ConflictBar({ external, regionRef, onShowDiff, onReload, onKeepMine, onRecreate }: Props) {
   const view = describe(external, { onShowDiff, onReload, onKeepMine, onRecreate });
   if (!view) return null;

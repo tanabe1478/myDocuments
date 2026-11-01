@@ -15,6 +15,7 @@ export interface EditorSelection {
  * - on* は購読解除関数を返す。
  * - setFocusMode / setTypewriterMode は表示だけを変える。本文・履歴・選択範囲には触れない。
  *   setText で文書を読み込み直しても、設定は保たれる。
+ * - setBottomInset は本文のレイアウトを変えない。スクロールの余白（カーソル行を表示領域の端から離す距離）だけを変える。
  */
 export interface EditorAdapter {
   mount(el: HTMLElement): void;
@@ -27,5 +28,11 @@ export interface EditorAdapter {
   setFocusMode(on: boolean): void;
   /** タイプライターモード: カーソル行を表示領域の縦中央に保つ。 */
   setTypewriterMode(on: boolean): void;
+  /**
+   * 本文の下側を、重ねて表示する要素（トースト）が覆っている高さ（px。0 で解除）。
+   * カーソル行がその下に隠れないよう、スクロールの余白に使う。本文の高さ（レイアウト）は変えない。
+   * すでに見えているカーソル行が覆われるときは、見える位置までスクロールする。
+   */
+  setBottomInset(px: number): void;
   destroy(): void;
 }

@@ -118,6 +118,101 @@ test.describe('競合バーは本文に重ならない', () => {
   });
 });
 
+test.describe('競合バーの表示中の、本文の上の余白', () => {
+  const contentPaddingTop = (page: Page) =>
+    page.locator('.cm-content').evaluate((el) => parseFloat(getComputedStyle(el).paddingTop));
+
+  /** カーソルの描画（.cm-cursor-primary）が、1 行目の縦の範囲に収まる（余白が変わった後も、描画が古い位置に残らない）。 */
+  async function expectCursorOnFirstLine(page: Page) {
+    await expect
+      .poll(async () => {
+        const line = await box(page, '.cm-line');
+        const cursor = await box(page, '.cm-cursor-primary');
+        return cursor.top >= line.top - 2 && cursor.bottom <= line.bottom + 2;
+      })
+      .toBe(true);
+  }
+
+  test('(a) バーの下端と本文 1 行目の間が、行高の 2 倍以下。バーが消えると元の余白に戻る', async ({ page }) => {
+    await openDoc(page, longText(60));
+    const normal = await contentPaddingTop(page);
+    expect(normal).toBe(104);
+
+    await page.locator('.cm-content').click();
+    await page.keyboard.press('ControlOrMeta+Home');
+    await page.keyboard.type('追記');
+    await expect(unsavedMark(page)).toBeVisible();
+    await externalWrite(page, DOC, '外部の版');
+    await expect(conflictBar(page)).toBeVisible();
+    await page.locator('.cm-scroller').evaluate((el) => {
+      el.scrollTop = 0;
+    });
+
+    const lineHeight = await page.locator('.cm-line').first().evaluate((el) => parseFloat(getComputedStyle(el).lineHeight));
+    const first = await box(page, '.cm-line');
+    const bar = await box(page, BAR);
+    expect(first.top - bar.bottom).toBeGreaterThan(0);
+    expect(first.top - bar.bottom).toBeLessThanOrEqual(lineHeight * 2);
+    // 余白が変わっても、カーソルの描画は、そのカーソルの行（1 行目）に付いている。
+    await expectCursorOnFirstLine(page);
+
+    // バーを消すと、元の余白に戻る。
+    await page.getByTestId('conflict-reload').click();
+    await expect(conflictBar(page)).toHaveCount(0);
+    expect(await contentPaddingTop(page)).toBe(normal);
+    await expectCursorOnFirstLine(page);
+  });
+
+  test('(a) タイプライターモードでは、タイプライターの余白（表示領域の半分）を優先する', async ({ page }) => {
+    await openDoc(page, longText(60), { typewriterMode: true });
+    await page.locator('.cm-content').click();
+    await page.keyboard.type('追記');
+    await expect(unsavedMark(page)).toBeVisible();
+    await externalWrite(page, DOC, '外部の版');
+    await expect(conflictBar(page)).toBeVisible();
+
+    await expect
+      .poll(async () => {
+        const padding = await contentPaddingTop(page);
+        const scroller = await box(page, '.cm-scroller');
+        return Math.abs(padding - (scroller.bottom - scroller.top) / 2) < 2;
+      })
+      .toBe(true);
+  });
+
+  test('(a) 少しスクロールして先頭近くの行にカーソルがあっても、バーの出現で見えなくならない', async ({ page }) => {
+    await openDoc(page, longText(60));
+    await page.locator('.cm-content').click();
+    await page.keyboard.press('ControlOrMeta+Home');
+    await page.keyboard.type('追記');
+    await expect(unsavedMark(page)).toBeVisible();
+    // 1 行目（カーソルの行）が、表示領域の上端のすぐ下に来るまでスクロールする。
+    await page.locator('.cm-scroller').evaluate((el) => {
+      el.scrollTop = 90;
+    });
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    // カーソルの行（1 行目）が、表示領域に収まっている。カーソルの描画ではなく、行の位置で判定する。
+    const inView = async () => {
+      const line = await box(page, '.cm-line');
+      const scroller = await box(page, '.cm-scroller');
+      return line.top >= scroller.top - 1 && line.bottom <= scroller.bottom + 1;
+    };
+    expect(await inView()).toBe(true);
+
+    await externalWrite(page, DOC, '外部の版');
+    await expect(conflictBar(page)).toBeVisible();
+    // 本文の上の余白が詰まった後で、カーソル行が表示領域の中にある（詰まるぶん、スクロール位置もずれる）。
+    await expect.poll(() => contentPaddingTop(page)).toBeLessThan(60);
+    await expect.poll(inView).toBe(true);
+    // バーを消して余白が戻っても、カーソル行は見えたまま。
+    await page.getByTestId('conflict-reload').click();
+    await expect(conflictBar(page)).toHaveCount(0);
+    await expect.poll(() => contentPaddingTop(page)).toBe(104);
+    await expect.poll(inView).toBe(true);
+    await expectCursorOnFirstLine(page);
+  });
+});
+
 test.describe('競合バーの出現・消失とカーソル行', () => {
   /** カーソル（.cm-cursor-primary）が、本文の表示領域に収まっている。 */
   async function cursorInView(page: Page): Promise<{ inView: boolean; cursor: Box; scroller: Box }> {

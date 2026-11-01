@@ -31,7 +31,9 @@ export const editorTheme = EditorView.theme({
     width: '100%',
     maxWidth: `calc(var(--md-max-width) + 2 * ${PAD_X})`,
     margin: '0 auto',
-    padding: `104px ${PAD_X} 45vh`,
+    // 上の余白は、浮動の上部バーの下に最初の行を置く 104px。競合バーの表示中は、バーが本文の領域の上に専用の行を取るので、
+    // styles.css が --md-content-top を段落間隔程度に詰める。
+    padding: `var(--md-content-top, 104px) ${PAD_X} 45vh`,
     caretColor: 'var(--md-color-caret)',
     // 長い URL や英単語は、本文の幅で折り返す。日本語は禁則を厳しめ（小書きの仮名や長音を行頭に置かない）にする。
     overflowWrap: 'anywhere',
@@ -41,7 +43,7 @@ export const editorTheme = EditorView.theme({
   // フォーカスモード: カーソルのある段落以外を弱く表示する。
   // 切り替えの遷移は styles.css（Reduced Motion のときは付けない）。
   '.cm-md-dim': { opacity: '0.38' },
-  // タイプライターモード: 本文の上下に表示領域の半分の余白（値は typewriterMode.ts が設定する）。
+  // タイプライターモード: 本文の上下に表示領域の半分の余白（値は typewriterMode.ts が設定する）。競合バーの表示中も、こちらを優先する。
   '&.cm-typewriter .cm-content': {
     paddingTop: 'var(--md-typewriter-pad, 50vh)',
     paddingBottom: 'var(--md-typewriter-pad, 50vh)',

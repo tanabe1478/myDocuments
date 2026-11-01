@@ -200,10 +200,13 @@ body {
   font-size: 12px;
 }
 
+/* トースト。本文の列の外に余白があるとき（data-placement='margin'）は、列の右の余白の右下（文字数表示の上）に置く。
+   幅は列と窓の端の間（--md-toast-width。Toast.tsx が toastLayout.ts の式で与える）。右は、外観パネルを開いたときの本文の寄せに合わせる。
+   余白がないとき（'overlay'）は、本文に重ねて中央の下に置く。本文の高さは変えない（エディタ側がスクロールの余白で逃がす）。 */
 .toast-region {
   position: absolute;
   left: 0;
-  right: 0;
+  right: var(--md-panel-reserve, 0px);
   bottom: 20px;
   z-index: 10;
   display: flex;
@@ -211,9 +214,18 @@ body {
   pointer-events: none;
 }
 
+.toast-region[data-placement='margin'] {
+  left: auto;
+  right: calc(var(--md-panel-reserve, 0px) + 16px);
+  bottom: 56px;
+  width: var(--md-toast-width);
+  justify-content: flex-end;
+}
+
 .toast {
   pointer-events: auto;
   max-width: min(90vw, 560px);
+  box-sizing: border-box;
   padding: 10px 16px;
   border: 1px solid var(--md-color-border);
   border-radius: 8px;
@@ -221,7 +233,12 @@ body {
   color: var(--md-color-text);
   font: 14px/1.5 var(--md-font-family);
   text-align: left;
+  overflow-wrap: anywhere;
   cursor: pointer;
+}
+
+.toast-region[data-placement='margin'] .toast {
+  max-width: 100%;
 }
 
 .toast-error {
@@ -464,6 +481,17 @@ body {
       left 0.2s ease,
       width 0.2s ease;
   }
+}
+
+/* 競合バーの表示中は、本文の上の余白（浮動の上部バーの下に最初の行を置く 104px）を、段落間隔（空行 1 つの高さ。16px〜1 行）に詰める。
+   バーが本文の領域の上に専用の行を取っていて、その下端から本文が始まるため。タイプライターモードの余白は、より具体的な
+   セレクタ（theme.ts の &.cm-typewriter .cm-content）が優先するので、詰めない。 */
+.app[data-conflict='true'] {
+  --md-content-top: clamp(
+    16px,
+    calc(var(--md-paragraph-spacing) * var(--md-line-height) * var(--md-font-size)),
+    calc(var(--md-line-height) * var(--md-font-size))
+  );
 }
 
 /* 外部変更の競合バー。本文に重ねず、.app の縦の並びの中（本文の上）に専用の場所を取る。表示中は本文の領域が縮む。
