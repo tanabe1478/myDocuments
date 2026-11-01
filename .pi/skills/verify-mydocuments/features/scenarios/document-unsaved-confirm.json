@@ -1,0 +1,34 @@
+{
+  "seed": {
+    "files": { "/docs/note.md": { "text": "元" } },
+    "openPath": "/docs/note.md",
+    "savePath": "/docs/saved-from-dialog.md"
+  },
+  "steps": [
+    { "press": "ControlOrMeta+o" },
+    { "expect": { "testId": "doc-title", "equals": "note.md" } },
+    { "press": "ControlOrMeta+n" },
+    { "expect": { "css": "[role=alertdialog]", "read": "count", "equals": 0 }, "note": "変更がなければ確認しない" },
+    { "expect": { "testId": "doc-title", "equals": "無題" } },
+    { "click": ".cm-content" },
+    { "type": "編集中" },
+    { "press": "ControlOrMeta+n" },
+    { "expect": { "role": "alertdialog", "read": "visible", "equals": true } },
+    { "screenshot": "confirm-dialog" },
+    { "click": { "testId": "discard-cancel" } },
+    { "expect": { "eval": "window.__mdeE2E.editor.getText()", "equals": "編集中" }, "note": "キャンセルすると本文はそのまま" },
+    { "press": "ControlOrMeta+n" },
+    { "press": "Escape" },
+    { "expect": { "css": "[role=alertdialog]", "read": "count", "equals": 0 }, "note": "Esc もキャンセル" },
+    { "press": "ControlOrMeta+n" },
+    { "click": { "testId": "discard-save" } },
+    { "expect": { "eval": "window.__mdeE2E.editor.getText()", "equals": "" }, "note": "保存してから空の無題になる" },
+    { "expect": { "testId": "doc-title", "equals": "無題" } },
+    { "observe": "after-save-then-new", "files": ["/docs/saved-from-dialog.md"] },
+    { "type": "捨てる" },
+    { "press": "ControlOrMeta+o" },
+    { "click": { "testId": "discard-discard" } },
+    { "expect": { "testId": "doc-title", "equals": "note.md" }, "note": "保存しない を選ぶと、開く操作が続く" },
+    { "expect": { "eval": "window.__mdeE2E.physicalWrites", "equals": 1 }, "note": "書き込みは「保存」を選んだ 1 回だけ" }
+  ]
+}

@@ -1,0 +1,190 @@
+{
+  "platform": "mac",
+  "seed": {
+    "preferences": {
+      "theme": "light",
+      "autoHideChrome": true
+    }
+  },
+  "steps": [
+    {
+      "click": ".cm-content"
+    },
+    {
+      "expect": {
+        "css": ".app",
+        "read": "attr:data-chrome",
+        "equals": "visible"
+      }
+    },
+    {
+      "type": "書き始める"
+    },
+    {
+      "expect": {
+        "css": ".app",
+        "read": "attr:data-chrome",
+        "equals": "hidden"
+      },
+      "note": "入力でバーが隠れる"
+    },
+    {
+      "expect": {
+        "css": ".topbar",
+        "read": "css:opacity",
+        "equals": "0"
+      }
+    },
+    {
+      "screenshot": "chrome-hidden"
+    },
+    {
+      "mouseMove": {
+        "x": 200,
+        "y": 200
+      }
+    },
+    {
+      "mouseMove": {
+        "x": 260,
+        "y": 240
+      }
+    },
+    {
+      "expect": {
+        "css": ".app",
+        "read": "attr:data-chrome",
+        "equals": "visible"
+      },
+      "note": "マウス移動で再表示"
+    },
+    {
+      "click": ".cm-content"
+    },
+    {
+      "type": "続き"
+    },
+    {
+      "expect": {
+        "css": ".app",
+        "read": "attr:data-chrome",
+        "equals": "hidden"
+      }
+    },
+    {
+      "press": "F6"
+    },
+    {
+      "expect": {
+        "testId": "appearance-button",
+        "read": "focused",
+        "equals": true
+      },
+      "note": "F6: 本文 → 上部バー"
+    },
+    {
+      "expect": {
+        "css": ".app",
+        "read": "attr:data-chrome",
+        "equals": "visible"
+      }
+    },
+    {
+      "press": "F6"
+    },
+    {
+      "expect": {
+        "testId": "char-count",
+        "read": "focused",
+        "equals": true
+      },
+      "note": "→ 下部バー"
+    },
+    {
+      "press": "F6"
+    },
+    {
+      "expect": {
+        "css": ".cm-content",
+        "read": "focused",
+        "equals": true
+      },
+      "note": "→ 本文"
+    },
+    {
+      "press": "Shift+F6"
+    },
+    {
+      "expect": {
+        "testId": "char-count",
+        "read": "focused",
+        "equals": true
+      },
+      "note": "Shift+F6 は逆順"
+    },
+    {
+      "press": "Shift+F6"
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "expect": {
+        "role": "dialog",
+        "name": "外観",
+        "read": "visible",
+        "equals": true
+      },
+      "note": "バーのボタンから Enter で外観パネルが開く"
+    },
+    {
+      "press": "Escape"
+    },
+    {
+      "expect": {
+        "testId": "appearance-button",
+        "read": "focused",
+        "equals": true
+      }
+    },
+    {
+      "click": ".cm-content"
+    },
+    {
+      "press": "Control+Meta+f"
+    },
+    {
+      "expect": {
+        "eval": "({ on: window.__mdeE2E.fullscreen, calls: window.__mdeE2E.calls.fullscreen })",
+        "equals": {
+          "on": true,
+          "calls": 1
+        },
+        "timeout": 2000
+      },
+      "note": "macOS の全画面は Ctrl+Cmd+F（--platform mac のとき）"
+    },
+    {
+      "press": "Control+Meta+f"
+    },
+    {
+      "expect": {
+        "eval": "({ on: window.__mdeE2E.fullscreen, calls: window.__mdeE2E.calls.fullscreen })",
+        "equals": {
+          "on": false,
+          "calls": 2
+        }
+      }
+    },
+    {
+      "press": "F11"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.calls.fullscreen",
+        "equals": 2
+      },
+      "note": "macOS では F11 は全画面にならない（Windows / Linux の鍵）"
+    }
+  ]
+}

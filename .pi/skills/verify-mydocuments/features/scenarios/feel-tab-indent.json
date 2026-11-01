@@ -1,0 +1,240 @@
+{
+  "seed": {
+    "preferences": {
+      "theme": "light"
+    }
+  },
+  "steps": [
+    {
+      "click": ".cm-content"
+    },
+    {
+      "type": "- a"
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "press": "Tab"
+    },
+    {
+      "type": "b"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText()",
+        "equals": "- a\n  - b"
+      },
+      "note": "リスト項目で Tab: インデントが増える"
+    },
+    {
+      "expect": {
+        "css": ".cm-content",
+        "read": "focused",
+        "equals": true
+      }
+    },
+    {
+      "press": "Shift+Tab"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText()",
+        "equals": "- a\n- b"
+      },
+      "note": "Shift+Tab で戻る"
+    },
+    {
+      "press": "Shift+Tab"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText()",
+        "equals": "- a\n- b"
+      },
+      "note": "これ以上は戻らない"
+    },
+    {
+      "press": "ControlOrMeta+a"
+    },
+    {
+      "type": "1. a"
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "press": "Tab"
+    },
+    {
+      "type": "b"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText()",
+        "equals": "1. a\n   2. b"
+      },
+      "note": "番号付きは記号の幅ぶん"
+    },
+    {
+      "press": "Shift+Tab"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText()",
+        "equals": "1. a\n2. b"
+      }
+    },
+    {
+      "press": "ControlOrMeta+a"
+    },
+    {
+      "type": "> q"
+    },
+    {
+      "press": "Tab"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText()",
+        "equals": "> > q"
+      },
+      "note": "引用は段が 1 つ深くなる"
+    },
+    {
+      "press": "Shift+Tab"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText()",
+        "equals": "> q"
+      }
+    },
+    {
+      "press": "ControlOrMeta+a"
+    },
+    {
+      "type": "- a"
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "type": "b"
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "type": "c"
+    },
+    {
+      "press": "ControlOrMeta+a"
+    },
+    {
+      "press": "Tab"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText()",
+        "equals": "  - a\n  - b\n  - c"
+      },
+      "note": "複数行を選んで Tab: そろってインデント"
+    },
+    {
+      "press": "Shift+Tab"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText()",
+        "equals": "- a\n- b\n- c"
+      }
+    },
+    {
+      "press": "ControlOrMeta+a"
+    },
+    {
+      "type": "ふつうの段落"
+    },
+    {
+      "press": "Tab"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText()",
+        "equals": "ふつうの段落"
+      },
+      "note": "リストでも引用でもない行では、Tab はタブ文字を入れない"
+    },
+    {
+      "expect": {
+        "css": ".cm-content",
+        "read": "focused",
+        "equals": true
+      }
+    },
+    {
+      "press": "ControlOrMeta+a"
+    },
+    {
+      "type": "- a"
+    },
+    {
+      "press": "Escape"
+    },
+    {
+      "press": "Tab"
+    },
+    {
+      "expect": {
+        "testId": "char-count",
+        "read": "focused",
+        "equals": true
+      },
+      "note": "Esc の直後の Tab は本文の外へフォーカスを移す"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText()",
+        "equals": "- a"
+      },
+      "note": "本文は変わらない"
+    },
+    {
+      "click": ".cm-content"
+    },
+    {
+      "press": "Escape"
+    },
+    {
+      "type": "b"
+    },
+    {
+      "press": "Tab"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText()",
+        "equals": "  - ab"
+      },
+      "note": "Esc の後に別のキーを押したら、Tab はまたインデント"
+    },
+    {
+      "press": "Escape"
+    },
+    {
+      "press": "Shift+Tab"
+    },
+    {
+      "expect": {
+        "testId": "appearance-button",
+        "read": "focused",
+        "equals": true
+      },
+      "note": "Esc → Shift+Tab は逆向きに出る"
+    },
+    {
+      "screenshot": "after-tab-flow"
+    }
+  ]
+}

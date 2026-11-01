@@ -18,3 +18,4 @@ dist-e2e/
 test-results/
 playwright-report/
 src-tauri/gen/
+artifacts/

@@ -1,0 +1,30 @@
+{
+  "seed": {
+    "files": {
+      "/docs/crlf-bom.md": { "text": "# 見出し\n\n本文の1行目\n", "bom": true, "crlf": true },
+      "/docs/copy.md": { "text": "# 見出し\n\n本文の1行目\n", "bom": true, "crlf": true }
+    },
+    "openPath": "/docs/crlf-bom.md"
+  },
+  "steps": [
+    { "press": "ControlOrMeta+o" },
+    { "expect": { "testId": "doc-title", "equals": "crlf-bom.md" } },
+    { "press": "ControlOrMeta+s" },
+    { "click": ".cm-content" },
+    { "press": "ControlOrMeta+End" },
+    { "type": "X" },
+    { "expect": { "testId": "unsaved-mark", "read": "visible", "equals": true } },
+    { "press": "Backspace" },
+    { "expect": { "testId": "unsaved-mark", "read": "count", "equals": 0 }, "note": "元の内容に戻ると未保存マークは消える" },
+    { "press": "ControlOrMeta+s" },
+    { "observe": "no-op-save", "files": ["/docs/crlf-bom.md"] },
+    { "expect": { "eval": "window.__mdeE2E.calls.save + window.__mdeE2E.calls.saveAs + window.__mdeE2E.physicalWrites", "equals": 0 }, "note": "無変更の保存では bridge が呼ばれず、書き込みも 0" },
+    { "setPaths": { "save": "/docs/copy.md" } },
+    { "press": "ControlOrMeta+Shift+s" },
+    { "expect": { "testId": "toast", "contains": "書き込みませんでした" } },
+    { "expect": { "eval": "window.__mdeE2E.log", "equals": [{ "kind": "saveAs", "path": "/docs/copy.md", "outcome": "unchanged" }] } },
+    { "expect": { "eval": "window.__mdeE2E.physicalWrites", "equals": 0 } },
+    { "observe": "same-bytes-save-as", "files": ["/docs/copy.md"] },
+    { "screenshot": "unchanged-toast" }
+  ]
+}

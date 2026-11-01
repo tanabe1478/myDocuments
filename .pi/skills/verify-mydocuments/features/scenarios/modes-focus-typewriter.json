@@ -1,0 +1,189 @@
+{
+  "seed": {
+    "files": {
+      "/docs/modes.md": {
+        "text": "最初の段落\n続きの行\n\n二番目の段落\n\n三番目"
+      },
+      "/docs/long.md": {
+        "lines": {
+          "template": "第{n}行の本文です",
+          "count": 160
+        }
+      }
+    },
+    "openPath": "/docs/modes.md",
+    "preferences": {
+      "theme": "light",
+      "autoHideChrome": false
+    }
+  },
+  "steps": [
+    {
+      "press": "ControlOrMeta+o"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "modes.md"
+      }
+    },
+    {
+      "click": ".cm-content"
+    },
+    {
+      "press": "ControlOrMeta+Home"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().length > 0 && Array.from(document.querySelectorAll('.cm-line')).map((l) => l.classList.contains('cm-md-dim'))",
+        "equals": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "note": "フォーカスモード OFF: dim なし"
+    },
+    {
+      "press": "ControlOrMeta+Shift+F"
+    },
+    {
+      "expect": {
+        "eval": "Array.from(document.querySelectorAll('.cm-line')).map((l) => l.classList.contains('cm-md-dim'))",
+        "equals": [
+          false,
+          false,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      "note": "カーソルのある段落だけが dim されない"
+    },
+    {
+      "screenshot": "focus-mode-on"
+    },
+    {
+      "press": "ArrowDown",
+      "times": 3
+    },
+    {
+      "expect": {
+        "eval": "Array.from(document.querySelectorAll('.cm-line')).map((l) => l.classList.contains('cm-md-dim'))",
+        "equals": [
+          true,
+          true,
+          true,
+          false,
+          true,
+          true
+        ]
+      },
+      "note": "カーソル移動で段落が入れ替わる"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.savedPreferences.at(-1)?.focusMode",
+        "equals": true,
+        "timeout": 4000
+      }
+    },
+    {
+      "press": "ControlOrMeta+Shift+F"
+    },
+    {
+      "expect": {
+        "eval": "Array.from(document.querySelectorAll('.cm-line')).map((l) => l.classList.contains('cm-md-dim'))",
+        "equals": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText()",
+        "equals": "最初の段落\n続きの行\n\n二番目の段落\n\n三番目"
+      },
+      "note": "モードを切り替えても本文は変わらない"
+    },
+    {
+      "setPaths": {
+        "open": "/docs/long.md"
+      }
+    },
+    {
+      "press": "ControlOrMeta+o"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "long.md"
+      }
+    },
+    {
+      "click": ".cm-content"
+    },
+    {
+      "eval": "window.__padBefore = parseFloat(getComputedStyle(document.querySelector('.cm-content')).paddingTop)"
+    },
+    {
+      "press": "ControlOrMeta+Shift+T"
+    },
+    {
+      "expect": {
+        "eval": "Math.abs(parseFloat(getComputedStyle(document.querySelector('.cm-content')).paddingTop) - document.querySelector('.cm-scroller').clientHeight / 2) <= 1",
+        "equals": true
+      },
+      "note": "本文の上下に表示領域の半分の余白が付く"
+    },
+    {
+      "press": "ControlOrMeta+End"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = document.querySelector('.cm-scroller').getBoundingClientRect(); const c = document.querySelector('.cm-cursor').getBoundingClientRect(); const line = parseFloat(getComputedStyle(document.querySelector('.cm-line')).lineHeight); return Math.abs((c.top + c.bottom) / 2 - (s.top + s.bottom) / 2) <= line; })()",
+        "equals": true
+      },
+      "note": "末尾でもカーソル行が表示領域の中央 ±1 行"
+    },
+    {
+      "screenshot": "typewriter-on-end"
+    },
+    {
+      "press": "ControlOrMeta+Home"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = document.querySelector('.cm-scroller').getBoundingClientRect(); const c = document.querySelector('.cm-cursor').getBoundingClientRect(); const line = parseFloat(getComputedStyle(document.querySelector('.cm-line')).lineHeight); return Math.abs((c.top + c.bottom) / 2 - (s.top + s.bottom) / 2) <= line; })()",
+        "equals": true
+      },
+      "note": "先頭でも中央"
+    },
+    {
+      "press": "ControlOrMeta+Shift+T"
+    },
+    {
+      "expect": {
+        "eval": "parseFloat(getComputedStyle(document.querySelector('.cm-content')).paddingTop) === window.__padBefore",
+        "equals": true
+      },
+      "note": "切ると余白が元に戻る"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.savedPreferences.at(-1)?.typewriterMode",
+        "equals": false,
+        "timeout": 4000
+      }
+    }
+  ]
+}

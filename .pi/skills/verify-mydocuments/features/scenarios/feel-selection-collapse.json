@@ -1,0 +1,220 @@
+{
+  "seed": {
+    "files": {
+      "/docs/vertical.md": {
+        "text": "aaaa\nbbbb\ncccc\ndddd\neeee"
+      }
+    },
+    "openPath": "/docs/vertical.md",
+    "preferences": {
+      "theme": "light"
+    }
+  },
+  "steps": [
+    {
+      "press": "ControlOrMeta+o"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "vertical.md"
+      }
+    },
+    {
+      "click": ".cm-content"
+    },
+    {
+      "press": "ControlOrMeta+Home"
+    },
+    {
+      "eval": "window.__sel = { anchor: 0, head: 0 }; window.__mdeE2E.editor.onSelectionChange((s) => { window.__sel = { anchor: s.anchor, head: s.head }; }); true"
+    },
+    {
+      "press": "ArrowDown",
+      "times": 3
+    },
+    {
+      "press": "Shift+ArrowUp",
+      "times": 2
+    },
+    {
+      "expect": {
+        "eval": "window.__sel",
+        "equals": {
+          "anchor": 15,
+          "head": 5
+        }
+      },
+      "note": "上向きに選択: anchor は 4 行目の行頭、head は 2 行目の行頭"
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__sel",
+        "equals": {
+          "anchor": 15,
+          "head": 15
+        }
+      },
+      "note": "ArrowDown は選択の末尾へ畳む（head から 1 行下ではない）"
+    },
+    {
+      "press": "ControlOrMeta+Home"
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "press": "Shift+ArrowDown",
+      "times": 2
+    },
+    {
+      "expect": {
+        "eval": "window.__sel",
+        "equals": {
+          "anchor": 5,
+          "head": 15
+        }
+      },
+      "note": "下向きに選択"
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__sel",
+        "equals": {
+          "anchor": 5,
+          "head": 5
+        }
+      },
+      "note": "ArrowUp は下向きに選んだ範囲を先頭へ畳む"
+    },
+    {
+      "press": "ControlOrMeta+Home"
+    },
+    {
+      "press": "ArrowDown",
+      "times": 3
+    },
+    {
+      "press": "Shift+ArrowUp",
+      "times": 2
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__sel",
+        "equals": {
+          "anchor": 5,
+          "head": 5
+        }
+      },
+      "note": "ArrowUp は上向きに選んだ範囲も先頭へ畳む"
+    },
+    {
+      "press": "ControlOrMeta+Home"
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "press": "Shift+ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__sel",
+        "equals": {
+          "anchor": 5,
+          "head": 10
+        }
+      },
+      "note": "Shift+ArrowDown は anchor を残して head を 1 行ずつ"
+    },
+    {
+      "press": "Shift+ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__sel",
+        "equals": {
+          "anchor": 5,
+          "head": 15
+        }
+      }
+    },
+    {
+      "press": "Shift+ArrowUp",
+      "times": 2
+    },
+    {
+      "expect": {
+        "eval": "window.__sel",
+        "equals": {
+          "anchor": 5,
+          "head": 5
+        }
+      }
+    },
+    {
+      "press": "Shift+ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__sel",
+        "equals": {
+          "anchor": 5,
+          "head": 0
+        }
+      }
+    },
+    {
+      "screenshot": "selection"
+    },
+    {
+      "press": "ControlOrMeta+Home"
+    },
+    {
+      "press": "ArrowRight",
+      "times": 2
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__sel",
+        "equals": {
+          "anchor": 0,
+          "head": 0
+        }
+      },
+      "note": "先頭行の ArrowUp は行頭へ"
+    },
+    {
+      "press": "ControlOrMeta+End"
+    },
+    {
+      "press": "ArrowLeft",
+      "times": 2
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__sel",
+        "equals": {
+          "anchor": 24,
+          "head": 24
+        }
+      },
+      "note": "末尾行の ArrowDown は行末へ"
+    }
+  ]
+}

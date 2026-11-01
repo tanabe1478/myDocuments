@@ -1,0 +1,192 @@
+{
+  "seed": {
+    "files": {
+      "/docs/feel.md": {
+        "lines": {
+          "template": "{n} 行目の本文です。",
+          "count": 80
+        }
+      }
+    },
+    "openPath": "/docs/feel.md",
+    "preferences": {
+      "theme": "light"
+    }
+  },
+  "steps": [
+    {
+      "press": "ControlOrMeta+o"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "feel.md"
+      }
+    },
+    {
+      "click": ".cm-content"
+    },
+    {
+      "press": "ControlOrMeta+End"
+    },
+    {
+      "type": "\n追記 1 行目"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = document.querySelector('.cm-scroller').getBoundingClientRect(); const c = document.querySelector('.cm-cursor-primary, .cm-cursor').getBoundingClientRect(); return (s.bottom - c.bottom) >= s.height * 0.25; })()",
+        "equals": true
+      },
+      "note": "1 行目の後もカーソルは表示領域の下 25% より上"
+    },
+    {
+      "type": "\n追記 2 行目"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = document.querySelector('.cm-scroller').getBoundingClientRect(); const c = document.querySelector('.cm-cursor-primary, .cm-cursor').getBoundingClientRect(); return (s.bottom - c.bottom) >= s.height * 0.25; })()",
+        "equals": true
+      }
+    },
+    {
+      "type": "\n追記 3 行目"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = document.querySelector('.cm-scroller').getBoundingClientRect(); const c = document.querySelector('.cm-cursor-primary, .cm-cursor').getBoundingClientRect(); return (s.bottom - c.bottom) >= s.height * 0.25; })()",
+        "equals": true
+      }
+    },
+    {
+      "type": "\n追記 4 行目"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = document.querySelector('.cm-scroller').getBoundingClientRect(); const c = document.querySelector('.cm-cursor-primary, .cm-cursor').getBoundingClientRect(); return (s.bottom - c.bottom) >= s.height * 0.25; })()",
+        "equals": true
+      }
+    },
+    {
+      "type": "\n追記 5 行目"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = document.querySelector('.cm-scroller').getBoundingClientRect(); const c = document.querySelector('.cm-cursor-primary, .cm-cursor').getBoundingClientRect(); return (s.bottom - c.bottom) >= s.height * 0.25; })()",
+        "equals": true
+      }
+    },
+    {
+      "type": "\n追記 6 行目"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = document.querySelector('.cm-scroller').getBoundingClientRect(); const c = document.querySelector('.cm-cursor-primary, .cm-cursor').getBoundingClientRect(); return (s.bottom - c.bottom) >= s.height * 0.25; })()",
+        "equals": true
+      }
+    },
+    {
+      "type": "\n追記 7 行目"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = document.querySelector('.cm-scroller').getBoundingClientRect(); const c = document.querySelector('.cm-cursor-primary, .cm-cursor').getBoundingClientRect(); return (s.bottom - c.bottom) >= s.height * 0.25; })()",
+        "equals": true
+      }
+    },
+    {
+      "type": "\n追記 8 行目"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = document.querySelector('.cm-scroller').getBoundingClientRect(); const c = document.querySelector('.cm-cursor-primary, .cm-cursor').getBoundingClientRect(); return (s.bottom - c.bottom) >= s.height * 0.25; })()",
+        "equals": true
+      }
+    },
+    {
+      "type": "\n追記 9 行目"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = document.querySelector('.cm-scroller').getBoundingClientRect(); const c = document.querySelector('.cm-cursor-primary, .cm-cursor').getBoundingClientRect(); return (s.bottom - c.bottom) >= s.height * 0.25; })()",
+        "equals": true
+      }
+    },
+    {
+      "type": "\n追記 10 行目"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = document.querySelector('.cm-scroller').getBoundingClientRect(); const c = document.querySelector('.cm-cursor-primary, .cm-cursor').getBoundingClientRect(); return (s.bottom - c.bottom) >= s.height * 0.25; })()",
+        "equals": true
+      },
+      "note": "10 行目の後もカーソルは表示領域の下 25% より上"
+    },
+    {
+      "screenshot": "caret-after-typing"
+    },
+    {
+      "press": "ArrowUp",
+      "times": 5
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = document.querySelector('.cm-scroller').getBoundingClientRect(); const c = document.querySelector('.cm-cursor-primary, .cm-cursor').getBoundingClientRect(); return (c.top - s.top) >= s.height * 0.25; })()",
+        "equals": true
+      },
+      "note": "上へ戻るときも上 25% より下"
+    },
+    {
+      "press": "ArrowUp",
+      "times": 5
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = document.querySelector('.cm-scroller').getBoundingClientRect(); const c = document.querySelector('.cm-cursor-primary, .cm-cursor').getBoundingClientRect(); return (c.top - s.top) >= s.height * 0.25; })()",
+        "equals": true
+      }
+    },
+    {
+      "press": "ArrowUp",
+      "times": 5
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = document.querySelector('.cm-scroller').getBoundingClientRect(); const c = document.querySelector('.cm-cursor-primary, .cm-cursor').getBoundingClientRect(); return (c.top - s.top) >= s.height * 0.25; })()",
+        "equals": true
+      }
+    },
+    {
+      "press": "ArrowUp",
+      "times": 5
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = document.querySelector('.cm-scroller').getBoundingClientRect(); const c = document.querySelector('.cm-cursor-primary, .cm-cursor').getBoundingClientRect(); return (c.top - s.top) >= s.height * 0.25; })()",
+        "equals": true
+      }
+    },
+    {
+      "press": "ArrowUp",
+      "times": 5
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = document.querySelector('.cm-scroller').getBoundingClientRect(); const c = document.querySelector('.cm-cursor-primary, .cm-cursor').getBoundingClientRect(); return (c.top - s.top) >= s.height * 0.25; })()",
+        "equals": true
+      }
+    },
+    {
+      "press": "ArrowUp",
+      "times": 5
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = document.querySelector('.cm-scroller').getBoundingClientRect(); const c = document.querySelector('.cm-cursor-primary, .cm-cursor').getBoundingClientRect(); return (c.top - s.top) >= s.height * 0.25; })()",
+        "equals": true
+      }
+    },
+    {
+      "screenshot": "caret-after-up"
+    }
+  ]
+}

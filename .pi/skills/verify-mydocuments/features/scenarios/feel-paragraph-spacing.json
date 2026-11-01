@@ -1,0 +1,93 @@
+{
+  "seed": {
+    "files": {
+      "/docs/spacing.md": {
+        "text": "あ\n\nい"
+      }
+    },
+    "openPath": "/docs/spacing.md",
+    "preferences": {
+      "theme": "light"
+    }
+  },
+  "steps": [
+    {
+      "press": "ControlOrMeta+o"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "spacing.md"
+      }
+    },
+    {
+      "waitFor": {
+        "css": ".cm-md-blank"
+      }
+    },
+    {
+      "expect": {
+        "eval": "Math.round(document.querySelectorAll('.cm-line')[1].getBoundingClientRect().height * 10) / 10",
+        "equals": 20.5
+      },
+      "note": "既定（0.6 行）: 空行の高さ = 18px × 1.9 × 0.6"
+    },
+    {
+      "screenshot": "spacing-default"
+    },
+    {
+      "press": "ControlOrMeta+,"
+    },
+    {
+      "fill": {
+        "panel": true,
+        "label": "段落間隔",
+        "value": "2"
+      }
+    },
+    {
+      "expect": {
+        "eval": "Math.round(document.querySelectorAll('.cm-line')[1].getBoundingClientRect().height * 10) / 10",
+        "equals": 68.4,
+        "timeout": 3000
+      },
+      "note": "段落間隔 2: 空行の高さ 18 × 1.9 × 2"
+    },
+    {
+      "screenshot": "spacing-2"
+    },
+    {
+      "fill": {
+        "panel": true,
+        "label": "段落間隔",
+        "value": "0"
+      }
+    },
+    {
+      "expect": {
+        "eval": "Math.round(document.querySelectorAll('.cm-line')[1].getBoundingClientRect().height * 10) / 10",
+        "equals": 4,
+        "timeout": 3000
+      },
+      "note": "段落間隔 0: 4px まで詰まる"
+    },
+    {
+      "fill": {
+        "panel": true,
+        "label": "段落間隔",
+        "value": "3"
+      }
+    },
+    {
+      "expect": {
+        "eval": "Math.round(document.querySelectorAll('.cm-line')[1].getBoundingClientRect().height * 10) / 10",
+        "equals": 102.6,
+        "timeout": 3000
+      },
+      "note": "最大 3: 18 × 1.9 × 3"
+    },
+    {
+      "screenshot": "spacing-3"
+    }
+  ]
+}

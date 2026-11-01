@@ -1,0 +1,32 @@
+{
+  "seed": { "preferences": { "theme": "light" } },
+  "steps": [
+    { "click": { "testId": "appearance-button" }, "note": "entry point 1: 上部バーの「外観」ボタン" },
+    { "expect": { "role": "dialog", "name": "外観", "read": "visible", "equals": true } },
+    { "fill": { "panel": true, "label": "文字サイズ", "value": "24" } },
+    { "fill": { "panel": true, "label": "行高", "value": "2.5" } },
+    { "fill": { "panel": true, "label": "段落間隔", "value": "2" } },
+    { "fill": { "panel": true, "label": "字間", "value": "0.1" } },
+    { "fill": { "panel": true, "label": "本文の最大幅", "value": "800" } },
+    { "check": { "panel": true, "role": "radio", "name": "ダーク" } },
+    { "select": { "panel": true, "label": "フォントの種類", "option": { "label": "明朝体" } } },
+    { "expect": { "css": ".cm-content", "read": "css:font-size", "equals": "24px" } },
+    { "expect": { "css": ".cm-content", "read": "css:letter-spacing", "equals": "2.4px" } },
+    { "expect": { "css": ".cm-line", "read": "css:line-height", "equals": "60px" } },
+    { "expect": { "css": ".cm-scroller", "read": "css:font-family", "matches": "Mincho" } },
+    { "expect": { "css": "html", "read": "attr:data-theme", "equals": "dark" } },
+    { "expect": { "eval": "document.documentElement.style.getPropertyValue('--md-paragraph-spacing')", "equals": "2" } },
+    { "observe": "applied" },
+    { "screenshot": "panel-open-dark" },
+    { "expect": { "eval": "(({ fontSizePx, lineHeight, maxWidthPx, paragraphSpacing, letterSpacing, theme }) => ({ fontSizePx, lineHeight, maxWidthPx, paragraphSpacing, letterSpacing, theme }))(window.__mdeE2E.savedPreferences.at(-1) || {})", "equals": { "fontSizePx": 24, "lineHeight": 2.5, "maxWidthPx": 800, "paragraphSpacing": 2, "letterSpacing": 0.1, "theme": "dark" }, "timeout": 4000 }, "note": "debounce の後に bridge へ保存される" },
+    { "press": "Escape" },
+    { "expect": { "role": "dialog", "name": "外観", "read": "count", "equals": 0 } },
+    { "reload": true },
+    { "expect": { "css": ".cm-content", "read": "css:font-size", "equals": "24px" }, "note": "再読み込み後も維持される" },
+    { "press": "ControlOrMeta+," },
+    { "expect": { "role": "dialog", "name": "外観", "read": "visible", "equals": true }, "note": "entry point 2: Mod+, ショートカット" },
+    { "press": "ControlOrMeta+," },
+    { "expect": { "role": "dialog", "name": "外観", "read": "count", "equals": 0 }, "note": "もう一度押すと閉じる" },
+    { "screenshot": "after-reload-dark" }
+  ]
+}

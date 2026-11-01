@@ -1,0 +1,24 @@
+{
+  "seed": {
+    "files": { "/docs/crlf-bom.md": { "text": "# 見出し\n\n本文の1行目\n", "bom": true, "crlf": true } },
+    "openPath": "/docs/crlf-bom.md"
+  },
+  "steps": [
+    { "expect": { "testId": "doc-title", "equals": "無題" }, "note": "起動直後は無題" },
+    { "expect": { "testId": "unsaved-mark", "read": "count", "equals": 0 } },
+    { "press": "ControlOrMeta+o" },
+    { "expect": { "testId": "doc-title", "equals": "crlf-bom.md" } },
+    { "expect": { "eval": "window.__mdeE2E.editor.getText()", "equals": "# 見出し\n\n本文の1行目\n" }, "note": "改行は LF に正規化されて表示される" },
+    { "click": ".cm-content" },
+    { "press": "ControlOrMeta+End" },
+    { "type": "追記" },
+    { "expect": { "testId": "unsaved-mark", "read": "visible", "equals": true } },
+    { "observe": "before-save", "files": ["/docs/crlf-bom.md"] },
+    { "screenshot": "before-save" },
+    { "press": "ControlOrMeta+s" },
+    { "expect": { "testId": "unsaved-mark", "read": "count", "equals": 0 } },
+    { "expect": { "eval": "window.__mdeE2E.log", "equals": [{ "kind": "save", "path": "/docs/crlf-bom.md", "outcome": "written" }] } },
+    { "observe": "after-save", "files": ["/docs/crlf-bom.md"] },
+    { "screenshot": "after-save" }
+  ]
+}

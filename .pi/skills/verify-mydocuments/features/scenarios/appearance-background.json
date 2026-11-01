@@ -1,0 +1,237 @@
+{
+  "seed": {
+    "preferences": {
+      "theme": "light"
+    },
+    "files": {
+      "/img/bg.png": {
+        "png": {
+          "width": 8,
+          "height": 8,
+          "rgb": [
+            20,
+            60,
+            120
+          ]
+        }
+      }
+    },
+    "imagePath": "/img/bg.png"
+  },
+  "steps": [
+    {
+      "press": "ControlOrMeta+,"
+    },
+    {
+      "expect": {
+        "testId": "canvas-bg",
+        "read": "attr:data-kind",
+        "equals": "gradient"
+      },
+      "note": "既定はグラデーション"
+    },
+    {
+      "check": {
+        "panel": true,
+        "role": "radio",
+        "name": "単色"
+      }
+    },
+    {
+      "fill": {
+        "panel": true,
+        "label": "単色の色",
+        "value": "#336699"
+      }
+    },
+    {
+      "expect": {
+        "testId": "canvas-bg",
+        "read": "css:background-color",
+        "equals": "rgb(51, 102, 153)"
+      }
+    },
+    {
+      "screenshot": "bg-color"
+    },
+    {
+      "check": {
+        "panel": true,
+        "role": "radio",
+        "name": "グラデーション",
+        "exact": true
+      }
+    },
+    {
+      "check": {
+        "panel": true,
+        "role": "radio",
+        "name": "夕暮れ"
+      }
+    },
+    {
+      "expect": {
+        "testId": "canvas-bg",
+        "read": "css:background-image",
+        "matches": "linear-gradient"
+      }
+    },
+    {
+      "screenshot": "bg-gradient-dusk"
+    },
+    {
+      "check": {
+        "panel": true,
+        "role": "radio",
+        "name": "画像",
+        "exact": true
+      }
+    },
+    {
+      "expect": {
+        "testId": "image-status",
+        "equals": "画像は未選択です"
+      }
+    },
+    {
+      "click": {
+        "testId": "image-pick"
+      }
+    },
+    {
+      "expect": {
+        "testId": "canvas-bg-image",
+        "read": "visible",
+        "equals": true
+      }
+    },
+    {
+      "expect": {
+        "testId": "canvas-bg-image",
+        "read": "attr:src",
+        "matches": "^blob:"
+      }
+    },
+    {
+      "expect": {
+        "testId": "image-status",
+        "equals": "取り込み済み"
+      }
+    },
+    {
+      "fill": {
+        "panel": true,
+        "label": "画像の明るさ",
+        "value": "0.5"
+      }
+    },
+    {
+      "expect": {
+        "testId": "canvas-bg-image",
+        "read": "css:filter",
+        "equals": "brightness(0.5)"
+      }
+    },
+    {
+      "screenshot": "bg-image"
+    },
+    {
+      "check": {
+        "panel": true,
+        "label": "背景を表示しない"
+      }
+    },
+    {
+      "expect": {
+        "testId": "canvas-bg",
+        "read": "count",
+        "equals": 0
+      },
+      "note": "背景層が消える"
+    },
+    {
+      "expect": {
+        "testId": "canvas-surface",
+        "read": "css:opacity",
+        "equals": "1"
+      }
+    },
+    {
+      "screenshot": "bg-hidden"
+    },
+    {
+      "uncheck": {
+        "panel": true,
+        "label": "背景を表示しない"
+      }
+    },
+    {
+      "check": {
+        "panel": true,
+        "role": "radio",
+        "name": "単色"
+      }
+    },
+    {
+      "fill": {
+        "panel": true,
+        "label": "単色の色",
+        "value": "#000000"
+      }
+    },
+    {
+      "fill": {
+        "panel": true,
+        "label": "本文面の不透明度",
+        "value": "0"
+      }
+    },
+    {
+      "expect": {
+        "testId": "contrast-warning",
+        "read": "visible",
+        "equals": true
+      },
+      "note": "暗い背景 + 本文面なしでコントラスト警告"
+    },
+    {
+      "expect": {
+        "testId": "contrast-ratio",
+        "contains": "基準 4.5 未満"
+      }
+    },
+    {
+      "screenshot": "contrast-warning"
+    },
+    {
+      "fill": {
+        "panel": true,
+        "label": "本文面の不透明度",
+        "value": "1"
+      }
+    },
+    {
+      "expect": {
+        "testId": "contrast-warning",
+        "read": "count",
+        "equals": 0
+      },
+      "note": "戻すと警告が消える"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.savedPreferences.at(-1)?.surfaceOpacity",
+        "equals": 1,
+        "timeout": 4000
+      },
+      "note": "設定は debounce の後に保存される"
+    },
+    {
+      "observe": "final",
+      "eval": {
+        "savedBackground": "window.__mdeE2E.savedPreferences.at(-1).background",
+        "imageImports": "window.__mdeE2E.calls.imageImport"
+      }
+    }
+  ]
+}

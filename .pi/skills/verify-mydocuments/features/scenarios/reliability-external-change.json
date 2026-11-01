@@ -1,0 +1,18 @@
+{
+  "seed": { "files": { "/docs/note.md": { "text": "元の本文" } }, "openPath": "/docs/note.md" },
+  "steps": [
+    { "press": "ControlOrMeta+o" },
+    { "expect": { "testId": "doc-title", "equals": "note.md" } },
+    { "expect": { "eval": "window.__mdeE2E.watched", "equals": "/docs/note.md" }, "note": "開いた文書が監視対象になる" },
+    { "externalWrite": { "path": "/docs/note.md", "text": "外部で書き換えた本文" } },
+    { "expect": { "eval": "window.__mdeE2E.editor.getText()", "equals": "外部で書き換えた本文" }, "note": "未保存の変更がなければ自動で読み直す（監視の通知）" },
+    { "expect": { "testId": "toast", "contains": "読み直しました" } },
+    { "expect": { "testId": "conflict-bar", "read": "count", "equals": 0 } },
+    { "screenshot": "auto-reloaded" },
+    { "externalWrite": { "path": "/docs/note.md", "text": "通知なしの変更", "notify": false } },
+    { "expect": { "eval": "window.__mdeE2E.editor.getText()", "equals": "外部で書き換えた本文", "timeout": 300 }, "note": "通知が届かないうちは気づかない" },
+    { "focusWindow": true },
+    { "expect": { "eval": "window.__mdeE2E.editor.getText()", "equals": "通知なしの変更" }, "note": "ウィンドウのフォーカス復帰でも拾う" },
+    { "observe": "after-focus-reload" }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "seed": {
+    "files": { "/docs/mixed.md": { "raw": "a\r\nb\r\nc\r\nd\ne" } },
+    "openPath": "/docs/mixed.md"
+  },
+  "steps": [
+    { "press": "ControlOrMeta+o" },
+    { "expect": { "testId": "doc-title", "equals": "mixed.md" } },
+    { "expect": { "testId": "unsaved-mark", "read": "count", "equals": 0 } },
+    { "click": ".cm-content" },
+    { "press": "ControlOrMeta+End" },
+    { "type": "!" },
+    { "press": "ControlOrMeta+s" },
+    { "expect": { "testId": "toast", "contains": "多数派" } },
+    { "expect": { "testId": "toast", "contains": "CRLF" } },
+    { "expect": { "eval": "new TextDecoder().decode(Uint8Array.from(window.__mdeE2E.readFile('/docs/mixed.md')))", "equals": "a\r\nb\r\nc\r\nd\r\ne!" }, "note": "CRLF 3 行 + LF 1 行は、多数派の CRLF に揃って保存される" },
+    { "observe": "mixed-saved", "files": ["/docs/mixed.md"] },
+    { "screenshot": "mixed-eol-toast" }
+  ]
+}

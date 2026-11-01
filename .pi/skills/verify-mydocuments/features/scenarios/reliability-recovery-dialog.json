@@ -1,0 +1,31 @@
+{
+  "seed": {
+    "files": { "/docs/note.md": { "text": "元の本文" } },
+    "drafts": [
+      {
+        "draftId": "0f8fad5b-d9cb-469f-a165-70867728950e",
+        "path": "/docs/note.md",
+        "text": "元の本文と、強制終了の前に書いた分",
+        "format": { "bom": false, "eol": "lf", "mixedEol": false },
+        "baseRevisionOfFile": "/docs/note.md",
+        "updatedAt": 1792033440000
+      }
+    ]
+  },
+  "steps": [
+    { "expect": { "testId": "recovery-dialog", "read": "visible", "equals": true }, "note": "起動時の自動処理: 草稿があれば復旧の確認が出る" },
+    { "expect": { "testId": "recovery-name", "equals": "note.md" } },
+    { "expect": { "role": "alertdialog", "contains": "前回の未保存の草稿があります" } },
+    { "screenshot": "recovery-dialog" },
+    { "click": { "testId": "recovery-restore" } },
+    { "expect": { "testId": "doc-title", "equals": "note.md" } },
+    { "expect": { "eval": "window.__mdeE2E.editor.getText()", "equals": "元の本文と、強制終了の前に書いた分" } },
+    { "expect": { "testId": "unsaved-mark", "read": "visible", "equals": true }, "note": "復元した本文は未保存として開く" },
+    { "expect": { "testId": "conflict-bar", "read": "count", "equals": 0 } },
+    { "press": "ControlOrMeta+s" },
+    { "expect": { "testId": "unsaved-mark", "read": "count", "equals": 0 } },
+    { "expect": { "eval": "window.__mdeE2E.readDrafts().length", "equals": 0, "timeout": 4000 } },
+    { "observe": "restored-and-saved", "files": ["/docs/note.md"] },
+    { "screenshot": "restored" }
+  ]
+}

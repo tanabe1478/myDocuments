@@ -1,0 +1,28 @@
+{
+  "seed": {
+    "files": { "/docs/note.md": { "text": "前回の本文" } },
+    "session": { "lastPath": "/docs/note.md" }
+  },
+  "steps": [
+    { "expect": { "testId": "doc-title", "equals": "note.md" }, "note": "起動時の自動処理: 草稿がなければ前回の文書を開き直す" },
+    { "expect": { "eval": "window.__mdeE2E.editor.getText()", "equals": "前回の本文" } },
+    { "expect": { "testId": "recovery-dialog", "read": "count", "equals": 0 } },
+    { "requestClose": true },
+    { "expect": { "eval": "window.__mdeE2E.closed", "equals": true }, "note": "未保存がなければ確認せずに終了" },
+    { "expect": { "css": "[role=alertdialog]", "read": "count", "equals": 0 } },
+    { "reload": true },
+    { "expect": { "eval": "window.__mdeE2E.closed", "equals": false }, "note": "reload で bridge が作り直される（以降は新しい終了確認の検証）" },
+    { "click": ".cm-content" },
+    { "press": "ControlOrMeta+End" },
+    { "type": "追記" },
+    { "requestClose": true },
+    { "expect": { "role": "alertdialog", "contains": "note.md" } },
+    { "screenshot": "close-confirm" },
+    { "click": { "testId": "discard-cancel" } },
+    { "expect": { "eval": "window.__mdeE2E.closed", "equals": false }, "note": "キャンセルすると終了しない" },
+    { "requestClose": true },
+    { "click": { "testId": "discard-save" } },
+    { "expect": { "eval": "window.__mdeE2E.closed", "equals": true } },
+    { "observe": "saved-and-closed", "files": ["/docs/note.md"] }
+  ]
+}

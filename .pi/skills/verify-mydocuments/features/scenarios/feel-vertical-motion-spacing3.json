@@ -1,0 +1,573 @@
+{
+  "seed": {
+    "files": {
+      "/docs/motion.md": {
+        "text": "# 見出し1\n本文の1行目\n本文の2行目\n\n## 見出し2\n## 見出し2の続き\n本文\n### 見出し3\n\n#### 見出し4\n- 一つ目\n- 二つ目\n- 三つ目\n  - 入れ子の項目\n1. 番号付き\n> 引用の1行目\n> > 入れ子の引用\n   \n　\n\n##### 見出し5\n###### 見出し6\n本文の末尾付近\n```\n# コードの中\n\nコード\n```\n# 最後の見出し\n最後の本文"
+      }
+    },
+    "openPath": "/docs/motion.md",
+    "preferences": {
+      "theme": "light",
+      "paragraphSpacing": 3
+    }
+  },
+  "steps": [
+    {
+      "press": "ControlOrMeta+o"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "motion.md"
+      }
+    },
+    {
+      "click": ".cm-content"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const els = Array.from(document.querySelectorAll('.cm-line')); return els.slice(1).every((el, i) => Math.abs(el.getBoundingClientRect().top - els[i].getBoundingClientRect().bottom) < 0.5); })()",
+        "equals": true
+      },
+      "note": "行と行の間に隙間（margin）がない"
+    },
+    {
+      "press": "ControlOrMeta+Home"
+    },
+    {
+      "eval": "window.__caret = 0; window.__mdeE2E.editor.onSelectionChange((s) => { window.__caret = s.head; }); true"
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 1
+      },
+      "note": "ArrowDown 1 回目で行 1"
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 2
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 3
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 4
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 5
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 6
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 7
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 8
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 9
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 10
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 11
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 12
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 13
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 14
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 15
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 16
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 17
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 18
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 19
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 20
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 21
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 22
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 23
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 24
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 25
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 26
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 27
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 28
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 29
+      },
+      "note": "ArrowDown 29 回目で行 29"
+    },
+    {
+      "screenshot": "after-down"
+    },
+    {
+      "press": "ControlOrMeta+End"
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 28
+      },
+      "note": "ArrowUp 1 回目"
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 27
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 26
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 25
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 24
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 23
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 22
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 21
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 20
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 19
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 18
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 17
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 16
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 15
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 14
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 13
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 12
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 11
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 10
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 9
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 8
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 7
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 6
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 5
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 4
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 3
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 2
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 1
+      }
+    },
+    {
+      "press": "ArrowUp"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__caret).split('\\n').length - 1",
+        "equals": 0
+      },
+      "note": "ArrowUp 29 回目"
+    }
+  ]
+}

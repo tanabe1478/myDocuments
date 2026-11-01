@@ -1,0 +1,22 @@
+{
+  "seed": { "savePath": "/docs/new.md" },
+  "steps": [
+    { "click": ".cm-content" },
+    { "type": "# 新規" },
+    { "press": "Enter" },
+    { "type": "本文" },
+    { "expect": { "testId": "unsaved-mark", "read": "visible", "equals": true } },
+    { "press": "ControlOrMeta+s" },
+    { "expect": { "testId": "doc-title", "equals": "new.md" }, "note": "無題の文書は Mod+S で保存先ダイアログ（seed の savePath）を経由する" },
+    { "expect": { "testId": "unsaved-mark", "read": "count", "equals": 0 } },
+    { "observe": "new-saved", "files": ["/docs/new.md"] },
+    { "expect": { "eval": "new TextDecoder().decode(Uint8Array.from(window.__mdeE2E.readFile('/docs/new.md')))", "equals": "# 新規\n本文" }, "note": "既定は LF・BOM なし" },
+    { "type": "。" },
+    { "press": "ControlOrMeta+s" },
+    { "expect": { "testId": "unsaved-mark", "read": "count", "equals": 0 } },
+    { "expect": { "eval": "({ saveAs: window.__mdeE2E.calls.saveAs, save: window.__mdeE2E.calls.save })", "equals": { "saveAs": 1, "save": 1 } }, "note": "保存先が決まった後は、ダイアログなしの上書き" },
+    { "observe": "overwritten", "files": ["/docs/new.md"] },
+    { "press": "ControlOrMeta+Shift+s" },
+    { "screenshot": "after-save-as" }
+  ]
+}

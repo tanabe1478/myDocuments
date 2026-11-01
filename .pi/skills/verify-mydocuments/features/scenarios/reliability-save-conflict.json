@@ -1,0 +1,23 @@
+{
+  "seed": { "files": { "/docs/note.md": { "text": "元の本文" } }, "openPath": "/docs/note.md" },
+  "steps": [
+    { "press": "ControlOrMeta+o" },
+    { "expect": { "testId": "doc-title", "equals": "note.md" } },
+    { "click": ".cm-content" },
+    { "press": "ControlOrMeta+End" },
+    { "type": "追記" },
+    { "externalWrite": { "path": "/docs/note.md", "text": "保存直前に外部が書いた版", "notify": false } },
+    { "expect": { "testId": "conflict-bar", "read": "count", "equals": 0 }, "note": "通知なし: アプリはまだ気づいていない" },
+    { "press": "ControlOrMeta+s" },
+    { "expect": { "testId": "conflict-bar", "read": "visible", "equals": true }, "note": "保存直前の検査で衝突を検出" },
+    { "expect": { "testId": "toast", "contains": "保存しませんでした" } },
+    { "expect": { "eval": "({ writes: window.__mdeE2E.physicalWrites, conflicts: window.__mdeE2E.conflicts })", "equals": { "writes": 0, "conflicts": 1 } } },
+    { "expect": { "eval": "new TextDecoder().decode(Uint8Array.from(window.__mdeE2E.readFile('/docs/note.md')))", "equals": "保存直前に外部が書いた版" }, "note": "外部の版は壊れていない" },
+    { "expect": { "testId": "unsaved-mark", "read": "visible", "equals": true } },
+    { "screenshot": "save-conflict" },
+    { "observe": "save-conflict", "files": ["/docs/note.md"] },
+    { "requestClose": true },
+    { "click": { "testId": "discard-save" } },
+    { "expect": { "eval": "window.__mdeE2E.closed", "equals": false, "timeout": 500 }, "note": "保存が競合したときは終了しない" }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "seed": { "files": { "/docs/note.md": { "text": "元の本文" } }, "openPath": "/docs/note.md" },
+  "steps": [
+    { "press": "ControlOrMeta+o" },
+    { "expect": { "testId": "doc-title", "equals": "note.md" } },
+    { "click": ".cm-content" },
+    { "press": "ControlOrMeta+End" },
+    { "type": "草稿になる" },
+    { "expect": { "eval": "window.__mdeE2E.readDrafts().length", "equals": 0, "timeout": 500 }, "note": "入力直後はまだ草稿がない" },
+    { "expect": { "eval": "window.__mdeE2E.readDrafts().length", "equals": 1, "timeout": 6000 }, "note": "入力が約 2 秒止まると草稿が書かれる" },
+    { "expect": { "eval": "window.__mdeE2E.calls.save", "equals": 0 }, "note": "元の文書には書かない" },
+    { "observe": "draft-written", "files": ["/docs/note.md"] },
+    { "press": "ControlOrMeta+s" },
+    { "expect": { "eval": "window.__mdeE2E.readDrafts().length", "equals": 0, "timeout": 4000 }, "note": "保存すると草稿は消える" },
+    { "type": "x" },
+    { "expect": { "eval": "window.__mdeE2E.readDrafts().length", "equals": 1, "timeout": 6000 } },
+    { "press": "Backspace" },
+    { "expect": { "eval": "window.__mdeE2E.readDrafts().length", "equals": 0, "timeout": 4000 }, "note": "元に戻って未保存でなくなったら草稿を消す" }
+  ]
+}
