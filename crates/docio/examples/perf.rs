@@ -2,9 +2,9 @@
 //!
 //! 使い方（release で測る）:
 //!   cargo run --release --manifest-path crates/docio/Cargo.toml --example perf -- \
-//!     --iters 50 --tmp <作業ディレクトリ> <A.md> <B.md> ...
+//!     --iters 200 --tmp <作業ディレクトリ> <A.md> <B.md> ...
 //!
-//! 測る操作（ファイルごと、反復 --iters 回。単位はマイクロ秒）:
+//! 測る操作（ファイルごと、反復 --iters 回。単位はマイクロ秒。出力の samples は反復ごとの値）:
 //! - read: fs::read（ページキャッシュに載った状態）
 //! - decode: BOM と改行の判定、LF への正規化
 //! - encode: 記録した形式への復元
@@ -29,15 +29,19 @@ fn quantile(sorted: &[f64], p: f64) -> f64 {
     sorted[rank - 1]
 }
 
-fn summary(mut xs: Vec<f64>) -> String {
+/// 要約と、反復ごとの生の値（samples。実行順。perf/compare.mjs が揺れ = MAD を求めるのに使う）。
+fn summary(xs: Vec<f64>) -> String {
+    let samples = xs.iter().map(|x| format!("{x:.3}")).collect::<Vec<_>>().join(",");
+    let mut xs = xs;
     xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
     format!(
-        "{{\"n\":{},\"median\":{:.1},\"p95\":{:.1},\"min\":{:.1},\"max\":{:.1}}}",
+        "{{\"n\":{},\"median\":{:.3},\"p95\":{:.3},\"min\":{:.3},\"max\":{:.3},\"samples\":[{}]}}",
         xs.len(),
         quantile(&xs, 0.5),
         quantile(&xs, 0.95),
         xs[0],
-        xs[xs.len() - 1]
+        xs[xs.len() - 1],
+        samples
     )
 }
 

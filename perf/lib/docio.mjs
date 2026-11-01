@@ -3,6 +3,8 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { OUT_DIR, ROOT, failedItem, item, rel } from './util.mjs';
 
+export const DOCIO_ITERS = 200;
+
 const OPS = {
   read: 'fs::read（ページキャッシュ上）',
   decode: 'decode（BOM と改行の判定、LF への正規化）',
@@ -14,7 +16,8 @@ const OPS = {
 };
 
 export function measureDocio({ fixtures, quick, log }) {
-  const iters = quick ? 10 : 50;
+  // 1 回が 1ms 未満の操作が多く、50 回では 2 回の計測の中央値が +24% 動いた（docs/perf-baseline.md の「揺れ」）ので、既定は 200 回。
+  const iters = quick ? 30 : DOCIO_ITERS;
   const args = ['run', '--release', '--quiet', '--manifest-path', 'crates/docio/Cargo.toml', '--example', 'perf', '--', '--iters', String(iters), '--tmp', rel(path.join(OUT_DIR, 'docio-tmp')), ...fixtures.map((f) => f.file)];
   log(`cargo run --release --example perf（反復 ${iters} 回）`);
   const r = spawnSync('cargo', args, { cwd: ROOT, encoding: 'utf8', timeout: 600_000, maxBuffer: 16 * 1024 * 1024 });
@@ -31,8 +34,8 @@ export function measureDocio({ fixtures, quick, log }) {
     for (const [op, label] of Object.entries(OPS)) {
       const s = f[op];
       // 内部の単位はマイクロ秒。結果は ms で持つ（Web UI の項目と並べるため）。
-      const ms = (x) => Math.round((x / 1000) * 10000) / 10000;
-      items.push(item(`docio.${op}.${id}`, { group: 'docio', unit: 'ms', n: s.n, median: ms(s.median), p95: ms(s.p95), min: ms(s.min), max: ms(s.max), metric: label, bytes: f.bytes, profile: out.profile }));
+      const ms = (x) => Math.round((x / 1000) * 100000) / 100000;
+      items.push(item(`docio.${op}.${id}`, { group: 'docio', unit: 'ms', n: s.n, median: ms(s.median), p95: ms(s.p95), min: ms(s.min), max: ms(s.max), samples: s.samples.map(ms), metric: label, bytes: f.bytes, profile: out.profile }));
     }
   }
   return { items, profile: out.profile };

@@ -130,12 +130,16 @@ Tauri だけ止めるときは `tauri.mjs stop --run-id <run-id>`。止めると
 性能の基準値を取る、または変更で遅くなっていないか確かめるときの手順。上の Launch から Cleanup とは別の仕組みで、リポジトリ直下の perf/ が持つ。結果の読み方と基準値は docs/perf-baseline.md。
 
 ```
-npm run perf -- --quick --web-only      # 回数を減らした Web UI だけ（chromium と webkit）。sandbox でも動く。結果は perf/out/（gitignore）
-npm run perf                            # 全部。macOS 実機で Tauri の release ビルドを作って計測する。結果は perf/results/<日付>-<コミット>.json
-npm run perf:compare -- <base.json> <new.json>   # 20% 以上悪化した項目を一覧にして exit 1。引数を省くと perf/results/ の最新 2 件
+npm run perf -- --quick --web-only      # 回数を減らした Web UI だけ（chromium と webkit、約 1.6 分）。sandbox でも動く。結果は perf/out/（gitignore）
+npm run perf                            # 全部。macOS 実機で Tauri の release ビルドを作って計測する（約 6 分）。結果は perf/results/<日付>-<コミット>.json
+npm run perf:compare -- <base.json> <new.json>   # 悪化した項目を一覧にして exit 1。引数を省くと perf/results/ の最新 2 件
+npm run perf:test                       # 比較の仕組み（perf/lib/judge.mjs）の単体テスト（node:test）
+npm run perf -- --quick --web-only --inject-input-delay 3   # 計測専用: 全 keydown に 3ms のビジーウェイトを足す。悪化を検出できるかの確認用（結果は perf/out/ だけ）
 ```
 
-- 計測項目: Tauri 実機の起動時間（cold / warm）と全プロセス合計の RSS（空、100KB、1MB）、Web UI の入力から描画まで（A〜D、末尾と中央）と IME 確定（chromium の CDP による模擬）、1MB のスクロールのフレーム時間、開く操作、フォーカス・タイプライターの切替、docio の読み書き（Rust の example を release で）、配布物のサイズ。
+- 計測項目: Tauri 実機の起動時間（cold / warm）と全プロセス合計の RSS（空、100KB、1MB）、Web UI の入力から描画まで（A〜D、末尾と中央。フレーム単位）、入力の処理時間（keydown から CodeMirror の更新通知まで。フレームに丸められない）、IME 確定（chromium の CDP による模擬）、1MB のスクロールのフレーム時間、開く操作、フォーカス・タイプライターの切替、docio の読み書き（Rust の example を release で 200 回）、配布物のサイズ。
+- 悪化の判定: 20% 以上悪化 かつ 差が標本の揺れ（1.4826 × MAD とブロックブートストラップの大きいほう）の 3 倍を超える かつ 単位ごとの小さな下限以上。標本が 3 件未満（cold）は判定せず参考に出す。p95 は標本 40 件以上で、中央値も悪化したときだけ悪化に数える。標本が無い古い結果との比較は従来の固定の下限（その旨を表示）。式と係数は perf/lib/judge.mjs と docs/perf-baseline.md の「悪化の判定」。
+- quick の結果は標本が少なく、判定の根拠にならない（検出の確認とスモーク用）。基準値の比較にはフルの結果を使う。遅延を注入した結果は perf/results/ に置けない。
 - Tauri は、この Skill の Launch と同じ作法で HOME と CFFIXED_USER_HOME を計測用の run ディレクトリへ向けて起動し、前回の文書（session.json）に計測データを置いて開き直させる。実ユーザーのアプリデータには触れない。計測の前後で実ホームの既知の場所の署名を比べ、変わっていれば結果に失敗として残す。OS へのキー入力・マウス操作は送らない。
 - 失敗した項目は、結果の status と reason に残る（他の項目は続行）。失敗が 1 件でもあれば run は exit 1。
 - 測定中は、同じマシンで重い処理（cargo、npm run test:e2e など）を並行して走らせない。結果は環境（負荷、電源）に左右される。

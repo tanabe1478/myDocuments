@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { chromium, webkit } from 'playwright-core';
 import { serve } from '../../phase0/lib/serve.mjs';
-import { inPageSource } from './inpage.mjs';
+import { inPageSourceFor } from './inpage.mjs';
 import { OUT_DIR, ROOT, ensureDir, failedItem, item, rel, sleep, stats } from './util.mjs';
 
 const ENGINES = { chromium, webkit };
@@ -30,18 +30,18 @@ export function buildWeb(log) {
 /** 条件の定義（回数）。--quick は回数を減らす。 */
 export function webPlan(quick) {
   return quick
-    ? { keys: 15, imeRounds: 5, openReps: 2, scrollMs: 2500, modeReps: 3, warmupKeys: 3 }
+    ? { keys: 40, imeRounds: 5, openReps: 2, scrollMs: 2500, modeReps: 3, warmupKeys: 3 }
     : { keys: 100, imeRounds: 30, openReps: 7, scrollMs: 8000, modeReps: 10, warmupKeys: 10 };
 }
 
 const SCROLL_SPEED_PX_PER_SEC = 2400;
 
-async function newPage(browser, url) {
+async function newPage(browser, url, injectDelayMs = 0) {
   const context = await browser.newContext({ viewport: VIEWPORT });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.addInitScript(inPageSource);
+  await page.addInitScript(inPageSourceFor(injectDelayMs));
   await page.goto(url);
   await page.waitForSelector('html[data-ready="true"]', { timeout: 15_000 });
   await page.waitForSelector('.cm-content', { timeout: 15_000 });
@@ -136,7 +136,7 @@ async function caretAt(page, where) {
 const docLength = (page) => page.evaluate(() => window.__mdeE2E.editor.getText().length);
 
 async function typeKeys(page, count, warmup) {
-  await page.evaluate(() => { window.__perf.typingOn = true; window.__perf.typing.length = 0; });
+  await page.evaluate(() => { window.__perf.typingOn = true; window.__perf.typing.length = 0; window.__perf.typingCpu.length = 0; window.__perf.cpuWait = null; });
   const total = count + warmup;
   const lenBefore = await docLength(page);
   for (let i = 0; i < total; i++) {
@@ -146,10 +146,12 @@ async function typeKeys(page, count, warmup) {
     await sleep(25);
   }
   const all = await page.evaluate(() => window.__perf.typing.slice());
+  const allCpu = await page.evaluate(() => window.__perf.typingCpu.slice());
   const inserted = (await docLength(page)) - lenBefore;
   await page.evaluate(() => { window.__perf.typingOn = false; });
   const measured = all.slice(warmup);
-  return { samples: measured.filter((x) => x !== null), timeouts: measured.filter((x) => x === null).length, inserted, total };
+  const measuredCpu = allCpu.slice(warmup);
+  return { samples: measured.filter((x) => x !== null), timeouts: measured.filter((x) => x === null).length, cpu: measuredCpu.filter((x) => x !== null), cpuTimeouts: measuredCpu.filter((x) => x === null).length, inserted, total };
 }
 
 async function imeRounds(page, rounds) {
@@ -240,9 +242,10 @@ function pushStats(items, id, group, samples, extra = {}) {
 
 /**
  * Web UI の全項目を計測する。戻り値は item の配列と、環境（ブラウザの版）。
- * opts: { browsers, fixtures, quick, log }
+ * opts: { browsers, fixtures, quick, log, injectInputDelayMs }
+ * injectInputDelayMs: 計測専用。全 keydown に足すビジーウェイト（ms）。検出の確認に使う（docs/perf-baseline.md）。
  */
-export async function measureWeb({ browsers, fixtures, quick, log }) {
+export async function measureWeb({ browsers, fixtures, quick, log, injectInputDelayMs = 0 }) {
   const plan = webPlan(quick);
   const items = [];
   const versions = {};
@@ -282,7 +285,7 @@ export async function measureWeb({ browsers, fixtures, quick, log }) {
         // ---- 読み込み（開く操作 → 本文の表示） ----
         let leftOpen = null;
         try {
-          leftOpen = await newPage(browser, url);
+          leftOpen = await newPage(browser, url, injectInputDelayMs);
           const samples = await openDataset(leftOpen.page, t, { reps: plan.openReps });
           const valid = samples.filter((x) => x !== null);
           pushStats(items, `web.open.${name}.${t.id}`, 'open', valid, { metric: 'Mod+O の keydown から本文の先頭行とタイトルが画面に出た次のフレームの後まで', bytes: t.bytes, timeouts: samples.length - valid.length });
@@ -295,7 +298,7 @@ export async function measureWeb({ browsers, fixtures, quick, log }) {
         for (const where of ['end', 'middle']) {
           let ctx = null;
           try {
-            ctx = await newPage(browser, url);
+            ctx = await newPage(browser, url, injectInputDelayMs);
             const { page } = ctx;
             await openDataset(page, t, { reps: 1 });
             await caretAt(page, where);
@@ -308,6 +311,11 @@ export async function measureWeb({ browsers, fixtures, quick, log }) {
               keysSent: r.total,
             });
             if (r.inserted !== r.total && r.timeouts === 0) items.at(-1).note = `本文の増加 ${r.inserted} 文字が送信数 ${r.total} と一致しない`;
+            pushStats(items, `web.input-cpu.${name}.${t.id}.${where}`, 'input-cpu', r.cpu, {
+              metric: 'keydown（capture）の timeStamp から、CodeMirror が本文の DOM を更新し終えて update listener（onChange）が呼ばれた直後（マイクロタスク）まで。描画フレームを待たないので、60Hz のフレームには丸められない',
+              bytes: t.bytes,
+              timeouts: r.cpuTimeouts,
+            });
 
             if (name === 'chromium') {
               try {
@@ -333,7 +341,7 @@ export async function measureWeb({ browsers, fixtures, quick, log }) {
       if (c) {
         let ctx = null;
         try {
-          ctx = await newPage(browser, url);
+          ctx = await newPage(browser, url, injectInputDelayMs);
           await openDataset(ctx.page, c, { reps: 1 });
           const r = await scrollRun(ctx.page, plan.scrollMs);
           const f = stats(r.frames);
@@ -352,7 +360,7 @@ export async function measureWeb({ browsers, fixtures, quick, log }) {
       for (const t of targets.filter((x) => x.id === 'B' || x.id === 'C')) {
         let ctx = null;
         try {
-          ctx = await newPage(browser, url);
+          ctx = await newPage(browser, url, injectInputDelayMs);
           await openDataset(ctx.page, t, { reps: 1 });
           await caretAt(ctx.page, 'middle');
           const f = await modeToggle(ctx.page, 'f', FOCUS_ON, FOCUS_OFF, plan.modeReps);

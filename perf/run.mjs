@@ -10,11 +10,13 @@
 //   --skip-build       tauri build と Web UI のビルドを省く（既にビルド済みのとき）
 //   --with-debug       Tauri の debug ビルドの起動時間も記録する
 //   --out <path>       結果の保存先を指定
+//   --inject-input-delay <ms>   計測専用: Web UI の全 keydown に ms のビジーウェイトを足す（計測側のページ注入。アプリのコードは変えない）。
+//                      悪化の検出の確認に使う。結果は perf/out/ に出し（perf/results/ には置かない）、mode.injectInputDelayMs に記録する。
 // 各 group は失敗しても他を続け、失敗した item は status: "failed" と reason を結果に残す。
 // 終了コード: 失敗した item があれば 1（結果 JSON は書く）。
 import fs from 'node:fs';
 import path from 'node:path';
-import { measureDocio } from './lib/docio.mjs';
+import { DOCIO_ITERS, measureDocio } from './lib/docio.mjs';
 import { ensureFixtures } from './lib/fixtures.mjs';
 import { buildTauri, measureSizes, measureTauri } from './lib/tauri.mjs';
 import { OUT_DIR, RESULTS_DIR, ROOT, ensureDir, environment, failedItem, gitInfo, parseArgs, rel } from './lib/util.mjs';
@@ -24,6 +26,11 @@ const args = parseArgs(process.argv.slice(2));
 const quick = args.quick === true;
 const webOnly = args['web-only'] === true;
 const skipBuild = args['skip-build'] === true;
+const injectInputDelayMs = args['inject-input-delay'] === undefined ? 0 : Number(args['inject-input-delay']);
+if (!Number.isFinite(injectInputDelayMs) || injectInputDelayMs < 0) {
+  console.error('--inject-input-delay には 0 以上の ms を渡してください（例: --inject-input-delay 3）');
+  process.exit(2);
+}
 const only = typeof args.only === 'string' ? args.only.split(',') : null;
 const browsers = typeof args.browsers === 'string' ? args.browsers.split(',') : ['chromium', 'webkit'];
 const want = (g) => (only ? only.includes(g) : webOnly ? g === 'web' : true);
@@ -50,7 +57,7 @@ const browserVersions = {};
 if (want('web')) {
   try {
     if (!skipBuild || !fs.existsSync(path.join(OUT_DIR, 'web-dist'))) buildWeb(log);
-    const r = await measureWeb({ browsers, fixtures, quick, log });
+    const r = await measureWeb({ browsers, fixtures, quick, log, injectInputDelayMs });
     items.push(...r.items);
     Object.assign(browserVersions, r.versions);
   } catch (e) {
@@ -101,21 +108,28 @@ const result = {
   generatedAt: new Date().toISOString(),
   durationSec: Math.round((Date.now() - started) / 1000),
   command: cmd,
-  mode: { quick, webOnly, only, browsers },
+  mode: { quick, webOnly, only, browsers, ...(injectInputDelayMs > 0 ? { injectInputDelayMs } : {}) },
   commit: git,
   environment: {
     ...env,
     browsers: browserVersions,
     tauriBuildSeconds: tauriBuild?.seconds ?? null,
   },
-  plan: quick ? { ...plan, tauri: 'warm 3 回・メモリ 2 回' } : { ...plan, tauri: 'warm 7 回・メモリ 5 回', docio: '反復 50 回' },
+  plan: quick ? { ...plan, tauri: 'warm 3 回・メモリ 2 回' } : { ...plan, tauri: 'warm 7 回・メモリ 5 回', docio: `反復 ${DOCIO_ITERS} 回` },
   datasets: fixtures.map((f) => ({ id: f.id, name: f.name, bytes: f.bytes, chars: f.chars, sha256: f.sha256 })),
   extra,
   items,
 };
 
 let outFile;
-if (typeof args.out === 'string') outFile = path.resolve(args.out);
+if (typeof args.out === 'string') {
+  outFile = path.resolve(args.out);
+  if (injectInputDelayMs > 0 && outFile.startsWith(`${RESULTS_DIR}${path.sep}`)) {
+    console.error('遅延を注入した結果は perf/results/ に置けません（基準値になってしまうため）。');
+    process.exit(2);
+  }
+}
+else if (injectInputDelayMs > 0) outFile = path.join(OUT_DIR, `inject-${injectInputDelayMs}ms${quick ? '-quick' : ''}-${date}-${git.short}.json`);
 else if (quick) outFile = path.join(OUT_DIR, `quick-${date}-${git.short}.json`);
 else {
   ensureDir(RESULTS_DIR);

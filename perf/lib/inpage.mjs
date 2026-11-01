@@ -1,7 +1,20 @@
 // ページ内で動く計測の道具。addInitScript で window.__perf に入れる（アプリの読み込み前に注入する）。
 // 時刻はすべてページ内の performance.now()（ms）。イベントの起点は event.timeStamp（ブラウザがイベントを受けた時刻）。
+// injectDelayMs: 計測専用の遅延注入。全ての keydown の最初（capture、document）に、その ms のビジーウェイトを足す。
+// アプリのコードは変えず、計測のページにだけ注入する（本番のビルドには含まれない）。遅延の分は keydown の timeStamp より後なので、
+// 「入力から描画まで」と「入力の処理時間」のどちらにも含まれる。
+export const inPageSourceFor = (injectDelayMs = 0) => `window.__perfInjectDelayMs = ${Number(injectDelayMs) || 0};\n${inPageSource}`;
+
 export const inPageSource = `(() => {
-  const perf = (window.__perf = { typing: [], ime: [], imeCommit: [], changed: 0, composedEnd: 0, errors: [] });
+  const perf = (window.__perf = { typing: [], typingCpu: [], cpuWait: null, ime: [], imeCommit: [], changed: 0, composedEnd: 0, errors: [] });
+
+  // 計測専用の遅延注入（--inject-input-delay）。この listener を最初に登録するので、アプリや下の計測の listener より先に走る。
+  document.addEventListener('keydown', () => {
+    const ms = window.__perfInjectDelayMs || 0;
+    if (ms <= 0) return;
+    const end = performance.now() + ms;
+    while (performance.now() < end) { /* busy wait */ }
+  }, true);
 
   // pred が true になった最初のフレームの描画の後（rAF の後の最初のタスク）の時刻。timeout なら null。
   perf.frameWhen = (pred, timeoutMs = 3000) =>
@@ -26,7 +39,16 @@ export const inPageSource = `(() => {
     if (!ed) return false;
     if (perf.attached) return true;
     perf.attached = true;
-    ed.onChange(() => { perf.changed++; });
+    ed.onChange(() => {
+      perf.changed++;
+      // 入力の処理時間の終点。onChange は CodeMirror の update listener（本文の DOM の更新が済んだ後に呼ばれる）なので、
+      // その直後のマイクロタスクの時刻を取る。描画フレームには丸められない（rAF や MessageChannel を待たない）。
+      const w = perf.cpuWait;
+      if (w && perf.typingOn) {
+        perf.cpuWait = null;
+        queueMicrotask(() => { perf.typingCpu[w.slot] = performance.now() - w.t0; });
+      }
+    });
     return true;
   };
 
@@ -35,6 +57,9 @@ export const inPageSource = `(() => {
     if (!perf.typingOn || e.key.length !== 1 || e.metaKey || e.ctrlKey) return;
     const before = perf.changed;
     const t0 = e.timeStamp;
+    // 入力の処理時間: 結果は onChange（上の attach）が slot へ書く。届かなければ null のまま。
+    perf.cpuWait = { t0, slot: perf.typingCpu.length };
+    perf.typingCpu.push(null);
     perf.frameWhen(() => perf.changed > before).then((t1) => {
       perf.typing.push(t1 === null ? null : t1 - t0);
     });
