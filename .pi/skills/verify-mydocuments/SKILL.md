@@ -125,6 +125,22 @@ Tauri だけ止めるときは `tauri.mjs stop --run-id <run-id>`。止めると
 - 補助の検査として、実ユーザーのホームにある次の場所の中身の署名（相対パス、サイズ、mtime）を start と stop で比べ、変わっていれば exit 1: Application Support と WebKit と Caches の識別子ディレクトリ、WebKit と Caches のバイナリ名ディレクトリ、HTTPStorages、Preferences の plist、Saved Application State。HOME だけを付け替えても WebKit が実ホームの ~/Library/WebKit/<バイナリ名> と ~/Library/Caches/<バイナリ名> に書くことがあったので、CFFIXED_USER_HOME も run 専用ディレクトリへ向けている。
 - 限界: 実ホーム側の検査は上の既知の場所だけで、署名は mtime とサイズなので、同じサイズで mtime を戻す書き込みや、上記以外の場所への書き込みは検出しない。隔離の根拠は(1)と(2)であり、実ホームの署名が変わらなかったことは「触れていない」の証明ではなく、既知の場所に変化がなかったという観測にとどまる。
 
+## 性能計測（perf/）
+
+性能の基準値を取る、または変更で遅くなっていないか確かめるときの手順。上の Launch から Cleanup とは別の仕組みで、リポジトリ直下の perf/ が持つ。結果の読み方と基準値は docs/perf-baseline.md。
+
+```
+npm run perf -- --quick --web-only      # 回数を減らした Web UI だけ（chromium と webkit）。sandbox でも動く。結果は perf/out/（gitignore）
+npm run perf                            # 全部。macOS 実機で Tauri の release ビルドを作って計測する。結果は perf/results/<日付>-<コミット>.json
+npm run perf:compare -- <base.json> <new.json>   # 20% 以上悪化した項目を一覧にして exit 1。引数を省くと perf/results/ の最新 2 件
+```
+
+- 計測項目: Tauri 実機の起動時間（cold / warm）と全プロセス合計の RSS（空、100KB、1MB）、Web UI の入力から描画まで（A〜D、末尾と中央）と IME 確定（chromium の CDP による模擬）、1MB のスクロールのフレーム時間、開く操作、フォーカス・タイプライターの切替、docio の読み書き（Rust の example を release で）、配布物のサイズ。
+- Tauri は、この Skill の Launch と同じ作法で HOME と CFFIXED_USER_HOME を計測用の run ディレクトリへ向けて起動し、前回の文書（session.json）に計測データを置いて開き直させる。実ユーザーのアプリデータには触れない。計測の前後で実ホームの既知の場所の署名を比べ、変わっていれば結果に失敗として残す。OS へのキー入力・マウス操作は送らない。
+- 失敗した項目は、結果の status と reason に残る（他の項目は続行）。失敗が 1 件でもあれば run は exit 1。
+- 測定中は、同じマシンで重い処理（cargo、npm run test:e2e など）を並行して走らせない。結果は環境（負荷、電源）に左右される。
+- Web UI の計測はメモリ bridge の上で動く。DocumentBridge の内側（Rust の I/O と IPC）は含まないので、ディスクの読み書きは docio の項目で別に見る。
+
 ## Helpers
 
 すべて Node で、.pi/skills/verify-mydocuments/scripts/ にある。呼び出し方は上の各節のとおり。

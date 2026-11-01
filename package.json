@@ -12,7 +12,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "perf": "node perf/run.mjs",
+    "perf:compare": "node perf/compare.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",

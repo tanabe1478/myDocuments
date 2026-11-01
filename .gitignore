@@ -19,3 +19,6 @@ test-results/
 playwright-report/
 src-tauri/gen/
 artifacts/
+
+# perf/: quick runs, built Web UI, generated fixtures (perf/results/ is committed)
+perf/out/
