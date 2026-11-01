@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { backgroundImageId, resolveCanvas } from './canvas/canvas';
 import { CanvasBackground } from './canvas/CanvasBackground';
 import { countCharacters } from './canvas/charCount';
@@ -11,7 +11,9 @@ import {
   type RecoveryChoice,
 } from './document/controller';
 import { draftTitle } from './document/recovery';
+import { textKindOf } from './document/fileKinds';
 import { UNTITLED, documentTitle, isDirty } from './document/state';
+import { ExplorerController } from './explorer/controller';
 import type { EditorAdapter } from './editor/EditorAdapter';
 import { createCodeMirrorAdapter } from './editor/codemirror/CodeMirrorAdapter';
 import { BridgeError, type DocumentBridge, type DraftSummary } from './platform';
@@ -96,6 +98,9 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
     [],
   );
 
+  const explorer = useMemo(() => new ExplorerController({ bridge, notify }), [bridge, notify]);
+  const explorerState = useSyncExternalStore(explorer.subscribe, explorer.getState);
+
   const state = useSyncExternalStore(controller.subscribe, controller.getState);
   const external = useSyncExternalStore(controller.subscribe, controller.getExternal);
   const diskTextForDiff = diffOpen ? controller.getDiskTextForDiff() : null;
@@ -110,6 +115,7 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
     adapter.mount(host);
     adapter.focus();
     adapterRef.current = adapter;
+    adapter.setTextKind(textKindOf(controller.getState().path));
     adapter.setFocusMode(prefsRef.current.focusMode);
     adapter.setTypewriterMode(prefsRef.current.typewriterMode);
     const off = adapter.onChange((text) => {
@@ -150,6 +156,13 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
       adapterRef.current = null;
     };
   }, [bridge, controller]);
+
+  // .txt と .text は素のテキストとして表示する（別名保存で拡張子が変わったときも追従する）。描画の前に切り替える。
+  const textKind = textKindOf(state.path);
+  useLayoutEffect(() => adapterRef.current?.setTextKind(textKind), [textKind]);
+
+  // 前回のフォルダを復元する（開けなければ未選択のまま、トーストで知らせる）。
+  useEffect(() => void explorer.restore(), [explorer]);
 
   useEffect(() => adapterRef.current?.setFocusMode(prefs.focusMode), [prefs.focusMode]);
   useEffect(() => adapterRef.current?.setTypewriterMode(prefs.typewriterMode), [prefs.typewriterMode]);
@@ -277,6 +290,14 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
     [reveal],
   );
 
+  /** エクスプローラーから文書を開く。開けたら、本文へフォーカスを移す（すぐ書ける）。 */
+  const openFromExplorer = useCallback(
+    async (path: string) => {
+      if (await controller.openPath(path)) adapterRef.current?.focus();
+    },
+    [controller],
+  );
+
   const runCommand = useCallback(async (command: () => Promise<unknown>) => {
     await command();
     adapterRef.current?.focus();
@@ -368,7 +389,15 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
       data-conflict={isConflictBarVisible(external) ? 'true' : 'false'}
     >
       <CanvasBackground layer={canvas.layer} imageUrl={image.url} />
-      <Sidebar open={sidebarOpen} mode={sidebarLayoutMode} onClose={closeSidebar} />
+      <Sidebar
+        open={sidebarOpen}
+        mode={sidebarLayoutMode}
+        explorer={explorer}
+        explorerState={explorerState}
+        currentPath={state.path}
+        onOpenFile={(path) => void openFromExplorer(path)}
+        onClose={closeSidebar}
+      />
       <div className="workspace" data-testid="workspace">
         <div className="canvas-surface" data-testid="canvas-surface" aria-hidden="true" style={{ opacity: canvas.surfaceOpacity }} />
         <header className="topbar" ref={topbarRef} aria-label="上部バー" onFocus={reveal}>

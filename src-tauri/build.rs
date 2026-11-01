@@ -14,6 +14,8 @@ fn main() {
             "delete_draft",
             "load_session",
             "save_session",
+            "open_folder",
+            "list_folder",
             "close_app",
             "load_preferences",
             "save_preferences",

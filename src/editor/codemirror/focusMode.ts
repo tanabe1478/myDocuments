@@ -1,5 +1,6 @@
 import { RangeSetBuilder, StateEffect, type Extension } from '@codemirror/state';
 import { Decoration, ViewPlugin, type DecorationSet, type EditorView, type ViewUpdate } from '@codemirror/view';
+import type { TextKind } from '../../document/fileKinds';
 import { focusRange } from '../focusRange';
 
 /** カーソルのある段落以外の行に付ける class（見た目は theme.ts）。 */
@@ -13,9 +14,9 @@ const refresh = StateEffect.define<null>();
 /** IME の変換終了から再計算までの待ち（CodeMirror が変換の終了を確定する時間より後）。 */
 const AFTER_COMPOSITION_MS = 60;
 
-function dimDecorations(view: EditorView): DecorationSet {
+function dimDecorations(view: EditorView, kind: TextKind): DecorationSet {
   const { doc, selection } = view.state;
-  const range = focusRange(doc.lines, (n) => doc.line(n).text, doc.lineAt(selection.main.head).number);
+  const range = focusRange(doc.lines, (n) => doc.line(n).text, doc.lineAt(selection.main.head).number, kind === 'markdown');
   const builder = new RangeSetBuilder<Decoration>();
   let lastFrom = -1;
   for (const { from, to } of view.visibleRanges) {
@@ -39,8 +40,11 @@ class FocusModePlugin {
   private stale = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(private readonly view: EditorView) {
-    this.decorations = dimDecorations(view);
+  constructor(
+    private readonly view: EditorView,
+    private readonly kind: TextKind,
+  ) {
+    this.decorations = dimDecorations(view, kind);
   }
 
   update(update: ViewUpdate): void {
@@ -57,7 +61,7 @@ class FocusModePlugin {
     }
     if (forced || this.stale || changed) {
       this.stale = false;
-      this.decorations = dimDecorations(update.view);
+      this.decorations = dimDecorations(update.view, this.kind);
     }
   }
 
@@ -77,10 +81,10 @@ class FocusModePlugin {
 
 /**
  * フォーカスモード（UI-06）: カーソルのある段落（段落の定義は focusRange.ts）以外の行を弱く表示する。
- * 表示（行の class）だけを変え、本文には触れない。
+ * 表示（行の class）だけを変え、本文には触れない。kind が plain（.txt、.text）なら、空行だけで段落を分ける。
  */
-export function focusModeExtension(): Extension {
-  return ViewPlugin.fromClass(FocusModePlugin, {
+export function focusModeExtension(kind: TextKind = 'markdown'): Extension {
+  return ViewPlugin.define((view) => new FocusModePlugin(view, kind), {
     decorations: (plugin) => plugin.decorations,
     eventHandlers: {
       compositionend(this: FocusModePlugin) {

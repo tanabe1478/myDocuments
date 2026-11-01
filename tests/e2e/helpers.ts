@@ -118,10 +118,14 @@ export async function focusEditorEnd(page: Page): Promise<void> {
 }
 
 /** メモリ bridge の次のダイアログの戻り値を設定する。 */
-export async function setDialogPaths(page: Page, paths: { open?: string | null; save?: string | null }): Promise<void> {
+export async function setDialogPaths(
+  page: Page,
+  paths: { open?: string | null; save?: string | null; folder?: string | null },
+): Promise<void> {
   await page.evaluate((p) => {
     if (p.open !== undefined) window.__mdeE2E!.openPath = p.open;
     if (p.save !== undefined) window.__mdeE2E!.savePath = p.save;
+    if (p.folder !== undefined) window.__mdeE2E!.folderPath = p.folder;
   }, paths);
 }
 

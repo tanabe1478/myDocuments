@@ -3,6 +3,7 @@ import { emit, listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import type { DocumentFormat } from '../document/format';
+import { OPENABLE_EXTENSIONS } from '../document/fileKinds';
 import {
   BridgeError,
   type BackgroundImageData,
@@ -11,12 +12,13 @@ import {
   type DocumentBridge,
   type Draft,
   type DraftSummary,
+  type FolderListing,
   type OpenedDocument,
   type SaveResult,
   type SessionInfo,
 } from './DocumentBridge';
 
-const FILTERS = [{ name: 'Markdown', extensions: ['md', 'markdown', 'mdx', 'txt'] }];
+const FILTERS = [{ name: 'Markdown・テキスト', extensions: [...OPENABLE_EXTENSIONS] }];
 
 const IMAGE_FILTERS = [{ name: '画像', extensions: ['png', 'jpg', 'jpeg', 'webp'] }];
 
@@ -56,6 +58,21 @@ function decodeBase64(data: string): Uint8Array {
   return bytes;
 }
 
+/**
+ * セッションの更新は、読んでから書く（渡した項目以外を保つため）。並行して呼ばれても取りこぼさないよう、順番に実行する。
+ */
+let sessionQueue: Promise<unknown> = Promise.resolve();
+
+function updateSession(patch: Partial<SessionInfo>): Promise<void> {
+  const run = async () => {
+    const current = await call<SessionInfo>('load_session');
+    await call<void>('save_session', { session: { ...current, ...patch } });
+  };
+  const result = sessionQueue.then(run, run);
+  sessionQueue = result.catch(() => {});
+  return result;
+}
+
 export function createTauriBridge(): DocumentBridge {
   return {
     async pickOpenPath() {
@@ -85,7 +102,13 @@ export function createTauriBridge(): DocumentBridge {
     readDraft: (draftId: string) => call<Draft | null>('read_draft', { draftId }),
     deleteDraft: (draftId: string) => call<void>('delete_draft', { draftId }),
     loadSession: () => call<SessionInfo>('load_session'),
-    saveSession: (session: SessionInfo) => call<void>('save_session', { session }),
+    saveSession: updateSession,
+    async pickFolderPath() {
+      const selected = await open({ multiple: false, directory: true });
+      return typeof selected === 'string' ? selected : null;
+    },
+    openFolder: (path: string) => call<void>('open_folder', { path }),
+    listFolder: (path: string) => call<FolderListing>('list_folder', { path }),
     onCloseRequested: (cb) => listen('close-requested', () => cb()),
     closeApp: () => call<void>('close_app'),
     loadPreferences: () => call<unknown>('load_preferences'),

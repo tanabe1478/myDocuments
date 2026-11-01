@@ -5,6 +5,7 @@ import {
   type DiskState,
   type DocumentBridge,
   type Draft,
+  type FolderListing,
   type SaveOptions,
   type SaveResult as BridgeSaveResult,
   type SessionInfo,
@@ -93,8 +94,11 @@ export function setup(options: SetupOptions = {}) {
       drafts.delete(draftId);
     }),
     loadSession: vi.fn(async () => session),
-    saveSession: vi.fn(async (s: SessionInfo) => {
-      session = s;
+    pickFolderPath: vi.fn(async (): Promise<string | null> => null),
+    openFolder: vi.fn(async (_path: string) => {}),
+    listFolder: vi.fn(async (_path: string): Promise<FolderListing> => ({ entries: [], total: 0 })),
+    saveSession: vi.fn(async (patch: Partial<SessionInfo>) => {
+      session = { ...session, ...patch };
     }),
     onCloseRequested: vi.fn(async () => () => {}),
     closeApp: vi.fn(async () => {}),

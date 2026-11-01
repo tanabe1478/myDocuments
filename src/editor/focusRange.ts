@@ -8,6 +8,9 @@
  * - コードフェンス（``` / ~~~）: 閉じるまでの全体で 1 ブロック（中の空行・見出し風の行も含む）
  * - frontmatter（1 行目の --- から次の --- まで）: 全体で 1 ブロック
  *
+ * 素のテキスト（.txt、.text。markdown = false）は、Markdown の記法を持たないので、空行だけで分ける
+ * （見出し、リスト、コードフェンス、frontmatter も特別扱いしない）。
+ *
  * カーソルが空行にあるときは、直前のブロックが対象。直前がなければ直後のブロック。
  * 文書が空行だけなら対象なし（null）で、何も弱く表示しない。
  * 行番号は 1 始まり。from・to を含む。
@@ -99,19 +102,33 @@ function* blocks(lineCount: number, lineText: (line: number) => string): Generat
   }
 }
 
+/** 素のテキストのブロック: 空行の連なりと、それ以外の連なり。 */
+function* plainBlocks(lineCount: number, lineText: (line: number) => string): Generator<Block> {
+  let n = 1;
+  while (n <= lineCount) {
+    const blank = isBlankText(lineText(n));
+    let to = n;
+    while (to < lineCount && isBlankText(lineText(to + 1)) === blank) to++;
+    yield { from: n, to, blank };
+    n = to + 1;
+  }
+}
+
 /**
  * カーソル行（lineCount の範囲に丸める）に対する対象範囲。対象がなければ null。
  * 先頭から読むので、コードフェンスの内外も正しく判定できる。読むのはカーソルのあるブロックまで。
+ * markdown が false なら、空行だけで分ける（素のテキスト）。
  */
 export function focusRange(
   lineCount: number,
   lineText: (line: number) => string,
   cursorLine: number,
+  markdown = true,
 ): LineRange | null {
   const line = Math.min(Math.max(cursorLine, 1), Math.max(lineCount, 1));
   let previous: LineRange | null = null;
   let cursorBlock: Block | null = null;
-  for (const block of blocks(lineCount, lineText)) {
+  for (const block of markdown ? blocks(lineCount, lineText) : plainBlocks(lineCount, lineText)) {
     if (cursorBlock === null) {
       if (line > block.to) {
         if (!block.blank) previous = { from: block.from, to: block.to };

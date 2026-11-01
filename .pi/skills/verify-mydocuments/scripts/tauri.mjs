@@ -2,7 +2,7 @@
 // macOS の Tauri デスクトップアプリ（debug ビルド）を、観測だけの範囲で扱う。OS へのキー入力・マウス操作は送らない。
 // 使い方（いずれも --run-id は launch.mjs の出力）:
 //   node .pi/skills/verify-mydocuments/scripts/tauri.mjs build                       debug ビルド（数分かかる）。実行ファイルを作る
-//   node .pi/skills/verify-mydocuments/scripts/tauri.mjs start --run-id <id> [--doc <markdown>] [--prefs <preferences.json>]
+//   node .pi/skills/verify-mydocuments/scripts/tauri.mjs start --run-id <id> [--doc <markdown>] [--prefs <preferences.json>] [--folder <dir>]
 //   node .pi/skills/verify-mydocuments/scripts/tauri.mjs windows --run-id <id>        この run の窓の一覧（CGWindowList）
 //   node .pi/skills/verify-mydocuments/scripts/tauri.mjs shot --run-id <id> --name <name>   窓 1 枚を screencapture -l で撮る
 //   node .pi/skills/verify-mydocuments/scripts/tauri.mjs stop --run-id <id>           この run が起動した pid だけを止める
@@ -69,7 +69,10 @@ if (sub === 'build') {
   if (typeof args.doc !== 'string') {
     fs.writeFileSync(docPath, '# 窓の確認\n\n没入型 Markdown エディタの Tauri 版を、run 専用の HOME で起動しています。\n\n- 一つ目の項目\n- 二つ目の項目\n');
   }
-  fs.writeFileSync(path.join(appDir, 'session.json'), `${JSON.stringify({ lastPath: docPath }, null, 2)}\n`);
+  // --folder: 前回のエクスプローラーのフォルダ（session.lastFolder）。起動時に実際のファイルシステムからツリーが復元される。
+  const session = { lastPath: docPath };
+  if (typeof args.folder === 'string') session.lastFolder = path.resolve(args.folder);
+  fs.writeFileSync(path.join(appDir, 'session.json'), `${JSON.stringify(session, null, 2)}\n`);
   if (typeof args.prefs === 'string') fs.copyFileSync(path.resolve(args.prefs), path.join(appDir, 'preferences.json'));
   const realBefore = realSignatures();
   const log = fs.openSync(path.join(runDir, 'tauri.log'), 'w');

@@ -2,12 +2,13 @@ import { defaultKeymap, history } from '@codemirror/commands';
 import { search, searchKeymap } from '@codemirror/search';
 import { Compartment, EditorState, type Extension } from '@codemirror/state';
 import { EditorView, drawSelection, keymap } from '@codemirror/view';
+import type { TextKind } from '../../document/fileKinds';
 import type { EditorAdapter, EditorSelection } from '../EditorAdapter';
 import { focusModeExtension } from './focusMode';
 import { historyKeymap } from './historyKeymap';
 import { indentKeymap } from './indentKeymap';
 import { keepCursorVisibleExtension } from './keepCursorVisible';
-import { markdownDecorations } from './markdownDecorations';
+import { markdownDecorations, plainTextDecorations } from './markdownDecorations';
 import { readingPositionExtension } from './readingPosition';
 import { editorTheme } from './theme';
 import { typewriterModeExtension } from './typewriterMode';
@@ -29,11 +30,13 @@ export class CodeMirrorAdapter implements EditorAdapter {
   private readonly selectionListeners = new Set<(selection: EditorSelection) => void>();
   private focusMode = false;
   private typewriterMode = false;
+  private textKind: TextKind = 'markdown';
   /** 本文の下側を覆う要素（トースト）の高さ。scrollMargins の下側に使う（レイアウトは変えない）。 */
   private bottomInset = 0;
   // setText は state を作り直すので、モードは Compartment で持ち、作り直しても現在の値で始める。
   private readonly focusCompartment = new Compartment();
   private readonly typewriterCompartment = new Compartment();
+  private readonly kindCompartment = new Compartment();
 
   mount(el: HTMLElement): void {
     if (this.view) throw new Error('CodeMirrorAdapter is already mounted');
@@ -81,6 +84,18 @@ export class CodeMirrorAdapter implements EditorAdapter {
     if (this.typewriterMode === on) return;
     this.typewriterMode = on;
     this.view?.dispatch({ effects: this.typewriterCompartment.reconfigure(this.typewriterExtension()) });
+  }
+
+  setTextKind(kind: TextKind): void {
+    if (this.textKind === kind) return;
+    this.textKind = kind;
+    this.view?.dispatch({
+      effects: [
+        this.kindCompartment.reconfigure(this.kindExtension()),
+        // フォーカスモードの段落の分け方も、種類で変わる。
+        this.focusCompartment.reconfigure(this.focusExtension()),
+      ],
+    });
   }
 
   setBottomInset(px: number): void {
@@ -131,7 +146,11 @@ export class CodeMirrorAdapter implements EditorAdapter {
   }
 
   private focusExtension(): Extension {
-    return this.focusMode ? focusModeExtension() : [];
+    return this.focusMode ? focusModeExtension(this.textKind) : [];
+  }
+
+  private kindExtension(): Extension {
+    return this.textKind === 'plain' ? plainTextDecorations() : markdownDecorations();
   }
 
   private typewriterExtension(): Extension {
@@ -150,7 +169,7 @@ export class CodeMirrorAdapter implements EditorAdapter {
       // 孤立した CR が LF に変わってしまう）。CRLF の復元は保存時に docio が行う。
       EditorState.lineSeparator.of('\n'),
       EditorView.lineWrapping,
-      markdownDecorations(),
+      this.kindCompartment.of(this.kindExtension()),
       this.focusCompartment.of(this.focusExtension()),
       this.typewriterCompartment.of(this.typewriterExtension()),
       search({ top: true }),

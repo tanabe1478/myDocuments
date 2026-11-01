@@ -1,0 +1,218 @@
+{
+  "seed": {
+    "files": {
+      "/work/notes/a.md": {
+        "text": "# 見出しA\n\n本文A\n\n- 箇条書き\n"
+      },
+      "/work/notes/b.txt": {
+        "text": "# これは見出しではない\n\n- 箇条書きでもない\n\n素のテキスト\n"
+      },
+      "/work/notes/c.text": {
+        "text": "text 拡張子の文書\n"
+      },
+      "/work/notes/file2.md": {
+        "text": "二番\n"
+      },
+      "/work/notes/File10.md": {
+        "text": "十番\n"
+      },
+      "/work/notes/Zeta.md": {
+        "text": "# ゼータ\n"
+      },
+      "/work/notes/img.png": {
+        "png": {
+          "width": 2,
+          "height": 2,
+          "rgb": [
+            80,
+            120,
+            160
+          ]
+        }
+      },
+      "/work/notes/notes.json": {
+        "text": "{}\n"
+      },
+      "/work/notes/.hidden.md": {
+        "text": "隠し\n"
+      },
+      "/work/notes/.git/config": {
+        "text": "[core]\n"
+      },
+      "/work/notes/docs/guide.md": {
+        "text": "# ガイド\n"
+      },
+      "/work/notes/docs/memo.text": {
+        "text": "メモ\n"
+      },
+      "/work/notes/docs/deep/inner.mdx": {
+        "text": "# 内側\n"
+      },
+      "/work/notes/Archive/old.md": {
+        "text": "古い\n"
+      }
+    },
+    "folderPath": "/work/notes",
+    "emptyFolders": [
+      "/work/notes/empty"
+    ],
+    "symlinkFolders": [
+      "/work/notes/linked"
+    ],
+    "preferences": {
+      "theme": "light",
+      "autoHideChrome": false,
+      "sidebarOpen": true
+    }
+  },
+  "steps": [
+    {
+      "click": {
+        "testId": "open-folder"
+      }
+    },
+    {
+      "focus": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='Archive']"
+      }
+    },
+    {
+      "press": "ArrowDown"
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='docs']",
+        "read": "focused",
+        "equals": true,
+        "note": "下で移動"
+      }
+    },
+    {
+      "press": "ArrowRight"
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='docs']",
+        "read": "attr:aria-expanded",
+        "equals": "true",
+        "note": "右で展開"
+      }
+    },
+    {
+      "press": "ArrowRight"
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='deep']",
+        "read": "focused",
+        "equals": true,
+        "note": "展開済みなら最初の子へ"
+      }
+    },
+    {
+      "press": "ArrowLeft"
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='docs']",
+        "read": "focused",
+        "equals": true,
+        "note": "折りたたみ済みなら親へ"
+      }
+    },
+    {
+      "press": "ArrowLeft"
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='docs']",
+        "read": "attr:aria-expanded",
+        "equals": "false",
+        "note": "左で折りたたむ"
+      }
+    },
+    {
+      "press": "End"
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='Zeta.md']",
+        "read": "focused",
+        "equals": true
+      }
+    },
+    {
+      "press": "Home"
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='Archive']",
+        "read": "focused",
+        "equals": true
+      }
+    },
+    {
+      "expect": {
+        "eval": "document.querySelectorAll('[data-testid=file-tree] [role=treeitem][tabindex=\"0\"]').length",
+        "equals": 1,
+        "note": "roving tabindex: Tab で入る項目は 1 つ"
+      }
+    },
+    {
+      "screenshot": "01-keyboard-focus"
+    },
+    {
+      "press": "ArrowDown",
+      "times": 4
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='a.md']",
+        "read": "focused",
+        "equals": true
+      }
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "a.md",
+        "note": "Enter で開く"
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-content",
+        "read": "focused",
+        "equals": true
+      }
+    },
+    {
+      "focus": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='img.png']"
+      }
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "a.md",
+        "note": "開けないファイルは Enter でも開かない"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='img.png']",
+        "read": "focused",
+        "equals": true
+      }
+    },
+    {
+      "observe": "keyboard-final"
+    }
+  ]
+}

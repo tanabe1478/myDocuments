@@ -22,6 +22,8 @@
     "allow-delete-draft",
     "allow-load-session",
     "allow-save-session",
+    "allow-open-folder",
+    "allow-list-folder",
     "allow-close-app",
     "allow-load-preferences",
     "allow-save-preferences",

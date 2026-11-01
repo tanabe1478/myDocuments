@@ -2,6 +2,7 @@ mod backgrounds;
 mod documents;
 mod drafts;
 mod error;
+mod folders;
 mod preferences;
 mod session;
 mod watcher;
@@ -10,6 +11,7 @@ use backgrounds::BackgroundImageDto;
 use documents::{DiskStateDto, FormatDto, KnownPaths, OpenedDocument, SaveResultDto};
 use drafts::{Draft, DraftSummary};
 use error::{CommandError, ErrorKind};
+use folders::{FolderListingDto, OpenFolders};
 use session::Session;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -173,6 +175,22 @@ async fn save_session(app: AppHandle, session: Session) -> Result<(), CommandErr
     session::save_to(&data_dir(&app)?, &session)
 }
 
+/// エクスプローラーに開くフォルダを選んだとき（ダイアログの結果、または前回のセッションの復元）に呼ぶ。
+/// 存在するフォルダであることを確かめ、許可したフォルダとして登録する。
+#[tauri::command]
+async fn open_folder(path: String, folders: State<'_, OpenFolders>) -> Result<(), CommandError> {
+    folders::open(&path, &folders)
+}
+
+/// 開いたフォルダ（またはその配下）の中身。それ以外のパスは NotAllowed。
+#[tauri::command]
+async fn list_folder(
+    path: String,
+    folders: State<'_, OpenFolders>,
+) -> Result<FolderListingDto, CommandError> {
+    folders::list(&path, &folders)
+}
+
 /// UI が終了の確認を済ませた後に呼ぶ。アプリを終了する。
 #[tauri::command]
 async fn close_app(app: AppHandle, guard: State<'_, CloseGuard>) -> Result<(), CommandError> {
@@ -218,6 +236,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(KnownPaths::default())
+        .manage(OpenFolders::default())
         .manage(DocumentWatcher::default())
         .manage(CloseGuard::default())
         .invoke_handler(tauri::generate_handler![
@@ -232,6 +251,8 @@ pub fn run() {
             delete_draft,
             load_session,
             save_session,
+            open_folder,
+            list_folder,
             close_app,
             load_preferences,
             save_preferences,

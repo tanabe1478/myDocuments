@@ -21,6 +21,10 @@
   --md-color-caret: #1f5f8b;
   --md-color-selection: rgba(31, 95, 139, 0.22);
   --md-color-panel: #ebe6da;
+  /* エクスプローラーの、開けないファイルの灰色（パネル上で 4.6:1。通常の文字色との差は 11.8:1 対 4.6:1）。 */
+  --md-color-disabled: #6b6559;
+  --md-color-tree-hover: rgba(42, 40, 36, 0.07);
+  --md-color-tree-current: rgba(42, 40, 36, 0.13);
   --md-color-border: #d6cfbf;
   --md-color-match: rgba(240, 190, 60, 0.35);
   --md-color-match-selected: rgba(240, 150, 40, 0.5);
@@ -45,6 +49,9 @@
   --md-color-caret: #7fb4d9;
   --md-color-selection: rgba(127, 180, 217, 0.3);
   --md-color-panel: #2a2d30;
+  --md-color-disabled: #94968e;
+  --md-color-tree-hover: rgba(255, 255, 255, 0.07);
+  --md-color-tree-current: rgba(255, 255, 255, 0.13);
   --md-color-border: #3d4145;
   --md-color-match: rgba(240, 190, 60, 0.3);
   --md-color-match-selected: rgba(240, 150, 40, 0.5);
@@ -531,10 +538,12 @@ body {
 }
 
 .sidebar-inner {
+  display: flex;
+  flex-direction: column;
   box-sizing: border-box;
   width: 260px;
   height: 100%;
-  padding: 52px 16px 16px;
+  padding: 52px 16px 12px;
   border-right: 1px solid var(--md-color-border);
 }
 
@@ -569,6 +578,155 @@ body {
   color: var(--md-color-chrome-text);
 }
 
+.sidebar-empty p {
+  margin: 0 0 10px;
+}
+
+.sidebar-button {
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: 4px 10px;
+  border: 1px solid var(--md-color-border);
+  border-radius: 6px;
+  background: var(--md-color-bg);
+  color: var(--md-color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.sidebar-button:hover,
+.sidebar-icon-button:hover {
+  background: var(--md-color-tree-hover);
+}
+
+.sidebar-icon-button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--md-color-chrome-text);
+  cursor: pointer;
+}
+
+/* 開いているフォルダの名前（フルパスは title）と、再読み込み。 */
+.explorer-folder {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin: 10px 0 6px;
+}
+
+.explorer-folder-name {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explorer-change {
+  align-self: flex-start;
+  margin-bottom: 8px;
+}
+
+/* ツリー。この領域だけがスクロールする。 */
+.explorer-tree {
+  flex: 1;
+  min-height: 0;
+  margin: 0 -8px;
+  padding: 0 8px;
+  overflow: auto;
+}
+
+.file-tree,
+.tree-group {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tree-item {
+  outline: none;
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding-right: 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tree-row:hover {
+  background: var(--md-color-tree-hover);
+}
+
+/* キーボードの位置。ツリー全体ではなく、項目の行だけに輪郭を付ける。 */
+.tree-item:focus-visible > .tree-row {
+  outline: 2px solid var(--md-color-link);
+  outline-offset: -2px;
+}
+
+/* 開いている文書。色だけに頼らず、左の線と太字でも示す。 */
+.tree-item[aria-current='true'] > .tree-row {
+  background: var(--md-color-tree-current);
+  box-shadow: inset 3px 0 0 var(--md-color-accent);
+  font-weight: 600;
+}
+
+/* 開けないファイル、フォルダへのリンク、補足の行。クリックしても何も起きない。 */
+.tree-item[aria-disabled='true'] > .tree-row {
+  color: var(--md-color-disabled);
+  cursor: default;
+}
+
+.tree-item[aria-disabled='true'] > .tree-row:hover {
+  background: transparent;
+}
+
+.tree-item[data-kind='note'] > .tree-row {
+  font-style: italic;
+}
+
+.tree-twisty {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+}
+
+.tree-chevron[data-expanded='true'] {
+  transform: rotate(90deg);
+}
+
+.tree-icon {
+  display: inline-flex;
+  flex: none;
+}
+
+/* 長い名前は省略表示（全文は title）。 */
+.tree-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-badge {
+  flex: none;
+  font-size: 12px;
+}
+
 /* アニメーションは Reduced Motion でないときだけ（reduce では transition を付けない）。 */
 @media (prefers-reduced-motion: no-preference) {
   .toast {
@@ -597,6 +755,11 @@ body {
       width 0.18s ease,
       transform 0.18s ease,
       visibility 0s;
+  }
+
+  /* ツリーの開閉の矢印の回転。 */
+  .tree-chevron {
+    transition: transform 0.12s ease;
   }
 
   /* 競合バーの出現。本文の領域の高さは変えず、バー自身の不透明度だけ。 */

@@ -222,3 +222,41 @@ const blockLineDecorations = ViewPlugin.fromClass(BlockLinePlugin, {
 export function markdownDecorations(): Extension {
   return [markdown({ base: markdownLanguage }), syntaxHighlighting(markdownHighlightStyle), blockLineDecorations];
 }
+
+const blankLine = Decoration.line({ class: 'cm-md-blank' });
+
+function plainBlankLines(view: EditorView): DecorationSet {
+  const { doc } = view.state;
+  const builder = new RangeSetBuilder<Decoration>();
+  let lastFrom = -1;
+  for (const { from, to } of view.visibleRanges) {
+    let pos = from;
+    while (pos <= to) {
+      const line = doc.lineAt(pos);
+      if (line.from > lastFrom && isBlankLine(line.text)) builder.add(line.from, line.from, blankLine);
+      lastFrom = Math.max(lastFrom, line.from);
+      pos = line.to + 1;
+    }
+  }
+  return builder.finish();
+}
+
+class PlainBlankLinePlugin {
+  decorations: DecorationSet;
+
+  constructor(view: EditorView) {
+    this.decorations = plainBlankLines(view);
+  }
+
+  update(update: ViewUpdate) {
+    if (update.docChanged || update.viewportChanged) this.decorations = plainBlankLines(update.view);
+  }
+}
+
+/**
+ * 素のテキスト（.txt、.text）の見た目。Markdown の言語・色・見出し・ぶら下げインデント・コードフェンスの帯は付けない。
+ * 空行の高さ（段落間隔の設定）は Markdown の記法ではないので、Markdown と同じにする。
+ */
+export function plainTextDecorations(): Extension {
+  return ViewPlugin.fromClass(PlainBlankLinePlugin, { decorations: (plugin) => plugin.decorations });
+}

@@ -1,0 +1,271 @@
+{
+  "seed": {
+    "files": {
+      "/work/notes/a.md": {
+        "text": "# 見出しA\n\n本文A\n\n- 箇条書き\n"
+      },
+      "/work/notes/b.txt": {
+        "text": "# これは見出しではない\n\n- 箇条書きでもない\n\n素のテキスト\n"
+      },
+      "/work/notes/c.text": {
+        "text": "text 拡張子の文書\n"
+      },
+      "/work/notes/file2.md": {
+        "text": "二番\n"
+      },
+      "/work/notes/File10.md": {
+        "text": "十番\n"
+      },
+      "/work/notes/Zeta.md": {
+        "text": "# ゼータ\n"
+      },
+      "/work/notes/img.png": {
+        "png": {
+          "width": 2,
+          "height": 2,
+          "rgb": [
+            80,
+            120,
+            160
+          ]
+        }
+      },
+      "/work/notes/notes.json": {
+        "text": "{}\n"
+      },
+      "/work/notes/.hidden.md": {
+        "text": "隠し\n"
+      },
+      "/work/notes/.git/config": {
+        "text": "[core]\n"
+      },
+      "/work/notes/docs/guide.md": {
+        "text": "# ガイド\n"
+      },
+      "/work/notes/docs/memo.text": {
+        "text": "メモ\n"
+      },
+      "/work/notes/docs/deep/inner.mdx": {
+        "text": "# 内側\n"
+      },
+      "/work/notes/Archive/old.md": {
+        "text": "古い\n"
+      }
+    },
+    "folderPath": "/work/notes",
+    "emptyFolders": [
+      "/work/notes/empty"
+    ],
+    "symlinkFolders": [
+      "/work/notes/linked"
+    ],
+    "preferences": {
+      "theme": "light",
+      "autoHideChrome": false,
+      "sidebarOpen": true
+    }
+  },
+  "steps": [
+    {
+      "click": {
+        "testId": "open-folder"
+      }
+    },
+    {
+      "click": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='a.md'] > .tree-row"
+      }
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "a.md"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='a.md']",
+        "read": "attr:aria-current",
+        "equals": "true",
+        "note": "開いたファイルを強調"
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-md-h1",
+        "read": "count",
+        "equals": 1,
+        "note": "Markdown は見出しの装飾が付く"
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-content",
+        "read": "focused",
+        "equals": true,
+        "note": "開いた後は本文にフォーカス"
+      }
+    },
+    {
+      "screenshot": "01-md-open"
+    },
+    {
+      "click": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='b.txt'] > .tree-row"
+      }
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "b.txt"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='b.txt']",
+        "read": "attr:aria-current",
+        "equals": "true"
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-md-h1",
+        "read": "count",
+        "equals": 0,
+        "note": ".txt は見出しの装飾が付かない"
+      }
+    },
+    {
+      "expect": {
+        "eval": "Array.from(document.querySelectorAll('.cm-line')).some((l) => /cm-md-(h\\d|quote|fence)/.test(l.className))",
+        "equals": false
+      }
+    },
+    {
+      "expect": {
+        "eval": "[0, 2].map((i) => { const cs = getComputedStyle(document.querySelectorAll('.cm-line')[i]); return cs.fontSize + '/' + cs.fontWeight; }).filter((v, i, a) => v === a[0]).length",
+        "equals": 2,
+        "note": "見出し風の行と本文の行が、同じ大きさ・太さ"
+      }
+    },
+    {
+      "screenshot": "02-txt-open"
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='img.png']",
+        "read": "attr:aria-disabled",
+        "equals": "true",
+        "note": "開けないファイルは aria-disabled"
+      }
+    },
+    {
+      "click": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='img.png'] > .tree-row",
+        "force": true
+      }
+    },
+    {
+      "click": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='notes.json'] > .tree-row",
+        "force": true
+      }
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "b.txt",
+        "note": "開けないファイルを押しても、文書は変わらない"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.calls.open",
+        "equals": 2,
+        "note": "開いたのは a.md と b.txt の 2 回だけ（開けないファイルは bridge まで届かない）"
+      }
+    },
+    {
+      "screenshot": "03-disabled-item"
+    },
+    {
+      "click": {
+        "css": ".cm-content"
+      }
+    },
+    {
+      "type": "追記"
+    },
+    {
+      "expect": {
+        "testId": "unsaved-mark",
+        "read": "visible",
+        "equals": true
+      }
+    },
+    {
+      "click": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='a.md'] > .tree-row"
+      }
+    },
+    {
+      "expect": {
+        "css": "[role=alertdialog]",
+        "read": "visible",
+        "equals": true,
+        "note": "未保存の変更があるので確認が出る"
+      }
+    },
+    {
+      "screenshot": "04-discard-confirm"
+    },
+    {
+      "click": {
+        "testId": "discard-cancel"
+      }
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "b.txt"
+      }
+    },
+    {
+      "expect": {
+        "testId": "unsaved-mark",
+        "read": "visible",
+        "equals": true
+      }
+    },
+    {
+      "click": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='a.md'] > .tree-row"
+      }
+    },
+    {
+      "click": {
+        "testId": "discard-discard"
+      }
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "a.md"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='a.md']",
+        "read": "attr:aria-current",
+        "equals": "true"
+      }
+    },
+    {
+      "observe": "after-open",
+      "files": [
+        "/work/notes/b.txt",
+        "/work/notes/a.md"
+      ]
+    }
+  ]
+}

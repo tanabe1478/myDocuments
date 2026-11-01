@@ -57,7 +57,33 @@ export interface DraftSummary {
 export interface SessionInfo {
   /** 前回開いていた文書の絶対パス。 */
   readonly lastPath: string | null;
+  /** 前回エクスプローラーに開いていたフォルダの絶対パス。古い session.json には無い（ネイティブ側は null として返す）。 */
+  readonly lastFolder?: string | null;
 }
+
+/**
+ * フォルダの項目の種類。file: ファイル（ファイルへのシンボリックリンクを含む）。dir: フォルダ。
+ * symlinkDir: フォルダへのシンボリックリンク（ループを避けるため、展開しない）。other: それ以外（壊れたリンクなど）。
+ */
+export type FolderEntryKind = 'file' | 'dir' | 'symlinkDir' | 'other';
+
+export interface FolderEntry {
+  readonly name: string;
+  /** 絶対パス（listFolder に渡したパスに name を足したもの）。 */
+  readonly path: string;
+  readonly kind: FolderEntryKind;
+}
+
+/** フォルダの中身。隠し項目（名前がドットで始まるもの）は含まない。 */
+export interface FolderListing {
+  /** 並べ替えた後の先頭から、最大 FOLDER_LISTING_LIMIT 件。フォルダが先、その中は名前の自然順。 */
+  readonly entries: readonly FolderEntry[];
+  /** 隠し項目を除いた全件数。entries より多ければ、末尾が切り捨てられている。 */
+  readonly total: number;
+}
+
+/** 1 つのフォルダについて返す項目の上限（ネイティブ側もこの値）。 */
+export const FOLDER_LISTING_LIMIT = 5000;
 
 export type BridgeErrorKind =
   | 'not-found'
@@ -116,7 +142,17 @@ export interface DocumentBridge {
   /** 草稿を消す。なくてもエラーにしない。 */
   deleteDraft(draftId: string): Promise<void>;
   loadSession(): Promise<SessionInfo>;
-  saveSession(session: SessionInfo): Promise<void>;
+  /** 渡した項目だけを更新し、渡さなかった項目は保つ（文書とフォルダが、互いの記録を消さないように）。 */
+  saveSession(patch: Partial<SessionInfo>): Promise<void>;
+  /** フォルダを選ぶダイアログ。キャンセルは null。 */
+  pickFolderPath(): Promise<string | null>;
+  /**
+   * フォルダを開く（エクスプローラーのルートにする）。存在するフォルダでなければ BridgeError
+   * （not-found、invalid-input、permission-denied）。成功すると、そのフォルダとその配下を listFolder で読めるようになる。
+   */
+  openFolder(path: string): Promise<void>;
+  /** 開いたフォルダ（またはその配下）の中身。それ以外のパスは BridgeError('not-allowed')。 */
+  listFolder(path: string): Promise<FolderListing>;
   /** 窓を閉じる・アプリを終了する操作があったことの通知を購読する。解除関数を返す。 */
   onCloseRequested(cb: () => void): Promise<() => void>;
   /** 終了の確認が済んだ後に、アプリを終了する。 */

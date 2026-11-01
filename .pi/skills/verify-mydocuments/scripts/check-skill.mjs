@@ -3,7 +3,7 @@
 // 使い方: node .pi/skills/verify-mydocuments/scripts/check-skill.mjs
 // 検査:
 //   - SKILL.md の frontmatter（name、description）と、必須の節（Launch / Doctor / Drive / Evidence / Cleanup / Helpers）
-//   - features/ の feature ファイル（README.md 以外）が 3〜5 件で、H1 の後に 4 つの H2 だけをこの順で持つこと
+//   - features/ の feature ファイル（README.md 以外）が 3〜6 件で、H1 の後に 4 つの H2 だけをこの順で持つこと
 //   - Driving 節が `Preconditions:` で始まること
 //   - SKILL.md と features が参照する scripts/ のファイルと、features/scenarios/ の JSON が実在し、scripts/ は実行ビットを持つこと
 //   - features/README.md が各 feature ファイルへリンクしていること
@@ -64,7 +64,7 @@ const featureFiles = fs.existsSync(featuresDir)
   ? fs.readdirSync(featuresDir).filter((f) => f.endsWith('.md') && f !== 'README.md').sort()
   : [];
 if (!fs.existsSync(path.join(featuresDir, 'README.md'))) bad(featuresDir, 'features/README.md がありません');
-if (featureFiles.length < 3 || featureFiles.length > 5) bad(featuresDir, `feature ファイルは 3〜5 件（現在 ${featureFiles.length} 件）`);
+if (featureFiles.length < 3 || featureFiles.length > 6) bad(featuresDir, `feature ファイルは 3〜6 件（現在 ${featureFiles.length} 件）`);
 
 const EXPECTED = [/^Sub-features$/, /^How to get to it \(user POV\)$/, /^Driving it with .+$/, /^Gotchas$/];
 for (const f of featureFiles) {

@@ -278,6 +278,68 @@ describe('typewriter mode', () => {
   });
 });
 
+describe('text kind (.txt and .text are shown as plain text)', () => {
+  const MARKDOWN = '# 見出し\n\n- 項目\n\n本文';
+
+  const lineClasses = () => Array.from(host.querySelectorAll('.cm-line'), (l) => l.className);
+
+  it('decorates Markdown by default, and not plain text', () => {
+    adapter.mount(host);
+    adapter.setText(MARKDOWN);
+    expect(host.querySelector('.cm-md-h1')).not.toBeNull();
+    expect(host.querySelector('.cm-md-blank')).not.toBeNull();
+
+    adapter.setTextKind('plain');
+    expect(host.querySelector('.cm-md-h1')).toBeNull();
+    // 空行の高さ（段落間隔）は、素のテキストでも効く。
+    expect(host.querySelectorAll('.cm-md-blank')).toHaveLength(2);
+    expect(lineClasses().some((c) => /cm-md-(h\d|quote|fence)/.test(c))).toBe(false);
+    expect(Array.from(host.querySelectorAll<HTMLElement>('.cm-line')).every((l) => l.style.paddingLeft === '')).toBe(true);
+  });
+
+  it('switches back to Markdown, and leaves the text, selection and history alone', () => {
+    adapter.mount(host);
+    adapter.setText(MARKDOWN);
+    adapter.setTextKind('plain');
+    typeAtEnd('追記');
+    const selection = viewOf().state.selection.main.head;
+    adapter.setTextKind('markdown');
+    expect(adapter.getText()).toBe(`${MARKDOWN}追記`);
+    expect(viewOf().state.selection.main.head).toBe(selection);
+    expect(host.querySelector('.cm-md-h1')).not.toBeNull();
+    expect(undo(viewOf())).toBe(true);
+    expect(adapter.getText()).toBe(MARKDOWN);
+  });
+
+  it('keeps the kind across setText (loading another document)', () => {
+    adapter.mount(host);
+    adapter.setTextKind('plain');
+    adapter.setText(MARKDOWN);
+    expect(host.querySelector('.cm-md-h1')).toBeNull();
+    adapter.setTextKind('markdown');
+    adapter.setText('# 別の文書');
+    expect(host.querySelector('.cm-md-h1')).not.toBeNull();
+  });
+
+  it('can be set before mount', () => {
+    adapter.setTextKind('plain');
+    adapter.setText(MARKDOWN);
+    adapter.mount(host);
+    expect(host.querySelector('.cm-md-h1')).toBeNull();
+  });
+
+  it('splits focus-mode paragraphs by blank lines only for plain text', () => {
+    adapter.mount(host);
+    adapter.setFocusMode(true);
+    adapter.setText('# 見出し\n本文\n\n別段落');
+    const dimmed = () => Array.from(host.querySelectorAll('.cm-line'), (l) => l.classList.contains('cm-md-dim'));
+    viewOf().dispatch({ selection: { anchor: 0 } });
+    expect(dimmed()).toEqual([false, true, true, true]);
+    adapter.setTextKind('plain');
+    expect(dimmed()).toEqual([false, false, true, true]);
+  });
+});
+
 describe('accessibility', () => {
   it('labels the editable area', () => {
     adapter.mount(host);

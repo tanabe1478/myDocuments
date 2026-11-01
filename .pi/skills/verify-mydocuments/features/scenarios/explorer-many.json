@@ -1,0 +1,71 @@
+{
+  "seed": {
+    "files": {
+      "/work/big/readme.md": {
+        "text": "# 大きなフォルダ\n"
+      }
+    },
+    "folderPath": "/work/big",
+    "bulkFolders": [
+      {
+        "path": "/work/big/many",
+        "count": 5003
+      }
+    ],
+    "preferences": {
+      "theme": "light",
+      "autoHideChrome": false,
+      "sidebarOpen": true
+    }
+  },
+  "steps": [
+    {
+      "click": {
+        "testId": "open-folder"
+      }
+    },
+    {
+      "click": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='many'] > .tree-row"
+      }
+    },
+    {
+      "expect": {
+        "testId": "tree-note",
+        "equals": "ほか 3 件",
+        "note": "5000 件を超える分は「ほか N 件」"
+      }
+    },
+    {
+      "expect": {
+        "testId": "tree-note",
+        "read": "attr:aria-disabled",
+        "equals": "true"
+      }
+    },
+    {
+      "expect": {
+        "eval": "document.querySelectorAll('[data-testid=tree-item]').length",
+        "equals": 5002,
+        "note": "many と readme.md と先頭 5000 件"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='item-05000.md']",
+        "read": "count",
+        "equals": 1
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='item-05001.md']",
+        "read": "count",
+        "equals": 0
+      }
+    },
+    {
+      "screenshot": "01-more-row"
+    }
+  ]
+}

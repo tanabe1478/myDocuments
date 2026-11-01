@@ -190,6 +190,18 @@ export class DocumentController {
       await this.loadFromPath(path);
     });
 
+  /**
+   * パスを指定して開く（エクスプローラーから）。ダイアログは出さず、未保存の変更の確認、草稿、外部変更の監視、
+   * 前回の文書の記録は「開く」と同じ。開いた（すでに開いている）なら true。
+   * いま開いている文書と同じパスなら、何もしない（未保存の編集を捨てない）。ほかの操作の実行中は何もせず false。
+   */
+  openPath = (path: string): Promise<boolean> =>
+    this.exclusive(async () => {
+      if (path === this.state.path) return true;
+      if (!(await this.discardOrSave())) return false;
+      return this.loadFromPath(path);
+    }, false);
+
   private async loadFromPath(path: string, options: { quietNotFound?: boolean } = {}): Promise<boolean> {
     try {
       const opened = await this.deps.bridge.openDocument(path);

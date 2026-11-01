@@ -7,13 +7,16 @@ export type {
   DocumentBridge,
   Draft,
   DraftSummary,
+  FolderEntry,
+  FolderEntryKind,
+  FolderListing,
   OpenedDocument,
   SaveOptions,
   SaveOutcome,
   SaveResult,
   SessionInfo,
 } from './DocumentBridge';
-export { BridgeError } from './DocumentBridge';
+export { BridgeError, FOLDER_LISTING_LIMIT } from './DocumentBridge';
 
 /**
  * 実行環境に合った DocumentBridge を返す。

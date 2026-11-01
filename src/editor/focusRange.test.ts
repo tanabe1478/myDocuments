@@ -180,3 +180,28 @@ describe('focusRange: frontmatter', () => {
     expect(range(['---', 'a', '', 'b'], 4)).toEqual({ from: 4, to: 4 });
   });
 });
+
+describe('focusRange: plain text (markdown = false) splits by blank lines only', () => {
+  const plain = (lines: string[], cursorLine: number) =>
+    focusRange(lines.length, (n) => lines[n - 1] ?? '', cursorLine, false);
+
+  it('does not treat headings, list items, fences or front matter specially', () => {
+    const doc = ['# 見出し風', '- 項目風', '本文', '', '```', 'コード風', '', '---', '別の段落'];
+    expect(plain(doc, 1)).toEqual({ from: 1, to: 3 });
+    expect(plain(doc, 2)).toEqual({ from: 1, to: 3 });
+    expect(plain(doc, 5)).toEqual({ from: 5, to: 6 });
+    expect(plain(doc, 9)).toEqual({ from: 8, to: 9 });
+    // Markdown なら、見出しは 1 行で 1 ブロック。
+    expect(range(doc, 1)).toEqual({ from: 1, to: 1 });
+  });
+
+  it('puts the cursor on a blank line in the block before it, or after it when there is none', () => {
+    expect(plain(['a', 'b', '', 'c'], 3)).toEqual({ from: 1, to: 2 });
+    expect(plain(['', '', 'a'], 1)).toEqual({ from: 3, to: 3 });
+  });
+
+  it('has no target for a document of blank lines only', () => {
+    expect(plain(['', '  ', ''], 2)).toBeNull();
+    expect(plain([''], 1)).toBeNull();
+  });
+});

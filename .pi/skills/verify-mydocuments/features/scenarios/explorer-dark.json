@@ -1,0 +1,122 @@
+{
+  "seed": {
+    "files": {
+      "/work/notes/a.md": {
+        "text": "# 見出しA\n\n本文A\n\n- 箇条書き\n"
+      },
+      "/work/notes/b.txt": {
+        "text": "# これは見出しではない\n\n- 箇条書きでもない\n\n素のテキスト\n"
+      },
+      "/work/notes/c.text": {
+        "text": "text 拡張子の文書\n"
+      },
+      "/work/notes/file2.md": {
+        "text": "二番\n"
+      },
+      "/work/notes/File10.md": {
+        "text": "十番\n"
+      },
+      "/work/notes/Zeta.md": {
+        "text": "# ゼータ\n"
+      },
+      "/work/notes/img.png": {
+        "png": {
+          "width": 2,
+          "height": 2,
+          "rgb": [
+            80,
+            120,
+            160
+          ]
+        }
+      },
+      "/work/notes/notes.json": {
+        "text": "{}\n"
+      },
+      "/work/notes/.hidden.md": {
+        "text": "隠し\n"
+      },
+      "/work/notes/.git/config": {
+        "text": "[core]\n"
+      },
+      "/work/notes/docs/guide.md": {
+        "text": "# ガイド\n"
+      },
+      "/work/notes/docs/memo.text": {
+        "text": "メモ\n"
+      },
+      "/work/notes/docs/deep/inner.mdx": {
+        "text": "# 内側\n"
+      },
+      "/work/notes/Archive/old.md": {
+        "text": "古い\n"
+      }
+    },
+    "folderPath": null,
+    "emptyFolders": [
+      "/work/notes/empty"
+    ],
+    "symlinkFolders": [
+      "/work/notes/linked"
+    ],
+    "preferences": {
+      "theme": "dark",
+      "autoHideChrome": false,
+      "sidebarOpen": true
+    },
+    "session": {
+      "lastPath": "/work/notes/b.txt",
+      "lastFolder": "/work/notes"
+    }
+  },
+  "steps": [
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "b.txt",
+        "note": "前回の文書も復元される"
+      }
+    },
+    {
+      "expect": {
+        "testId": "folder-name",
+        "equals": "notes"
+      }
+    },
+    {
+      "click": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='docs'] > .tree-row"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='b.txt']",
+        "read": "attr:aria-current",
+        "equals": "true"
+      }
+    },
+    {
+      "expect": {
+        "eval": "document.documentElement.getAttribute('data-theme')",
+        "equals": "dark"
+      }
+    },
+    {
+      "screenshot": "01-dark-tree"
+    },
+    {
+      "click": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='a.md'] > .tree-row"
+      }
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "a.md"
+      }
+    },
+    {
+      "screenshot": "02-dark-md"
+    }
+  ]
+}

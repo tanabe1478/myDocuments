@@ -1,6 +1,6 @@
 ---
 name: verify-mydocuments
-description: Immersive Markdown Editor（Tauri 2 + CodeMirror 6 の没入型 Markdown エディタ）の動作を、実ユーザー面で再現可能に起動・操作・証跡化する。primary は VITE_E2E ビルドの Web UI を Playwright（chromium）で操作する面、secondary は macOS の Tauri debug ビルドの窓の観測。文書の保存、設定画面と外観、左サイドバー、執筆モード、保存の信頼性、書き心地を変えたとき、または変更を検証して証跡を残したいときに使う。
+description: Immersive Markdown Editor（Tauri 2 + CodeMirror 6 の没入型 Markdown エディタ）の動作を、実ユーザー面で再現可能に起動・操作・証跡化する。primary は VITE_E2E ビルドの Web UI を Playwright（chromium）で操作する面、secondary は macOS の Tauri debug ビルドの窓の観測。文書の保存、設定画面と外観、左サイドバーとエクスプローラー（フォルダツリー）、執筆モード、保存の信頼性、書き心地を変えたとき、または変更を検証して証跡を残したいときに使う。
 ---
 
 # verify-mydocuments
@@ -13,7 +13,7 @@ description: Immersive Markdown Editor（Tauri 2 + CodeMirror 6 の没入型 Mar
 - secondary: macOS の Tauri デスクトップアプリ（debug ビルド）。macOS には tauri-driver（Tauri 用の WebDriver）がなく、OS へのキー入力・マウス操作は送らない方針なので、観測だけを行う。窓を CGWindowList で特定し、screencapture で窓単体を撮る。
 - 本番側の保証: DocumentBridge の外側（Rust のファイル I/O）は crates/docio と src-tauri の cargo test が担う。この Skill はそこを再実装しない。
 - not covered:
-  - ネイティブのファイル選択ダイアログ。メモリ bridge では、seed の openPath、savePath、imagePath が「ダイアログの戻り値」の代わりになる。
+  - ネイティブのファイル選択ダイアログとフォルダ選択ダイアログ。メモリ bridge では、seed の openPath、savePath、imagePath、folderPath が「ダイアログの戻り値」の代わりになる。
   - 実 IME（Microsoft IME、macOS の日本語入力、Mozc）。tests/e2e の CDP による変換の模擬はあるが、この Skill のシナリオには含めない。
   - Windows と Ubuntu の実機。CI では build と test までで、この Skill でも --platform windows、--platform linux は navigator の偽装にとどまる。
   - Tauri 窓へのキー入力・クリック。窓の描画と、前回の文書の再オープン（起動時の自動処理）だけを撮影で確かめる。
@@ -45,7 +45,7 @@ node .pi/skills/verify-mydocuments/scripts/tauri.mjs build                      
 node .pi/skills/verify-mydocuments/scripts/tauri.mjs start --run-id <run-id>    # HOME と CFFIXED_USER_HOME を <run-dir>/tauri-home に向けて起動
 ```
 
-tauri build は beforeBuildCommand（npm run build）で repo の dist/ を作り直す（gitignore 済み）。start は、アプリのデータ領域（`<run-dir>/tauri-home/Library/Application Support/io.github.tanabe1478.immersive-markdown-editor/`）に session.json を書き、起動時に sample.md が開くようにする。`--doc <markdown>` で別の文書、`--prefs <preferences.json>` で設定を渡せる。ユーザーの実際のアプリデータ領域と WebKit の保存領域は使わない（stop が実ホーム側の署名で確かめる）。
+tauri build は beforeBuildCommand（npm run build）で repo の dist/ を作り直す（gitignore 済み）。start は、アプリのデータ領域（`<run-dir>/tauri-home/Library/Application Support/io.github.tanabe1478.immersive-markdown-editor/`）に session.json を書き、起動時に sample.md が開くようにする。`--doc <markdown>` で別の文書、`--prefs <preferences.json>` で設定、`--folder <dir>` で前回のエクスプローラーのフォルダ（session.lastFolder）を渡せる（見本のフォルダは run ディレクトリの中に作る。実ユーザーのフォルダは使わない）。ユーザーの実際のアプリデータ領域と WebKit の保存領域は使わない（stop が実ホーム側の署名で確かめる）。
 
 ## Doctor
 
@@ -72,18 +72,19 @@ node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenari
 seed は window.__E2E_SEED__ に入る初期状態で、ページを開く前に注入される。
 
 - files: パス → バイト列。値は number[]、または { text, bom?, crlf? }、{ raw }（改行を変換しない文字列）、{ lines: { template, count } }（template の {n} を行番号にする）、{ png: { width, height, rgb } }（単色の PNG）、{ base64 }。パスは仮想（/docs/note.md のように、メモリ上のファイルシステムのキー）。
-- openPath、savePath、imagePath: 次に「開く」「保存」「画像を選ぶ」ダイアログが返すパス（null はキャンセル）。
+- openPath、savePath、imagePath、folderPath: 次に「開く」「保存」「画像を選ぶ」「フォルダを開く」ダイアログが返すパス（null はキャンセル）。
 - preferences: 保存済みの設定（外観など。範囲外の項目だけ既定値に戻る）。
-- drafts、session: 前回の強制終了後の草稿、前回の文書（{ lastPath }）。drafts の要素に baseRevisionOfFile（files のそのパスの SHA-256 を baseRevision にする）を書ける。
+- emptyFolders、symlinkFolders、bulkFolders、unreadableFolders: フォルダ構造は files のパスから導く（/work/a/b.md があれば /work と /work/a がフォルダ）。そこに足せない場合の手段。emptyFolders は空のフォルダ（パスの配列）、symlinkFolders はフォルダへのリンクに見えるパス、bulkFolders は { path, count } で path の直下に item-00001.md から count 件の（中身のない）ファイル、unreadableFolders は読むと権限エラーになるフォルダ。開けないファイルは、files に .png や .json を置けばよい。名前がドットで始まるものは隠しとして除かれる。
+- drafts、session: 前回の強制終了後の草稿、前回の文書とフォルダ（{ lastPath, lastFolder }）。再読み込みをまたいで保たれるのは lastFolder だけ（sessionStorage）。drafts の要素に baseRevisionOfFile（files のそのパスの SHA-256 を baseRevision にする）を書ける。
 
 steps は上から順に実行し、外れたら止めて exit 1 にする。
 
-- 操作: press（key、times?）、type、insertText、click、fill（target に value を足す）、check、uncheck、select（target に option を足す）、waitFor、wait（ms）、mouseMove、mouseClick、viewport、reload、screenshot（名前）。
+- 操作: press（key、times?）、type、insertText、click（target に force: true を足すと、aria-disabled の項目も押せる）、focus、fill（target に value を足す）、check、uncheck、select（target に option を足す）、waitFor、wait（ms）、mouseMove、mouseClick、viewport、reload、screenshot（名前）。
 - bridge の操作: externalWrite（{ path, text | null, notify? }。外部のプロセスによる書き換え。text が null なら削除）、focusWindow（ウィンドウのフォーカス復帰）、requestClose（窓を閉じる操作）、setPaths（{ open?, save?, image? }）。
 - 観測: observe（名前。files に仮想パスを並べると、バイト数、bom、crlf、lf、text を記録）、eval（ページ内で式を評価して記録）。
 - 検査: expect。対象は eval（式）か、testId / role+name / label / text / css のいずれか（設定画面の中なら panel: true）。read は text（既定）、count、visible、focused、attr:<name>、css:<prop>。比較は equals、not、contains、matches（正規表現）、gte、lte。timeout（既定 3000ms）まで再試行する。note は報告用の説明。
 
-key の ControlOrMeta はその OS の Mod キー（macOS は Cmd、それ以外は Ctrl）。安定したハンドルは data-testid（doc-title、unsaved-mark、toast、conflict-bar、conflict-diff、conflict-reload、conflict-keep、diff-dialog、recovery-dialog、settings-button、settings-dialog、sidebar、sidebar-toggle、sidebar-close、char-count、canvas-bg、canvas-bg-image、canvas-surface、contrast-ratio、contrast-warning ほか）と、.cm-content、.cm-line、aria の名前（dialog「設定」、radio「単色」「窓いっぱい」など）。観測の入口は window.__mdeE2E（calls、physicalWrites、log、conflicts、drafts、backups、savedPreferences、session、watched、closed、fullscreen、editor.getText()、readFile(path)）。
+key の ControlOrMeta はその OS の Mod キー（macOS は Cmd、それ以外は Ctrl）。安定したハンドルは data-testid（doc-title、unsaved-mark、toast、conflict-bar、conflict-diff、conflict-reload、conflict-keep、diff-dialog、recovery-dialog、settings-button、settings-dialog、sidebar、sidebar-toggle、sidebar-close、sidebar-empty、open-folder、change-folder、refresh-folder、folder-name、file-tree、tree-item、tree-note、char-count、canvas-bg、canvas-bg-image、canvas-surface、contrast-ratio、contrast-warning ほか）と、.cm-content、.cm-line、aria の名前（ツリーは role treeitem と名前）（dialog「設定」、radio「単色」「窓いっぱい」など）。観測の入口は window.__mdeE2E（calls、physicalWrites、log、conflicts、drafts、backups、savedPreferences、session、openedFolder、listed、watched、closed、fullscreen、editor.getText()、readFile(path)）。
 
 ## Evidence
 

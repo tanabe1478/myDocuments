@@ -1,0 +1,132 @@
+{
+  "seed": {
+    "files": {
+      "/work/notes/a.md": {
+        "text": "# 見出しA\n\n本文A\n\n- 箇条書き\n"
+      },
+      "/work/notes/b.txt": {
+        "text": "# これは見出しではない\n\n- 箇条書きでもない\n\n素のテキスト\n"
+      },
+      "/work/notes/c.text": {
+        "text": "text 拡張子の文書\n"
+      },
+      "/work/notes/file2.md": {
+        "text": "二番\n"
+      },
+      "/work/notes/File10.md": {
+        "text": "十番\n"
+      },
+      "/work/notes/Zeta.md": {
+        "text": "# ゼータ\n"
+      },
+      "/work/notes/img.png": {
+        "png": {
+          "width": 2,
+          "height": 2,
+          "rgb": [
+            80,
+            120,
+            160
+          ]
+        }
+      },
+      "/work/notes/notes.json": {
+        "text": "{}\n"
+      },
+      "/work/notes/.hidden.md": {
+        "text": "隠し\n"
+      },
+      "/work/notes/.git/config": {
+        "text": "[core]\n"
+      },
+      "/work/notes/docs/guide.md": {
+        "text": "# ガイド\n"
+      },
+      "/work/notes/docs/memo.text": {
+        "text": "メモ\n"
+      },
+      "/work/notes/docs/deep/inner.mdx": {
+        "text": "# 内側\n"
+      },
+      "/work/notes/Archive/old.md": {
+        "text": "古い\n"
+      }
+    },
+    "folderPath": null,
+    "emptyFolders": [
+      "/work/notes/empty"
+    ],
+    "symlinkFolders": [
+      "/work/notes/linked"
+    ],
+    "preferences": {
+      "theme": "light",
+      "autoHideChrome": false,
+      "sidebarOpen": true
+    },
+    "session": {
+      "lastPath": null,
+      "lastFolder": "/work/notes"
+    }
+  },
+  "steps": [
+    {
+      "expect": {
+        "testId": "folder-name",
+        "equals": "notes",
+        "note": "起動時に前回のフォルダが復元される"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='docs']",
+        "read": "attr:aria-expanded",
+        "equals": "false",
+        "note": "展開状態は保存しない"
+      }
+    },
+    {
+      "click": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='docs'] > .tree-row"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='guide.md']",
+        "read": "visible",
+        "equals": true
+      }
+    },
+    {
+      "reload": true
+    },
+    {
+      "expect": {
+        "testId": "folder-name",
+        "equals": "notes",
+        "note": "再読み込み後も復元される"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='docs']",
+        "read": "attr:aria-expanded",
+        "equals": "false"
+      }
+    },
+    {
+      "expect": {
+        "testId": "toast",
+        "read": "count",
+        "equals": 0,
+        "note": "エラーのトーストは出ない"
+      }
+    },
+    {
+      "observe": "after-reload"
+    },
+    {
+      "screenshot": "01-restored"
+    }
+  ]
+}

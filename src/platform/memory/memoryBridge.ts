@@ -3,10 +3,14 @@ import type { EditorAdapter } from '../../editor/EditorAdapter';
 import { basename } from '../../document/state';
 import {
   BridgeError,
+  FOLDER_LISTING_LIMIT,
   type BackgroundImageData,
   type DiskState,
   type DocumentBridge,
   type Draft,
+  type FolderEntry,
+  type FolderEntryKind,
+  type FolderListing,
   type OpenedDocument,
   type SaveOptions,
   type SaveOutcome,
@@ -19,6 +23,8 @@ import { decodeBytes, encodeText, sameBytes, sha256Hex, sniffImageMime } from '.
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 /** 設定を再読み込みをまたいで保つ sessionStorage のキー（実アプリの preferences.json の代わり）。 */
 const PREFS_KEY = '__mdeE2E_preferences';
+/** 開いているフォルダ（session.lastFolder）を再読み込みをまたいで保つ sessionStorage のキー（実アプリの session.json の代わり）。 */
+const FOLDER_KEY = '__mdeE2E_lastFolder';
 
 /** テストが addInitScript で window.__E2E_SEED__ に置く初期状態。 */
 export interface E2ESeed {
@@ -34,8 +40,21 @@ export interface E2ESeed {
   imagePath?: string | null;
   /** アプリのデータ領域にある草稿（前回の強制終了の後の状態を模す）。 */
   drafts?: Draft[];
-  /** 前回の執筆環境。 */
+  /** 前回の執筆環境（lastPath、lastFolder）。 */
   session?: SessionInfo;
+  /**
+   * 次に「フォルダを開く」ダイアログが返すパス（null はキャンセル）。
+   * フォルダの構造は、files のパスから導く（/work/a/b.md があれば /work と /work/a がフォルダ）。
+   */
+  folderPath?: string | null;
+  /** 中身のない（files のパスからは導けない）フォルダ。 */
+  emptyFolders?: string[];
+  /** フォルダへのシンボリックリンクとして見せるパス（展開しない印の確認用。中身はない）。 */
+  symlinkFolders?: string[];
+  /** 項目が大量にあるフォルダ。path の直下に、item-00001.md から count 件の（中身のない）ファイルがあるように見せる。 */
+  bulkFolders?: Array<{ path: string; count: number }>;
+  /** 読もうとすると権限エラー（permission-denied）になるフォルダ。 */
+  unreadableFolders?: string[];
 }
 
 /** テストが window.__mdeE2E 経由で観測・操作するもの。 */
@@ -53,6 +72,8 @@ export interface E2EState {
     draftWrite: number;
     draftDelete: number;
     close: number;
+    folderOpen: number;
+    folderList: number;
   };
   /** 保存の直前の検査で、書かずに衝突を返した回数。 */
   conflicts: number;
@@ -61,6 +82,10 @@ export interface E2EState {
   /** アプリのデータ領域のバックアップ（上書き前のディスクの内容）。 */
   backups: Array<{ path: string; bytes: Uint8Array }>;
   session: SessionInfo;
+  /** openFolder で許可されたフォルダ（最後に開いたもの）。 */
+  openedFolder: string | null;
+  /** listFolder に渡されたパスの記録（遅延読み込みの確認用）。 */
+  listed: string[];
   /** 監視している文書のパス（watchDocument の最後の引数）。 */
   watched: string | null;
   /** closeApp が呼ばれたか（アプリが終了したことの代わり）。 */
@@ -79,6 +104,8 @@ export interface E2EState {
   savedPreferences: unknown[];
   openPath: string | null;
   savePath: string | null;
+  /** 次に「フォルダを開く」ダイアログが返すパス（null はキャンセル）。 */
+  folderPath: string | null;
   readFile(path: string): number[] | null;
   /** 外部のプロセスによる書き換え。bytes が null ならファイルの削除。notify が true なら、監視の通知も届く。 */
   externalWrite(path: string, bytes: number[] | null, options?: { notify?: boolean }): void;
@@ -99,6 +126,35 @@ declare global {
   }
 }
 
+
+// ---- フォルダ（エクスプローラー）。crates の外の src-tauri/src/folders.rs と同じ規則（正本は Rust 側）。 ----
+
+const folderCollator = new Intl.Collator('ja', { numeric: true, sensitivity: 'base' });
+
+/** 末尾の区切りを除き、`.` と `..` を解決した絶対パス（仮想パスは常に / 区切り）。 */
+function normalizePath(path: string): string {
+  const parts: string[] = [];
+  for (const part of path.split('/')) {
+    if (part === '' || part === '.') continue;
+    if (part === '..') parts.pop();
+    else parts.push(part);
+  }
+  return `/${parts.join('/')}`;
+}
+
+const isUnder = (path: string, root: string) => root === '/' || path === root || path.startsWith(`${root}/`);
+
+function bulkName(index: number): string {
+  return `item-${String(index + 1).padStart(5, '0')}.md`;
+}
+
+/** 前回の執筆環境。lastFolder は、同じタブでの再読み込みなら保存済みのもの、なければ seed。値があるときだけ項目を持つ。 */
+function initialSession(seed: E2ESeed): SessionInfo {
+  const saved = sessionStorage.getItem(FOLDER_KEY);
+  const lastFolder = saved !== null ? (JSON.parse(saved) as string | null) : (seed.session?.lastFolder ?? null);
+  return { lastPath: seed.session?.lastPath ?? null, ...(lastFolder !== null ? { lastFolder } : {}) };
+}
+
 export function createMemoryBridge(): DocumentBridge {
   const seed = window.__E2E_SEED__ ?? {};
   const known = new Set<string>();
@@ -117,11 +173,15 @@ export function createMemoryBridge(): DocumentBridge {
       draftWrite: 0,
       draftDelete: 0,
       close: 0,
+      folderOpen: 0,
+      folderList: 0,
     },
     conflicts: 0,
     drafts: new Map((seed.drafts ?? []).map((d) => [d.draftId, structuredClone(d)])),
     backups: [],
-    session: { lastPath: seed.session?.lastPath ?? null },
+    session: initialSession(seed),
+    openedFolder: null,
+    listed: [],
     watched: null,
     closed: false,
     fullscreen: false,
@@ -133,6 +193,7 @@ export function createMemoryBridge(): DocumentBridge {
     savedPreferences: [],
     openPath: seed.openPath ?? null,
     savePath: seed.savePath ?? null,
+    folderPath: seed.folderPath ?? null,
     readFile: (path) => {
       const f = state.files.get(path);
       return f ? Array.from(f) : null;
@@ -151,6 +212,43 @@ export function createMemoryBridge(): DocumentBridge {
     editor: null,
   };
   window.__mdeE2E = state;
+
+  const emptyFolders = (seed.emptyFolders ?? []).map(normalizePath);
+  const symlinkFolders = (seed.symlinkFolders ?? []).map(normalizePath);
+  const bulkFolders = (seed.bulkFolders ?? []).map((b) => ({ path: normalizePath(b.path), count: b.count }));
+  const unreadableFolders = (seed.unreadableFolders ?? []).map(normalizePath);
+
+  /** フォルダとして存在するか（files のパスの祖先、または seed で挙げたフォルダ）。 */
+  function isFolder(path: string): boolean {
+    if (path === '/') return true;
+    const declared = [...emptyFolders, ...unreadableFolders, ...bulkFolders.map((b) => b.path)];
+    if (declared.some((d) => isUnder(d, path))) return true;
+    return Array.from(state.files.keys()).some((f) => f.startsWith(`${path}/`));
+  }
+
+  /** dir の直下の項目（隠しの除外と並べ替え、件数の上限の前）。 */
+  function childrenOf(dir: string): FolderEntry[] {
+    const prefix = dir === '/' ? '/' : `${dir}/`;
+    const found = new Map<string, FolderEntryKind>();
+    const add = (path: string, leaf: boolean) => {
+      if (!path.startsWith(prefix)) return;
+      const rest = path.slice(prefix.length);
+      if (rest === '') return;
+      const [name = ''] = rest.split('/');
+      const isLeaf = leaf && !rest.includes('/');
+      const full = `${prefix}${name}`;
+      const kind: FolderEntryKind = symlinkFolders.includes(full) ? 'symlinkDir' : isLeaf ? 'file' : 'dir';
+      if (!found.has(name) || kind === 'dir') found.set(name, kind);
+    };
+    for (const f of state.files.keys()) add(f, true);
+    for (const d of [...emptyFolders, ...unreadableFolders, ...bulkFolders.map((b) => b.path)]) add(d, false);
+    for (const l of symlinkFolders) add(l, false);
+    for (const b of bulkFolders) {
+      if (b.path !== dir) continue;
+      for (let i = 0; i < b.count; i++) found.set(bulkName(i), 'file');
+    }
+    return Array.from(found, ([name, kind]) => ({ name, path: `${prefix}${name}`, kind }));
+  }
 
   /** 実際にバイト列を書き換える。内容が同一なら書かない（unchanged）。 */
   function commit(kind: 'save' | 'saveAs', path: string, bytes: Uint8Array): SaveOutcome {
@@ -252,8 +350,41 @@ export function createMemoryBridge(): DocumentBridge {
     async loadSession() {
       return { ...state.session };
     },
-    async saveSession(session) {
-      state.session = { ...session };
+    async saveSession(patch) {
+      state.session = { ...state.session, ...patch };
+      if ('lastFolder' in patch) sessionStorage.setItem(FOLDER_KEY, JSON.stringify(patch.lastFolder ?? null));
+    },
+    async pickFolderPath() {
+      return state.folderPath;
+    },
+    async openFolder(path) {
+      state.calls.folderOpen++;
+      if (!path.startsWith('/')) throw new BridgeError('invalid-input', 'the path must be absolute');
+      const folder = normalizePath(path);
+      if (state.files.has(folder)) throw new BridgeError('invalid-input', 'the path is not a folder');
+      if (!isFolder(folder)) throw new BridgeError('not-found', 'no such folder');
+      if (unreadableFolders.includes(folder)) throw new BridgeError('permission-denied', 'permission denied');
+      state.openedFolder = folder;
+    },
+    async listFolder(path): Promise<FolderListing> {
+      state.calls.folderList++;
+      state.listed.push(path);
+      if (!path.startsWith('/')) throw new BridgeError('invalid-input', 'the path must be absolute');
+      const folder = normalizePath(path);
+      if (state.openedFolder === null || !isUnder(folder, state.openedFolder)) {
+        throw new BridgeError('not-allowed', 'the folder was not opened in this session');
+      }
+      if (state.files.has(folder)) throw new BridgeError('invalid-input', 'the path is not a folder');
+      if (symlinkFolders.includes(folder)) throw new BridgeError('not-allowed', 'a symbolic link to a folder is not followed');
+      if (!isFolder(folder)) throw new BridgeError('not-found', 'no such folder');
+      if (unreadableFolders.includes(folder)) throw new BridgeError('permission-denied', 'permission denied');
+      const visible = childrenOf(folder)
+        .filter((e) => !e.name.startsWith('.'))
+        .sort((a, b) => {
+          const dirs = Number(b.kind === 'dir' || b.kind === 'symlinkDir') - Number(a.kind === 'dir' || a.kind === 'symlinkDir');
+          return dirs || folderCollator.compare(a.name, b.name) || (a.name < b.name ? -1 : 1);
+        });
+      return { entries: visible.slice(0, FOLDER_LISTING_LIMIT), total: visible.length };
     },
     async onCloseRequested(cb) {
       closeListeners.add(cb);

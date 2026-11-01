@@ -166,6 +166,18 @@ async function snapshot(page, extra = {}) {
       conflictBar: q('conflict-bar') ? { state: q('conflict-bar').getAttribute('data-state'), text: q('conflict-bar').textContent } : null,
       dialogs: Array.from(document.querySelectorAll('[role="dialog"], [role="alertdialog"]')).map((d) => ({ role: d.getAttribute('role'), text: (d.textContent ?? '').slice(0, 160) })),
       charCount: q('char-count')?.textContent ?? null,
+      explorer: q('file-tree') || q('open-folder') ? {
+        folderName: q('folder-name')?.textContent ?? null,
+        folderTitle: q('folder-name')?.getAttribute('title') ?? null,
+        items: Array.from(document.querySelectorAll('[data-testid="tree-item"], [data-testid="tree-note"]')).map((e) => ({
+          label: e.getAttribute('aria-label'),
+          level: Number(e.getAttribute('aria-level')),
+          kind: e.getAttribute('data-kind'),
+          expanded: e.getAttribute('aria-expanded'),
+          disabled: e.getAttribute('aria-disabled') === 'true',
+          current: e.getAttribute('aria-current') === 'true',
+        })),
+      } : null,
       chrome: document.querySelector('.app')?.getAttribute('data-chrome') ?? null,
       theme: document.documentElement.getAttribute('data-theme'),
       bridge: s && {
@@ -176,6 +188,8 @@ async function snapshot(page, extra = {}) {
         fullscreen: s.fullscreen,
         watched: s.watched,
         session: { ...s.session },
+        openedFolder: s.openedFolder,
+        listed: [...s.listed],
         log: [...s.log],
         drafts: s.readDrafts().map((d) => ({ draftId: d.draftId, path: d.path, text: d.text, baseRevision: d.baseRevision })),
         backups: s.readBackups().map((b) => ({ path: b.path, text: dec(b.bytes) })),
@@ -235,7 +249,8 @@ try {
       if ('press' in step) for (let i = 0; i < (step.times ?? 1); i++) await press(step.press);
       else if ('type' in step) await page.keyboard.type(step.type, { delay: step.delay ?? 0 });
       else if ('insertText' in step) await page.keyboard.insertText(step.insertText);
-      else if ('click' in step) await locate(page, step.click).first().click();
+      else if ('click' in step) await locate(page, step.click).first().click({ force: step.click.force === true });
+      else if ('focus' in step) await locate(page, step.focus).first().focus();
       else if ('fill' in step) await locate(page, step.fill).fill(String(step.fill.value));
       else if ('check' in step) await locate(page, step.check).check();
       else if ('uncheck' in step) await locate(page, step.uncheck).uncheck();
