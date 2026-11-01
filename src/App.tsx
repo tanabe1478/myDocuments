@@ -3,16 +3,27 @@ import { backgroundImageId, resolveCanvas } from './canvas/canvas';
 import { CanvasBackground } from './canvas/CanvasBackground';
 import { countCharacters } from './canvas/charCount';
 import { useBackgroundImage } from './canvas/useBackgroundImage';
-import { DocumentController, describeError, type DiscardChoice, type Notice } from './document/controller';
-import { documentTitle, isDirty } from './document/state';
+import {
+  DocumentController,
+  describeError,
+  type DiscardChoice,
+  type Notice,
+  type RecoveryChoice,
+} from './document/controller';
+import { draftTitle } from './document/recovery';
+import { UNTITLED, documentTitle, isDirty } from './document/state';
 import type { EditorAdapter } from './editor/EditorAdapter';
 import { createCodeMirrorAdapter } from './editor/codemirror/CodeMirrorAdapter';
-import { BridgeError, type DocumentBridge } from './platform';
+import { BridgeError, type DocumentBridge, type DraftSummary } from './platform';
 import { applyPreferences } from './preferences/apply';
 import { normalizePreferences, type Preferences } from './preferences/preferences';
 import { useResolvedTheme } from './preferences/useResolvedTheme';
 import { AppearancePanel } from './ui/AppearancePanel';
+import { ConflictBar } from './ui/ConflictBar';
 import { ConfirmDiscardDialog } from './ui/ConfirmDiscardDialog';
+import { ConfirmRecreateDialog } from './ui/ConfirmRecreateDialog';
+import { DiffDialog } from './ui/DiffDialog';
+import { RecoveryDialog } from './ui/RecoveryDialog';
 import { panelReserve } from './ui/panelLayout';
 import { isMacPlatform, matchShortcut, shouldHandleShortcut } from './ui/shortcuts';
 import { Toast, type ToastNotice } from './ui/Toast';
@@ -25,6 +36,17 @@ interface PendingConfirm {
   resolve(choice: DiscardChoice): void;
 }
 
+interface PendingRecreate {
+  documentName: string;
+  resolve(recreate: boolean): void;
+}
+
+interface PendingRecovery {
+  draft: DraftSummary;
+  others: number;
+  resolve(choice: RecoveryChoice): void;
+}
+
 export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; initialPreferences: Preferences }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const topbarRef = useRef<HTMLElement>(null);
@@ -32,6 +54,9 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
   const adapterRef = useRef<EditorAdapter | null>(null);
   const noticeId = useRef(0);
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
+  const [recreate, setRecreate] = useState<PendingRecreate | null>(null);
+  const [recovery, setRecovery] = useState<PendingRecovery | null>(null);
+  const [diffOpen, setDiffOpen] = useState(false);
   const [notice, setNotice] = useState<ToastNotice | null>(null);
   const [prefs, setPrefs] = useState<Preferences>(initialPreferences);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -51,6 +76,10 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
         },
         confirmDiscard: (documentName) =>
           new Promise<DiscardChoice>((resolve) => setConfirm({ documentName, resolve })),
+        confirmRecreate: (documentName) =>
+          new Promise<boolean>((resolve) => setRecreate({ documentName, resolve })),
+        askRecovery: (draft, others) =>
+          new Promise<RecoveryChoice>((resolve) => setRecovery({ draft, others, resolve })),
         notify: (n: Notice) => setNotice({ ...n, id: ++noticeId.current }),
       }),
     [bridge],
@@ -64,6 +93,8 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
   );
 
   const state = useSyncExternalStore(controller.subscribe, controller.getState);
+  const external = useSyncExternalStore(controller.subscribe, controller.getExternal);
+  const diskTextForDiff = diffOpen ? controller.getDiskTextForDiff() : null;
   const dirty = isDirty(state);
   const title = documentTitle(state);
 
@@ -83,16 +114,33 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
     });
     if (__E2E__ && window.__mdeE2E) window.__mdeE2E.editor = adapter;
 
+    // ネイティブ側からの通知: 監視中の文書の外部変更、窓を閉じる・終了する操作。
+    // 終了の確認の受け手がそろってから、窓の表示（notifyReady）を知らせる。
+    let cancelled = false;
+    const subscriptions = Promise.all([
+      bridge.onDocumentChanged((path) => {
+        if (controller.getState().path === path) void controller.checkExternal();
+      }),
+      bridge.onCloseRequested(() => void controller.requestClose()),
+    ]).catch(() => [] as Array<() => void>);
+    // ウィンドウに戻ったら確かめる（監視の取りこぼし対策）。
+    const onWindowFocus = () => void controller.checkExternal();
+    window.addEventListener('focus', onWindowFocus);
+
+    // 前回の草稿の復旧、または前回の文書の開き直し。
+    void controller.start();
+
     // 窓は非表示で作られており、非表示の間は requestAnimationFrame が止まる。
     // rAF には頼らず、レイアウトが済む程度の短い待ちの後に知らせる。
-    let cancelled = false;
     const readyTimer = setTimeout(() => {
-      if (!cancelled) void bridge.notifyReady().catch(() => {});
+      if (!cancelled) void subscriptions.then(() => bridge.notifyReady()).catch(() => {});
     }, 50);
 
     return () => {
       cancelled = true;
       clearTimeout(readyTimer);
+      window.removeEventListener('focus', onWindowFocus);
+      void subscriptions.then((offs) => offs.forEach((o) => o()));
       off();
       adapter.destroy();
       adapterRef.current = null;
@@ -262,6 +310,22 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
     setConfirm(null);
   };
 
+  const chooseRecreate = (ok: boolean) => {
+    recreate?.resolve(ok);
+    setRecreate(null);
+  };
+
+  const chooseRecovery = (choice: RecoveryChoice) => {
+    recovery?.resolve(choice);
+    setRecovery(null);
+    adapterRef.current?.focus();
+  };
+
+  const closeDiff = useCallback(() => {
+    setDiffOpen(false);
+    adapterRef.current?.focus();
+  }, []);
+
   return (
     <div
       className="app"
@@ -294,6 +358,16 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
           外観
         </button>
       </header>
+      <ConflictBar
+        external={external}
+        onShowDiff={() => setDiffOpen(true)}
+        onReload={() => void runCommand(controller.reloadFromDisk)}
+        onKeepMine={() => {
+          controller.keepMine();
+          adapterRef.current?.focus();
+        }}
+        onRecreate={() => void runCommand(controller.save)}
+      />
       <main className="editor-host" ref={hostRef} />
       <footer className="bottombar" ref={bottombarRef} aria-label="下部バー" onFocus={reveal}>
         {/* 環境音のコントロールの置き場所（Phase 2）。いまは中身を作らない。 */}
@@ -314,7 +388,17 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
         />
       )}
       <Toast notice={notice} onDismiss={dismissNotice} />
+      {diskTextForDiff !== null && <DiffDialog mine={state.text} disk={diskTextForDiff} onClose={closeDiff} />}
       {confirm && <ConfirmDiscardDialog documentName={confirm.documentName} onChoose={choose} />}
+      {recreate && <ConfirmRecreateDialog documentName={recreate.documentName} onChoose={chooseRecreate} />}
+      {recovery && (
+        <RecoveryDialog
+          documentName={draftTitle(recovery.draft, UNTITLED)}
+          updatedAt={recovery.draft.updatedAt}
+          others={recovery.others}
+          onChoose={chooseRecovery}
+        />
+      )}
     </div>
   );
 }

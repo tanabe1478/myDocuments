@@ -2,8 +2,9 @@
 name = "docio"
 version = "0.1.0"
 edition = "2021"
-description = "Markdown 文書の入出力: BOM・改行コードの記録と復元、無変更なら書かない原子的保存。標準ライブラリのみ。"
+description = "Markdown 文書の入出力: BOM・改行コードの記録と復元、無変更なら書かない原子的保存、内容ハッシュによる競合検査とバックアップ。"
 license = "MIT"
 publish = false
 
 [dependencies]
+sha2 = "0.10"

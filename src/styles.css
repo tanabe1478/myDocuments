@@ -444,3 +444,78 @@ body {
       width 0.2s ease;
   }
 }
+
+/* 外部変更の競合バー。選択が要る間は、自動非表示でも隠さない。 */
+.conflict-bar {
+  position: absolute;
+  top: 52px;
+  left: 50%;
+  z-index: 6;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  max-width: min(94vw, 760px);
+  padding: 8px 14px;
+  transform: translateX(-50%);
+  border: 1px solid var(--md-color-accent);
+  border-radius: 10px;
+  background: var(--md-color-panel);
+  color: var(--md-color-text);
+  font: 13px/1.5 var(--md-font-family);
+}
+
+.conflict-message {
+  flex: 1 1 auto;
+}
+
+.conflict-bar button {
+  padding: 4px 12px;
+  border: 1px solid var(--md-color-border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.conflict-bar button:focus-visible {
+  outline: 2px solid var(--md-color-link);
+  outline-offset: 2px;
+}
+
+/* 差分の表示（@codemirror/merge）。 */
+.diff-dialog {
+  width: min(94vw, 1000px);
+}
+
+.diff-labels {
+  display: flex;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: var(--md-color-muted);
+}
+
+.diff-labels span {
+  flex: 1;
+}
+
+.diff-host {
+  max-height: 60vh;
+  margin-bottom: 14px;
+  overflow: auto;
+  border: 1px solid var(--md-color-border);
+  border-radius: 6px;
+  background: var(--md-color-surface);
+}
+
+.diff-host .cm-editor {
+  background: transparent;
+  color: var(--md-color-text);
+  font-family: var(--md-font-family);
+}
+
+.diff-host .cm-mergeView {
+  min-height: 80px;
+}

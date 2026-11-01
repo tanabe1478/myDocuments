@@ -1,7 +1,7 @@
 //! 文書の入出力（open / save）。Tauri に依存しない部分。docio の薄いラッパー。
 
 use crate::error::{CommandError, ErrorKind};
-use docio::{DocumentFormat, Eol, SaveOutcome};
+use docio::{CheckedSave, DiskState, DocumentFormat, Eol, SaveOutcome, DEFAULT_BACKUP_LIMITS};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -55,6 +55,42 @@ pub struct OpenedDocument {
     /// 改行は LF に正規化済み。BOM は含まない。
     pub text: String,
     pub format: FormatDto,
+    /// 読み込んだバイト列の SHA-256（16 進）。保存時に「最後に見たディスクの状態」として返す。
+    pub revision: String,
+}
+
+/// ディスク上のファイルの状態。
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum DiskStateDto {
+    Present { revision: String },
+    Missing,
+}
+
+impl From<DiskState> for DiskStateDto {
+    fn from(s: DiskState) -> Self {
+        match s {
+            DiskState::Present { revision } => DiskStateDto::Present { revision },
+            DiskState::Missing => DiskStateDto::Missing,
+        }
+    }
+}
+
+/// 保存の結果。衝突は失敗（エラー）ではなく、書かなかったという正常な結果として返す。
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum SaveResultDto {
+    #[serde(rename_all = "camelCase")]
+    Saved {
+        outcome: SaveOutcomeDto,
+        /// 保存後のディスク内容の revision。
+        revision: String,
+        /// 上書き前の内容を退避した先。退避しなかったときは null。
+        backup: Option<String>,
+    },
+    Conflict {
+        disk: DiskStateDto,
+    },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -115,15 +151,18 @@ pub fn open(path: &str, known: &KnownPaths) -> Result<OpenedDocument, CommandErr
         path: path.to_string(),
         text: decoded.text,
         format: decoded.format.into(),
+        revision: docio::revision_of(&bytes),
     })
 }
 
-pub fn save(
-    path: &str,
-    text: &str,
-    format: FormatDto,
-    known: &KnownPaths,
-) -> Result<SaveOutcomeDto, CommandError> {
+/// 開いた・保存先に選んだパスの、現在のディスクの状態（外部変更の確認用）。
+pub fn check(path: &str, known: &KnownPaths) -> Result<DiskStateDto, CommandError> {
+    let p = validate_known(path, known)?;
+    Ok(docio::check(&p)?.into())
+}
+
+/// このセッションで開いた・保存先に選んだパスだけを受け付ける（監視・確認・保存の共通の入口）。
+pub fn validate_known(path: &str, known: &KnownPaths) -> Result<PathBuf, CommandError> {
     let p = validate_path(path)?;
     if !known.contains(&p) {
         return Err(CommandError::new(
@@ -131,24 +170,62 @@ pub fn save(
             "the path was not opened or chosen in this session",
         ));
     }
-    write(&p, text, format)
+    Ok(p)
 }
 
+/// 保存直前にディスクの内容を確かめて書く（FS-04）。
+/// `expected_revision` は、この文書が最後に見たディスクの revision（ファイルがない前提なら None）。
+/// 違えば書かずに `Conflict` を返す。`overwrite` は、衝突を承知で上書きする（先に現在の内容を退避する）。
+pub fn save(
+    path: &str,
+    text: &str,
+    format: FormatDto,
+    expected_revision: Option<&str>,
+    overwrite: bool,
+    backups_dir: &Path,
+    known: &KnownPaths,
+) -> Result<SaveResultDto, CommandError> {
+    let p = validate_known(path, known)?;
+    let bytes = docio::encode(text, &format.into());
+    let result = docio::save_checked(
+        &p,
+        &bytes,
+        expected_revision,
+        overwrite,
+        backups_dir,
+        DEFAULT_BACKUP_LIMITS,
+    )?;
+    Ok(match result {
+        CheckedSave::Saved {
+            outcome,
+            revision,
+            backup,
+        } => SaveResultDto::Saved {
+            outcome: outcome.into(),
+            revision,
+            backup: backup.map(|b| b.to_string_lossy().into_owned()),
+        },
+        CheckedSave::Conflict { disk } => SaveResultDto::Conflict { disk: disk.into() },
+    })
+}
+
+/// OS の保存ダイアログで選んだパスへの保存。上書きの確認は OS のダイアログが済ませているので、
+/// 競合検査はしない。
 pub fn save_as(
     path: &str,
     text: &str,
     format: FormatDto,
     known: &KnownPaths,
-) -> Result<SaveOutcomeDto, CommandError> {
+) -> Result<SaveResultDto, CommandError> {
     let p = validate_path(path)?;
-    let outcome = write(&p, text, format)?;
-    known.register(&p);
-    Ok(outcome)
-}
-
-fn write(path: &Path, text: &str, format: FormatDto) -> Result<SaveOutcomeDto, CommandError> {
     let bytes = docio::encode(text, &format.into());
-    Ok(docio::save_atomic(path, &bytes)?.into())
+    let outcome = docio::save_atomic(&p, &bytes)?;
+    known.register(&p);
+    Ok(SaveResultDto::Saved {
+        outcome: outcome.into(),
+        revision: docio::revision_of(&bytes),
+        backup: None,
+    })
 }
 
 #[cfg(test)]
@@ -228,27 +305,55 @@ mod tests {
         assert_eq!(open("", &known).unwrap_err().kind, ErrorKind::InvalidInput);
     }
 
+    fn backups(dir: &TempDir) -> PathBuf {
+        dir.0.join("backups")
+    }
+
+    fn saved(r: SaveResultDto) -> (SaveOutcomeDto, String, Option<String>) {
+        match r {
+            SaveResultDto::Saved {
+                outcome,
+                revision,
+                backup,
+            } => (outcome, revision, backup),
+            other => panic!("expected Saved, got {other:?}"),
+        }
+    }
+
+    const LF_FMT: FormatDto = FormatDto {
+        bom: false,
+        eol: EolDto::Lf,
+        mixed_eol: false,
+    };
+
+    #[test]
+    fn open_returns_the_revision_of_the_disk_bytes() {
+        let dir = TempDir::new();
+        let path = dir.file("a.md");
+        fs::write(&path, CRLF_BOM).unwrap();
+        let doc = open(&path, &KnownPaths::default()).unwrap();
+        assert_eq!(doc.revision, docio::revision_of(CRLF_BOM));
+    }
+
     #[test]
     fn save_requires_a_known_path() {
         let dir = TempDir::new();
         let path = dir.file("a.md");
         fs::write(&path, b"x").unwrap();
-        let fmt = FormatDto {
-            bom: false,
-            eol: EolDto::Lf,
-            mixed_eol: false,
-        };
         let known = KnownPaths::default();
+        let rev = docio::revision_of(b"x");
 
-        let err = save(&path, "y", fmt, &known).unwrap_err();
+        let err = save(&path, "y", LF_FMT, Some(&rev), false, &backups(&dir), &known).unwrap_err();
         assert_eq!(err.kind, ErrorKind::NotAllowed);
         assert_eq!(fs::read(&path).unwrap(), b"x");
+        assert_eq!(check(&path, &known).unwrap_err().kind, ErrorKind::NotAllowed);
 
         open(&path, &known).unwrap();
-        assert_eq!(
-            save(&path, "y", fmt, &known).unwrap(),
-            SaveOutcomeDto::Written
-        );
+        let (outcome, revision, backup) =
+            saved(save(&path, "y", LF_FMT, Some(&rev), false, &backups(&dir), &known).unwrap());
+        assert_eq!(outcome, SaveOutcomeDto::Written);
+        assert_eq!(revision, docio::revision_of(b"y"));
+        assert_eq!(backup, None);
         assert_eq!(fs::read(&path).unwrap(), b"y");
     }
 
@@ -260,17 +365,106 @@ mod tests {
         let known = KnownPaths::default();
         let doc = open(&path, &known).unwrap();
 
-        let outcome = save(&path, &doc.text, doc.format, &known).unwrap();
+        let r = save(&path, &doc.text, doc.format, Some(&doc.revision), false, &backups(&dir), &known).unwrap();
+        let (outcome, revision, _) = saved(r);
         assert_eq!(outcome, SaveOutcomeDto::Unchanged);
+        assert_eq!(revision, doc.revision);
         assert_eq!(fs::read(&path).unwrap(), CRLF_BOM);
 
-        let outcome = save(&path, "a\nbX\n", doc.format, &known).unwrap();
-        assert_eq!(outcome, SaveOutcomeDto::Written);
+        let r = save(&path, "a\nbX\n", doc.format, Some(&doc.revision), false, &backups(&dir), &known).unwrap();
+        assert_eq!(saved(r).0, SaveOutcomeDto::Written);
         assert_eq!(fs::read(&path).unwrap(), b"\xEF\xBB\xBFa\r\nbX\r\n");
     }
 
     #[test]
-    fn save_as_creates_a_file_and_registers_the_path() {
+    fn save_does_not_write_when_the_file_changed_after_open() {
+        let dir = TempDir::new();
+        let path = dir.file("a.md");
+        fs::write(&path, b"original").unwrap();
+        let known = KnownPaths::default();
+        let doc = open(&path, &known).unwrap();
+
+        // 開いた後に、別のエディタが書き換えた。
+        fs::write(&path, b"edited elsewhere").unwrap();
+
+        let r = save(&path, "mine", doc.format.clone(), Some(&doc.revision), false, &backups(&dir), &known).unwrap();
+        assert_eq!(
+            r,
+            SaveResultDto::Conflict {
+                disk: DiskStateDto::Present {
+                    revision: docio::revision_of(b"edited elsewhere")
+                }
+            }
+        );
+        assert_eq!(fs::read(&path).unwrap(), b"edited elsewhere");
+        assert!(!backups(&dir).exists());
+    }
+
+    #[test]
+    fn overwrite_backs_up_the_disk_content_then_writes() {
+        let dir = TempDir::new();
+        let path = dir.file("a.md");
+        fs::write(&path, b"original").unwrap();
+        let known = KnownPaths::default();
+        let doc = open(&path, &known).unwrap();
+        fs::write(&path, b"edited elsewhere").unwrap();
+
+        let r = save(&path, "mine", doc.format, Some(&doc.revision), true, &backups(&dir), &known).unwrap();
+
+        let (outcome, _, backup) = saved(r);
+        assert_eq!(outcome, SaveOutcomeDto::Written);
+        let backup = backup.expect("backup path");
+        assert_eq!(fs::read(&backup).unwrap(), b"edited elsewhere");
+        assert!(Path::new(&backup).starts_with(backups(&dir)));
+        assert_eq!(fs::read(&path).unwrap(), b"mine");
+    }
+
+    #[test]
+    fn check_reports_present_changed_and_missing() {
+        let dir = TempDir::new();
+        let path = dir.file("a.md");
+        fs::write(&path, b"v1").unwrap();
+        let known = KnownPaths::default();
+        let doc = open(&path, &known).unwrap();
+
+        assert_eq!(
+            check(&path, &known).unwrap(),
+            DiskStateDto::Present {
+                revision: doc.revision.clone()
+            }
+        );
+        fs::write(&path, b"v2").unwrap();
+        assert_eq!(
+            check(&path, &known).unwrap(),
+            DiskStateDto::Present {
+                revision: docio::revision_of(b"v2")
+            }
+        );
+        fs::remove_file(&path).unwrap();
+        assert_eq!(check(&path, &known).unwrap(), DiskStateDto::Missing);
+    }
+
+    #[test]
+    fn saving_a_deleted_file_conflicts_and_recreating_needs_no_expected_revision() {
+        let dir = TempDir::new();
+        let path = dir.file("a.md");
+        fs::write(&path, b"v1").unwrap();
+        let known = KnownPaths::default();
+        let doc = open(&path, &known).unwrap();
+        fs::remove_file(&path).unwrap();
+
+        let r = save(&path, "mine", doc.format, Some(&doc.revision), false, &backups(&dir), &known).unwrap();
+        assert_eq!(r, SaveResultDto::Conflict { disk: DiskStateDto::Missing });
+        assert!(!Path::new(&path).exists());
+
+        // 作り直す: ファイルがない前提（expected なし）で保存する。
+        let r = save(&path, "mine", doc.format, None, false, &backups(&dir), &known).unwrap();
+        assert_eq!(saved(r).0, SaveOutcomeDto::Written);
+        assert_eq!(fs::read(&path).unwrap(), b"mine");
+    }
+
+    #[test]
+    fn save_as_creates_a_file_registers_the_path_and_returns_the_revision() {
         let dir = TempDir::new();
         let path = dir.file("new.md");
         let known = KnownPaths::default();
@@ -280,16 +474,32 @@ mod tests {
             mixed_eol: true,
         };
 
-        assert_eq!(
-            save_as(&path, "a\nb", fmt, &known).unwrap(),
-            SaveOutcomeDto::Written
-        );
+        let (outcome, revision, backup) = saved(save_as(&path, "a\nb", fmt, &known).unwrap());
+        assert_eq!(outcome, SaveOutcomeDto::Written);
+        assert_eq!(revision, docio::revision_of(b"a\r\nb"));
+        assert_eq!(backup, None);
         assert_eq!(fs::read(&path).unwrap(), b"a\r\nb");
         // 以降は通常の保存ができる。
-        assert_eq!(
-            save(&path, "a\nc", fmt, &known).unwrap(),
-            SaveOutcomeDto::Written
-        );
+        let r = save(&path, "a\nc", fmt, Some(&revision), false, &backups(&dir), &known).unwrap();
+        assert_eq!(saved(r).0, SaveOutcomeDto::Written);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn saving_through_a_symlink_keeps_the_link() {
+        let dir = TempDir::new();
+        let real = dir.file("real.md");
+        let link = dir.file("link.md");
+        fs::write(&real, b"v1").unwrap();
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let known = KnownPaths::default();
+        let doc = open(&link, &known).unwrap();
+
+        let r = save(&link, "v2", doc.format, Some(&doc.revision), false, &backups(&dir), &known).unwrap();
+
+        assert_eq!(saved(r).0, SaveOutcomeDto::Written);
+        assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        assert_eq!(fs::read(&real).unwrap(), b"v2");
     }
 
     #[test]

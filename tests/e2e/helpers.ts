@@ -113,7 +113,43 @@ export async function setDialogPaths(page: Page, paths: { open?: string | null; 
   }, paths);
 }
 
+/** 外部のプロセスによる書き換え（text が null ならファイルの削除）。notify が true なら、監視の通知も届く。 */
+export async function externalWrite(
+  page: Page,
+  path: string,
+  text: string | null,
+  options: { notify?: boolean } = {},
+): Promise<void> {
+  await page.evaluate(
+    ([p, bytes, notify]) => window.__mdeE2E!.externalWrite(p, bytes, { notify }),
+    [path, text === null ? null : utf8(text), options.notify ?? true] as const,
+  );
+}
+
+/** ウィンドウがフォーカスを取り戻したことを模す。 */
+export async function focusWindow(page: Page): Promise<void> {
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+}
+
+export async function drafts(page: Page) {
+  return page.evaluate(() => window.__mdeE2E!.readDrafts());
+}
+
+export async function backups(page: Page) {
+  return page.evaluate(() =>
+    window.__mdeE2E!.readBackups().map((b) => ({ path: b.path, text: new TextDecoder().decode(Uint8Array.from(b.bytes)) })),
+  );
+}
+
+export async function bridgeState(page: Page) {
+  return page.evaluate(() => {
+    const s = window.__mdeE2E!;
+    return { calls: { ...s.calls }, conflicts: s.conflicts, closed: s.closed, watched: s.watched, session: { ...s.session } };
+  });
+}
+
 export const unsavedMark = (page: Page) => page.getByTestId('unsaved-mark');
+export const conflictBar = (page: Page) => page.getByTestId('conflict-bar');
 export const docTitle = (page: Page) => page.getByTestId('doc-title');
 export const toast = (page: Page) => page.getByTestId('toast');
 

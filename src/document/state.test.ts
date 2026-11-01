@@ -9,6 +9,7 @@ import {
   newDocumentState,
   openedDocumentState,
   planSave,
+  reloadedDocumentState,
   savedDocumentState,
   suggestedFileName,
   withText,
@@ -16,9 +17,13 @@ import {
 
 const crlfBom: DocumentFormat = { bom: true, eol: 'crlf', mixedEol: false };
 
+/** 開いた文書の状態（revision は内容から決めた仮のもの）。 */
+const opened = (path: string, text: string, format: DocumentFormat = DEFAULT_FORMAT) =>
+  openedDocumentState({ path, text, format, revision: `rev:${text}` }, 'draft-1');
+
 describe('document state', () => {
   it('a new document is untitled, clean, LF without BOM', () => {
-    const s = newDocumentState();
+    const s = newDocumentState('draft-1');
     expect(s.path).toBeNull();
     expect(s.format).toEqual(DEFAULT_FORMAT);
     expect(isDirty(s)).toBe(false);
@@ -27,14 +32,14 @@ describe('document state', () => {
   });
 
   it('an opened document is clean and keeps its format', () => {
-    const s = openedDocumentState('/notes/a.md', 'hello', crlfBom);
+    const s = opened('/notes/a.md', 'hello', crlfBom);
     expect(isDirty(s)).toBe(false);
     expect(s.format).toEqual(crlfBom);
     expect(documentTitle(s)).toBe('a.md');
   });
 
   it('dirty is derived from the comparison with savedText', () => {
-    const s = openedDocumentState('/a.md', 'abc', DEFAULT_FORMAT);
+    const s = opened('/a.md', 'abc', DEFAULT_FORMAT);
     const edited = withText(s, 'abcd');
     expect(isDirty(edited)).toBe(true);
     // 元に戻せば、未保存ではなくなる。
@@ -42,14 +47,14 @@ describe('document state', () => {
   });
 
   it('withText returns the same object when nothing changed', () => {
-    const s = openedDocumentState('/a.md', 'abc', DEFAULT_FORMAT);
+    const s = opened('/a.md', 'abc', DEFAULT_FORMAT);
     expect(withText(s, 'abc')).toBe(s);
   });
 
   it('saving records savedText and path, and keeps text typed during the save', () => {
-    const s = withText(newDocumentState(), 'first');
+    const s = withText(newDocumentState('draft-1'), 'first');
     const typedMeanwhile = withText(s, 'first and more');
-    const saved = savedDocumentState(typedMeanwhile, { path: '/x/b.md', text: 'first', format: s.format });
+    const saved = savedDocumentState(typedMeanwhile, { path: '/x/b.md', text: 'first', format: s.format, revision: 'rev:first' });
     expect(saved.path).toBe('/x/b.md');
     expect(saved.savedText).toBe('first');
     expect(saved.text).toBe('first and more');
@@ -57,33 +62,67 @@ describe('document state', () => {
   });
 
   it('saving resolves mixedEol and keeps bom and eol', () => {
-    const s = openedDocumentState('/a.md', 'x', { bom: true, eol: 'crlf', mixedEol: true });
-    const saved = savedDocumentState(s, { path: '/a.md', text: 'x', format: s.format });
+    const s = opened('/a.md', 'x', { bom: true, eol: 'crlf', mixedEol: true });
+    const saved = savedDocumentState(s, { path: '/a.md', text: 'x', format: s.format, revision: 'rev:x' });
     expect(saved.format).toEqual({ bom: true, eol: 'crlf', mixedEol: false });
   });
 
   it('asks before discarding only when dirty', () => {
-    const s = openedDocumentState('/a.md', 'abc', DEFAULT_FORMAT);
+    const s = opened('/a.md', 'abc', DEFAULT_FORMAT);
     expect(needsDiscardConfirmation(s)).toBe(false);
     expect(needsDiscardConfirmation(withText(s, 'abcd'))).toBe(true);
     // 新規文書に入力しただけでも未保存。
-    expect(needsDiscardConfirmation(withText(newDocumentState(), 'x'))).toBe(true);
+    expect(needsDiscardConfirmation(withText(newDocumentState('draft-1'), 'x'))).toBe(true);
   });
 });
 
 describe('planSave', () => {
   it('chooses a path for an untitled document, even when empty', () => {
-    expect(planSave(newDocumentState())).toEqual({ kind: 'choose-path' });
-    expect(planSave(withText(newDocumentState(), 'x'))).toEqual({ kind: 'choose-path' });
+    expect(planSave(newDocumentState('draft-1'))).toEqual({ kind: 'choose-path' });
+    expect(planSave(withText(newDocumentState('draft-1'), 'x'))).toEqual({ kind: 'choose-path' });
   });
 
   it('does nothing for a clean document with a path', () => {
-    expect(planSave(openedDocumentState('/a.md', 'abc', DEFAULT_FORMAT))).toEqual({ kind: 'noop' });
+    expect(planSave(opened('/a.md', 'abc', DEFAULT_FORMAT))).toEqual({ kind: 'noop' });
   });
 
   it('writes a dirty document to its path', () => {
-    const s = withText(openedDocumentState('/a.md', 'abc', DEFAULT_FORMAT), 'abcd');
-    expect(planSave(s)).toEqual({ kind: 'write', path: '/a.md' });
+    const s = withText(opened('/a.md', 'abc', DEFAULT_FORMAT), 'abcd');
+    expect(planSave(s)).toEqual({
+      kind: 'write',
+      path: '/a.md',
+      expectedRevision: 'rev:abc',
+      overwrite: false,
+      recreate: false,
+    });
+  });
+
+  it('keep-mine overwrites; a deleted file is recreated even when nothing changed', () => {
+    const dirty = withText(opened('/a.md', 'abc'), 'abcd');
+    expect(planSave(dirty, 'overwrite')).toMatchObject({ kind: 'write', overwrite: true, recreate: false });
+    // 変更がなければ、上書きする必要もない。
+    expect(planSave(opened('/a.md', 'abc'), 'overwrite')).toEqual({ kind: 'noop' });
+    // 削除されたファイルは、ファイルがない前提（expectedRevision なし）で書く。変更がなくても書く。
+    expect(planSave(opened('/a.md', 'abc'), 'recreate')).toEqual({
+      kind: 'write',
+      path: '/a.md',
+      expectedRevision: null,
+      overwrite: false,
+      recreate: true,
+    });
+  });
+});
+
+describe('disk revision', () => {
+  it('is null for a new document, and set by open, save and reload', () => {
+    expect(newDocumentState('d').diskRevision).toBeNull();
+    const s = opened('/a.md', 'abc');
+    expect(s.diskRevision).toBe('rev:abc');
+    const saved = savedDocumentState(withText(s, 'abcd'), { path: '/a.md', text: 'abcd', format: s.format, revision: 'rev:abcd' });
+    expect(saved.diskRevision).toBe('rev:abcd');
+    const reloaded = reloadedDocumentState(withText(s, 'mine'), { path: '/a.md', text: 'disk', format: crlfBom, revision: 'rev:disk' });
+    expect(reloaded).toMatchObject({ text: 'disk', savedText: 'disk', diskRevision: 'rev:disk', format: crlfBom, draftId: 'draft-1' });
+    expect(isDirty(reloaded)).toBe(false);
   });
 });
 

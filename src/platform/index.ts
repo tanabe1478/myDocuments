@@ -3,9 +3,15 @@ import type { DocumentBridge } from './DocumentBridge';
 export type {
   BackgroundImageData,
   BridgeErrorKind,
+  DiskState,
   DocumentBridge,
+  Draft,
+  DraftSummary,
   OpenedDocument,
+  SaveOptions,
   SaveOutcome,
+  SaveResult,
+  SessionInfo,
 } from './DocumentBridge';
 export { BridgeError } from './DocumentBridge';
 

@@ -6,10 +6,58 @@ export interface OpenedDocument {
   /** 改行は LF に正規化済み。BOM は含まない。 */
   readonly text: string;
   readonly format: DocumentFormat;
+  /** 読み込んだバイト列の SHA-256（16 進）。保存時の外部変更の検出に使う。 */
+  readonly revision: string;
 }
 
 /** written: 書き込んだ。unchanged: 既存ファイルと同一のバイト列だったので書かなかった。 */
 export type SaveOutcome = 'written' | 'unchanged';
+
+/** ディスク上のファイルの現在の状態。 */
+export type DiskState = { readonly kind: 'present'; readonly revision: string } | { readonly kind: 'missing' };
+
+/**
+ * 保存の結果。衝突（ディスクの内容が最後に見たものと違う）は、書かなかった正常な結果として返す。
+ * saved.backup は、上書き前のディスクの内容を退避した先（退避しなかったときは null）。
+ */
+export type SaveResult =
+  | { readonly kind: 'saved'; readonly outcome: SaveOutcome; readonly revision: string; readonly backup: string | null }
+  | { readonly kind: 'conflict'; readonly disk: DiskState };
+
+export interface SaveOptions {
+  /** この文書が最後に見たディスクの revision。ファイルがない前提なら null。 */
+  readonly expectedRevision: string | null;
+  /** true なら、衝突していても上書きする（現在のディスクの内容を先にバックアップする）。 */
+  readonly overwrite: boolean;
+}
+
+/** クラッシュ復旧用の草稿。文書ごとに 1 つ。 */
+export interface Draft {
+  /** 文書ごとの UUID。 */
+  readonly draftId: string;
+  /** 元の文書のパス。保存先のない新規文書は null。 */
+  readonly path: string | null;
+  /** 編集中の本文（LF 正規化済み）。 */
+  readonly text: string;
+  readonly format: DocumentFormat;
+  /** 草稿の元になったディスクの revision。保存先のない文書は null。 */
+  readonly baseRevision: string | null;
+  /** 最後に書いた時刻（UNIX ミリ秒）。 */
+  readonly updatedAt: number;
+}
+
+/** 復旧の確認に出すための草稿の要約（本文は含まない）。 */
+export interface DraftSummary {
+  readonly draftId: string;
+  readonly path: string | null;
+  readonly updatedAt: number;
+}
+
+/** 前回の執筆環境。 */
+export interface SessionInfo {
+  /** 前回開いていた文書の絶対パス。 */
+  readonly lastPath: string | null;
+}
 
 export type BridgeErrorKind =
   | 'not-found'
@@ -46,10 +94,33 @@ export interface DocumentBridge {
   /** 名前を付けて保存するダイアログ。キャンセルは null。 */
   pickSavePath(suggestedName: string): Promise<string | null>;
   openDocument(path: string): Promise<OpenedDocument>;
-  /** 既に開いた（または保存先に選んだ）パスへの保存。 */
-  saveDocument(path: string, text: string, format: DocumentFormat): Promise<SaveOutcome>;
-  /** ダイアログで選んだパスへの保存。 */
-  saveDocumentAs(path: string, text: string, format: DocumentFormat): Promise<SaveOutcome>;
+  /**
+   * 既に開いた（または保存先に選んだ）パスへの保存。
+   * 書く直前にディスクの内容を確かめ、expectedRevision と違えば書かずに conflict を返す。
+   */
+  saveDocument(path: string, text: string, format: DocumentFormat, options: SaveOptions): Promise<SaveResult>;
+  /** ダイアログで選んだパスへの保存（上書きの確認は OS のダイアログが済ませている）。 */
+  saveDocumentAs(path: string, text: string, format: DocumentFormat): Promise<SaveResult>;
+  /** 開いた（または保存先に選んだ）パスの、いまのディスクの状態。 */
+  checkDocument(path: string): Promise<DiskState>;
+  /** 外部変更の監視の対象を切り替える。null なら監視をやめる。 */
+  watchDocument(path: string | null): Promise<void>;
+  /** 監視中の文書に外部変更があったかもしれない、という通知を購読する。解除関数を返す。 */
+  onDocumentChanged(cb: (path: string) => void): Promise<() => void>;
+  /** 草稿を書く。戻り値は保存先（ユーザーに退避先として伝える用）。 */
+  writeDraft(draft: Draft): Promise<string>;
+  /** 草稿の一覧（新しい順）。 */
+  listDrafts(): Promise<DraftSummary[]>;
+  /** 草稿を読む。なければ null。 */
+  readDraft(draftId: string): Promise<Draft | null>;
+  /** 草稿を消す。なくてもエラーにしない。 */
+  deleteDraft(draftId: string): Promise<void>;
+  loadSession(): Promise<SessionInfo>;
+  saveSession(session: SessionInfo): Promise<void>;
+  /** 窓を閉じる・アプリを終了する操作があったことの通知を購読する。解除関数を返す。 */
+  onCloseRequested(cb: () => void): Promise<() => void>;
+  /** 終了の確認が済んだ後に、アプリを終了する。 */
+  closeApp(): Promise<void>;
   /** 保存済みの Preferences（未検証の JSON）。なければ null。 */
   loadPreferences(): Promise<unknown>;
   savePreferences(prefs: Preferences): Promise<void>;

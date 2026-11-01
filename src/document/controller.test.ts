@@ -1,41 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
-import { BridgeError, type DocumentBridge, type SaveOutcome } from '../platform';
-import { DocumentController, type DiscardChoice, type Notice } from './controller';
+import { describe, expect, it } from 'vitest';
+import { BridgeError } from '../platform';
 import { isDirty } from './state';
-import type { DocumentFormat } from './format';
-
-const LF: DocumentFormat = { bom: false, eol: 'lf', mixedEol: false };
-
-function setup(options: { confirm?: DiscardChoice; openPath?: string | null; savePath?: string | null } = {}) {
-  let editorText = '';
-  const notices: Notice[] = [];
-  const bridge = {
-    pickOpenPath: vi.fn(async () => (options.openPath === undefined ? '/a.md' : options.openPath)),
-    pickSavePath: vi.fn(async () => (options.savePath === undefined ? '/new.md' : options.savePath)),
-    openDocument: vi.fn(async (path: string) => ({ path, text: 'opened', format: LF })),
-    saveDocument: vi.fn(async (): Promise<SaveOutcome> => 'written'),
-    saveDocumentAs: vi.fn(async (): Promise<SaveOutcome> => 'written'),
-    loadPreferences: vi.fn(async () => null),
-    savePreferences: vi.fn(async () => {}),
-    pickImagePath: vi.fn(async () => null),
-    importBackgroundImage: vi.fn(async () => 'a'.repeat(64)),
-    readBackgroundImage: vi.fn(async () => ({ mime: 'image/png', bytes: new Uint8Array() })),
-    toggleFullscreen: vi.fn(async () => true),
-    notifyReady: vi.fn(async () => {}),
-  } satisfies DocumentBridge;
-  const confirmDiscard = vi.fn(async () => options.confirm ?? 'cancel');
-  const controller = new DocumentController({
-    bridge,
-    io: { getText: () => editorText, setText: (t) => (editorText = t) },
-    confirmDiscard,
-    notify: (n) => notices.push(n),
-  });
-  const type = (text: string) => {
-    editorText = text;
-    controller.handleEdit(text);
-  };
-  return { controller, bridge, confirmDiscard, notices, type, editor: () => editorText };
-}
+import { LF, rev, setup } from './testKit';
 
 describe('open', () => {
   it('loads the document into the editor and the state', async () => {
@@ -145,16 +111,22 @@ describe('save', () => {
   });
 
   it('a dirty document is written to its path with its format', async () => {
-    const t = setup();
+    const t = setup({ files: { '/a.md': 'a' } });
     t.bridge.openDocument.mockResolvedValueOnce({
       path: '/a.md',
       text: 'a',
       format: { bom: true, eol: 'crlf', mixedEol: false },
+      revision: rev('a'),
     });
     await t.controller.openDocument();
     t.type('ab');
     expect(await t.controller.save()).toBe('written');
-    expect(t.bridge.saveDocument).toHaveBeenCalledWith('/a.md', 'ab', { bom: true, eol: 'crlf', mixedEol: false });
+    expect(t.bridge.saveDocument).toHaveBeenCalledWith(
+      '/a.md',
+      'ab',
+      { bom: true, eol: 'crlf', mixedEol: false },
+      { expectedRevision: rev('a'), overwrite: false },
+    );
     expect(isDirty(t.controller.getState())).toBe(false);
   });
 
@@ -169,11 +141,12 @@ describe('save', () => {
   });
 
   it('notifies when a mixed-eol document is saved with the majority eol', async () => {
-    const t = setup();
+    const t = setup({ files: { '/m.md': 'a\nb' }, openPath: '/m.md' });
     t.bridge.openDocument.mockResolvedValueOnce({
       path: '/m.md',
       text: 'a\nb',
       format: { bom: false, eol: 'crlf', mixedEol: true },
+      revision: rev('a\nb'),
     });
     await t.controller.openDocument();
     t.type('a\nbc');
@@ -189,7 +162,7 @@ describe('save', () => {
   it('tells the user when the bridge reports unchanged', async () => {
     const t = setup();
     t.type('same');
-    t.bridge.saveDocumentAs.mockResolvedValueOnce('unchanged');
+    t.bridge.saveDocumentAs.mockResolvedValueOnce({ kind: 'saved', outcome: 'unchanged', revision: rev('same'), backup: null });
     expect(await t.controller.save()).toBe('unchanged');
     expect(t.notices[0]?.message).toContain('書き込みませんでした');
   });
@@ -223,7 +196,8 @@ describe('save', () => {
     t.type('first');
     let release: () => void = () => {};
     t.bridge.saveDocument.mockImplementationOnce(
-      () => new Promise((resolve) => (release = () => resolve('written'))),
+      () =>
+        new Promise((resolve) => (release = () => resolve({ kind: 'saved', outcome: 'written', revision: rev('first'), backup: null }))),
     );
     const pending = t.controller.save();
     await Promise.resolve();

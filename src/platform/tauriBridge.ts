@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { emit } from '@tauri-apps/api/event';
+import { emit, listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import type { DocumentFormat } from '../document/format';
@@ -7,9 +7,13 @@ import {
   BridgeError,
   type BackgroundImageData,
   type BridgeErrorKind,
+  type DiskState,
   type DocumentBridge,
+  type Draft,
+  type DraftSummary,
   type OpenedDocument,
-  type SaveOutcome,
+  type SaveResult,
+  type SessionInfo,
 } from './DocumentBridge';
 
 const FILTERS = [{ name: 'Markdown', extensions: ['md', 'markdown', 'mdx', 'txt'] }];
@@ -62,10 +66,28 @@ export function createTauriBridge(): DocumentBridge {
       return (await save({ defaultPath: suggestedName, filters: FILTERS })) ?? null;
     },
     openDocument: (path: string) => call<OpenedDocument>('open_document', { path }),
-    saveDocument: (path: string, text: string, format: DocumentFormat) =>
-      call<SaveOutcome>('save_document', { path, text, format }),
+    saveDocument: (path: string, text: string, format: DocumentFormat, options) =>
+      call<SaveResult>('save_document', {
+        path,
+        text,
+        format,
+        expectedRevision: options.expectedRevision,
+        overwrite: options.overwrite,
+      }),
     saveDocumentAs: (path: string, text: string, format: DocumentFormat) =>
-      call<SaveOutcome>('save_document_as', { path, text, format }),
+      call<SaveResult>('save_document_as', { path, text, format }),
+    checkDocument: (path: string) => call<DiskState>('check_document', { path }),
+    watchDocument: (path: string | null) => call<void>('watch_document', { path }),
+    onDocumentChanged: (cb) =>
+      listen<{ path: string }>('document-changed', (e) => cb(e.payload.path)),
+    writeDraft: (draft: Draft) => call<string>('write_draft', { draft }),
+    listDrafts: () => call<DraftSummary[]>('list_drafts'),
+    readDraft: (draftId: string) => call<Draft | null>('read_draft', { draftId }),
+    deleteDraft: (draftId: string) => call<void>('delete_draft', { draftId }),
+    loadSession: () => call<SessionInfo>('load_session'),
+    saveSession: (session: SessionInfo) => call<void>('save_session', { session }),
+    onCloseRequested: (cb) => listen('close-requested', () => cb()),
+    closeApp: () => call<void>('close_app'),
     loadPreferences: () => call<unknown>('load_preferences'),
     savePreferences: (prefs) => call<void>('save_preferences', { prefs }),
     async pickImagePath() {
