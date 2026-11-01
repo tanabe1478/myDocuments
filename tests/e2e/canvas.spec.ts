@@ -1,5 +1,5 @@
 import { expect, type CDPSession, type Page } from '@playwright/test';
-import { docTitle, launch, solidPng, test, toast, utf8 } from './helpers';
+import { columnBox, docTitle, launch, solidPng, test, toast, utf8 } from './helpers';
 
 // 執筆キャンバス（Phase 1 後半）: 外観パネル、背景、コントラスト、フォーカス・タイプライター・自動非表示、
 // 全画面、Reduced Motion、アクセシビリティ。
@@ -8,7 +8,12 @@ const DOC = '/docs/canvas.md';
 
 /** 文書を開いた状態で起動する（preferences は memory bridge の保存済み設定として渡す）。 */
 async function launchWithDoc(page: Page, text: string, preferences: Record<string, unknown> = {}): Promise<void> {
-  await launch(page, { files: { [DOC]: utf8(text) }, openPath: DOC, preferences: { theme: 'light', ...preferences } });
+  // 自動非表示は、このファイルの多くのテストが上下のバーを操作するので、既定では切る（既定の挙動は別のテストで確かめる）。
+  await launch(page, {
+    files: { [DOC]: utf8(text) },
+    openPath: DOC,
+    preferences: { theme: 'light', autoHideChrome: false, ...preferences },
+  });
   await page.keyboard.press('ControlOrMeta+o');
   await expect(docTitle(page)).toHaveText('canvas.md');
 }
@@ -36,25 +41,26 @@ test.describe('外観パネル (R3-5)', () => {
 
     await panel(page).getByLabel('文字サイズ').fill('24');
     await panel(page).getByLabel('行高').fill('2.5');
-    await panel(page).getByLabel('本文の最大幅').fill('900');
+    await panel(page).getByLabel('本文の最大幅').fill('800');
     await panel(page).getByRole('radio', { name: 'ダーク' }).check();
 
     // 即時反映（保存を待たずに computed style が変わる）
     const content = page.locator('.cm-content');
     await expect(content).toHaveCSS('font-size', '24px');
     await expect(page.locator('.cm-line').first()).toHaveCSS('line-height', '60px');
-    await expect(content).toHaveCSS('max-width', '900px');
+    // 最大幅は、左右の余白を除いた行の長さ（パネルを開いていても収まる幅にしてある）。
+    await expect.poll(async () => Math.round((await columnBox(page)).width)).toBe(800);
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 
     // debounce 後に bridge へ保存される
     await expect
       .poll(() => savedPreferences(page))
-      .toMatchObject({ fontSizePx: 24, lineHeight: 2.5, maxWidthPx: 900, theme: 'dark' });
+      .toMatchObject({ fontSizePx: 24, lineHeight: 2.5, maxWidthPx: 800, theme: 'dark' });
 
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('data-ready', 'true');
     await expect(page.locator('.cm-content')).toHaveCSS('font-size', '24px');
-    await expect(page.locator('.cm-content')).toHaveCSS('max-width', '900px');
+    expect(Math.round((await columnBox(page)).width)).toBe(800);
     await expect(page.locator('.cm-line').first()).toHaveCSS('line-height', '60px');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   });
@@ -90,7 +96,7 @@ test.describe('外観パネル (R3-5)', () => {
     await panel(page).getByLabel('段落間隔').fill('2');
     await expect
       .poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue('--md-paragraph-spacing')))
-      .toBe('2em');
+      .toBe('2');
     await expect.poll(() => savedPreferences(page)).toMatchObject({
       fontFamily: '"Courier New", monospace',
       paragraphSpacing: 2,
@@ -885,8 +891,8 @@ test.describe('外観パネルと本文の重なり (c)', () => {
     await openPanel(page);
     await panel(page).getByLabel('本文の最大幅').fill('1100');
     // 1280px の窓に、1100px + パネルは収まらない。本文は窓の中央のまま。
-    await expect.poll(async () => (await box(page, '.cm-content')).width).toBe(1100);
-    await expect.poll(async () => (await box(page, '.cm-content')).x).toBe((1280 - 1100) / 2);
+    await expect.poll(async () => Math.round((await columnBox(page)).width)).toBe(1100);
+    await expect.poll(async () => Math.round((await columnBox(page)).x)).toBe((1280 - 1100) / 2);
   });
 
   test('(c) 狭い窓では、今までどおり重ねて表示する（本文は動かさない）', async ({ page }) => {
@@ -913,7 +919,7 @@ test.describe('外観パネルと本文の重なり (c)', () => {
     expect(content.x + content.width).toBeLessThanOrEqual(p.x);
 
     await page.setViewportSize({ width: 900, height: 800 });
-    await expect.poll(async () => (await page.locator('.cm-content').boundingBox())!.x).toBe((900 - 680) / 2);
+    await expect.poll(async () => Math.round((await columnBox(page)).x)).toBe((900 - 680) / 2);
     await page.setViewportSize({ width: 1280, height: 800 });
     await expect
       .poll(async () => {

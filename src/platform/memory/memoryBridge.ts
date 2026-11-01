@@ -70,6 +70,8 @@ export interface E2EState {
   /** 取り込み済みの背景画像（imageId → 画像）。 */
   images: Map<string, BackgroundImageData>;
   imagePath: string | null;
+  /** checkDocument の応答を遅らせる時間（ms）。操作の実行中に別の要求が届く状況を作るためのテスト用。 */
+  checkDelayMs: number;
   /** 実際にバイト列を書き換えた回数（outcome が written のもの）。 */
   physicalWrites: number;
   /** save / saveAs の呼び出しごとの記録。 */
@@ -125,6 +127,7 @@ export function createMemoryBridge(): DocumentBridge {
     fullscreen: false,
     images: new Map(),
     imagePath: seed.imagePath ?? null,
+    checkDelayMs: 0,
     physicalWrites: 0,
     log: [],
     savedPreferences: [],
@@ -216,6 +219,7 @@ export function createMemoryBridge(): DocumentBridge {
     },
     async checkDocument(path) {
       state.calls.check++;
+      if (state.checkDelayMs > 0) await new Promise((r) => setTimeout(r, state.checkDelayMs));
       if (!known.has(path)) throw new BridgeError('not-allowed', 'not opened in this session');
       return diskStateOf(path);
     },

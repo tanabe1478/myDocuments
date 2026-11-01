@@ -5,9 +5,12 @@ import { EditorView, drawSelection, keymap } from '@codemirror/view';
 import type { EditorAdapter, EditorSelection } from '../EditorAdapter';
 import { focusModeExtension } from './focusMode';
 import { historyKeymap } from './historyKeymap';
+import { indentKeymap } from './indentKeymap';
 import { markdownDecorations } from './markdownDecorations';
+import { readingPositionExtension } from './readingPosition';
 import { editorTheme } from './theme';
 import { typewriterModeExtension } from './typewriterMode';
+import { verticalMotionExtension } from './verticalMotion';
 
 /** 変換中だった場合に、終了後、保留した setText を試し直す間隔。 */
 const PENDING_RETRY_MS = 50;
@@ -129,6 +132,9 @@ export class CodeMirrorAdapter implements EditorAdapter {
       this.focusCompartment.of(this.focusExtension()),
       this.typewriterCompartment.of(this.typewriterExtension()),
       search({ top: true }),
+      readingPositionExtension(),
+      indentKeymap(),
+      verticalMotionExtension(),
       keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
       editorTheme,
       EditorView.contentAttributes.of({ 'aria-label': '本文', 'aria-multiline': 'true' }),

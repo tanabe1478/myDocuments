@@ -1,6 +1,7 @@
 import { expect } from '@playwright/test';
 import {
   bridgeCounters,
+  columnBox,
   docTitle,
   editorText,
   fileBytes,
@@ -290,7 +291,8 @@ test.describe('検索 (ED-03)', () => {
 test.describe('Preferences の反映', () => {
   test('本文の最大幅（既定 680px）と、保存済みの設定', async ({ page }) => {
     await launch(page);
-    const width = () => page.locator('.cm-content').evaluate((el) => el.getBoundingClientRect().width);
+    // 最大幅は、左右の内側余白（広い窓では 56px）を除いた行の長さ。
+    const width = async () => Math.round((await columnBox(page)).width);
     await page.setViewportSize({ width: 1400, height: 800 });
     expect(await width()).toBe(680);
     // 中央寄せ: 左右の余白が等しい。
@@ -304,7 +306,7 @@ test.describe('Preferences の反映', () => {
   test('保存済みの設定が反映され、範囲外の項目だけ既定値に戻る', async ({ page }) => {
     await launch(page, { preferences: { maxWidthPx: 520, fontSizePx: 999, theme: 'dark' } });
     await page.setViewportSize({ width: 1400, height: 800 });
-    expect(await page.locator('.cm-content').evaluate((el) => el.getBoundingClientRect().width)).toBe(520);
+    expect(Math.round((await columnBox(page)).width)).toBe(520);
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     expect(await page.locator('.cm-scroller').evaluate((el) => getComputedStyle(el).fontSize)).toBe('18px');
   });

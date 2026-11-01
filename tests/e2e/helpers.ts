@@ -88,6 +88,18 @@ export async function editorText(page: Page): Promise<string> {
   );
 }
 
+/**
+ * 本文の行（文字が並ぶ列）の位置と幅。.cm-content は、行の左右に内側余白を持つ（最大幅は余白を除いた行の長さ）。
+ */
+export async function columnBox(page: Page): Promise<{ x: number; width: number }> {
+  return page.locator('.cm-content').evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const cs = getComputedStyle(el);
+    const left = parseFloat(cs.paddingLeft);
+    return { x: r.x + left, width: r.width - left - parseFloat(cs.paddingRight) };
+  });
+}
+
 export async function fileBytes(page: Page, path: string): Promise<number[] | null> {
   return page.evaluate((p) => window.__mdeE2E!.readFile(p), path);
 }

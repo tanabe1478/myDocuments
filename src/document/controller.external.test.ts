@@ -266,8 +266,21 @@ describe('watching and session', () => {
 
     await t.controller.newDocument();
     expect(t.bridge.watchDocument).toHaveBeenLastCalledWith(null);
-    // 新規文書にしても、前回の文書の記録は消さない。
-    expect(t.session()).toEqual({ lastPath: '/a.md' });
+    // 無題の文書に切り替えたら、前回の文書の記録を消す（次回の起動で前の文書を開き直さない。N4）。
+    expect(t.session()).toEqual({ lastPath: null });
+  });
+
+  it('after switching to an untitled document, the next startup does not reopen the previous one (N4)', async () => {
+    const t = setup({ files: { '/a.md': 'base' } });
+    await t.controller.openDocument();
+    await t.controller.newDocument();
+    await t.settle();
+
+    const next = setup({ files: { '/a.md': 'base' }, session: t.session() });
+    await next.controller.start();
+    expect(next.controller.getState().path).toBeNull();
+    expect(next.editor()).toBe('');
+    expect(next.bridge.openDocument).not.toHaveBeenCalled();
   });
 
   it('save as switches the watch and the last document', async () => {
@@ -474,6 +487,42 @@ describe('closing the app', () => {
 
     expect(t.drafts.size).toBe(0);
     expect(t.files.get('/a.md')).toBe('base');
+    expect(t.bridge.closeApp).toHaveBeenCalledTimes(1);
+  });
+
+  it('a request that arrives while another operation is running is handled after it (N1)', async () => {
+    const t = await opened({ confirm: 'cancel' });
+    t.type('base + a');
+    let release: () => void = () => {};
+    t.bridge.checkDocument.mockImplementationOnce(
+      () => new Promise((resolve) => (release = () => resolve({ kind: 'present', revision: rev('base') }))) as never,
+    );
+    const check = t.controller.checkExternal();
+    await t.controller.requestClose();
+    // 確認の実行中は、まだ処理されない（捨てられてもいない）。
+    expect(t.confirmDiscard).not.toHaveBeenCalled();
+
+    release();
+    await check;
+    await t.settle();
+
+    expect(t.confirmDiscard).toHaveBeenCalledTimes(1);
+    expect(t.confirmDiscard).toHaveBeenCalledWith('a.md');
+    expect(t.bridge.closeApp).not.toHaveBeenCalled();
+  });
+
+  it('a deferred request closes the app when there is nothing unsaved (N1)', async () => {
+    const t = await opened();
+    let release: () => void = () => {};
+    t.bridge.checkDocument.mockImplementationOnce(
+      () => new Promise((resolve) => (release = () => resolve({ kind: 'present', revision: rev('base') }))) as never,
+    );
+    const check = t.controller.checkExternal();
+    await t.controller.requestClose();
+    expect(t.bridge.closeApp).not.toHaveBeenCalled();
+    release();
+    await check;
+    await t.settle();
     expect(t.bridge.closeApp).toHaveBeenCalledTimes(1);
   });
 

@@ -12,7 +12,9 @@ export function applyPreferences(prefs: Preferences, root: HTMLElement = documen
   style.setProperty('--md-font-family', prefs.fontFamily);
   style.setProperty('--md-font-size', `${prefs.fontSizePx}px`);
   style.setProperty('--md-line-height', String(prefs.lineHeight));
-  style.setProperty('--md-paragraph-spacing', `${prefs.paragraphSpacing}em`);
+  // 単位なしの倍率（空行の高さ = 行高 × この値。styles.css / theme.ts で calc に使う）。
+  style.setProperty('--md-paragraph-spacing', String(prefs.paragraphSpacing));
+  style.setProperty('--md-letter-spacing', `${prefs.letterSpacing}em`);
   style.setProperty('--md-max-width', `${prefs.maxWidthPx}px`);
 
   const media = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-color-scheme: dark)') : null;

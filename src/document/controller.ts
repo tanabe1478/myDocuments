@@ -87,7 +87,7 @@ const CONFLICT_NOTICE = 'ファイルが外部で変更されました。画面�
  * 新規・開く・保存・別名保存・外部変更・草稿・終了の副作用層。判断（何をするか）は
  * state.ts / external.ts / recovery.ts の純関数に任せ、ここは bridge・編集エンジン・通知を順に呼ぶだけにする。
  * 操作の実行中は、ほかの操作（ショートカットの連打など）を受け付けない。
- * 外部変更の確認だけは、実行中なら捨てずに、終わった後にもう一度行う。
+ * 外部変更の確認と、窓を閉じる要求は、実行中なら捨てずに、終わった後に処理する。
  */
 export class DocumentController {
   private state: DocumentState;
@@ -95,6 +95,10 @@ export class DocumentController {
   private listeners = new Set<() => void>();
   private busy = false;
   private recheck = false;
+  /** 操作の実行中に、窓を閉じる要求が届いた。終わった後に処理する。 */
+  private closeRequested = false;
+  /** 窓を閉じる処理の最中（確認ダイアログの表示中を含む）。この間に届いた二重の要求は捨てる。 */
+  private closing = false;
   private started = false;
   private watchFailed = false;
   /** 読めなかった外部の版の revision（同じ版で通知を繰り返さない）。 */
@@ -159,7 +163,8 @@ export class DocumentController {
         });
       },
     );
-    if (path !== null) void this.deps.bridge.saveSession({ lastPath: path }).catch(() => {});
+    // 無題の文書に切り替えたら、前回の文書の記録を消す（消さないと、次回の起動で前の文書が開き直される）。
+    void this.deps.bridge.saveSession({ lastPath: path }).catch(() => {});
   }
 
   /** 編集エンジンからの本文の変化。 */
@@ -295,7 +300,11 @@ export class DocumentController {
       return await task();
     } finally {
       this.busy = false;
-      if (this.recheck) {
+      if (this.closeRequested) {
+        // 閉じる要求を先に処理する。外部変更の確認（recheck）は、その後の exclusive の終わりで行う。
+        this.closeRequested = false;
+        void this.requestClose();
+      } else if (this.recheck) {
         this.recheck = false;
         void this.checkExternal();
       }
@@ -545,23 +554,34 @@ export class DocumentController {
    * 窓を閉じる・終了する操作があったとき。未保存の変更がなければそのまま終了する。
    * あれば 保存 / 保存しない / キャンセル を確認する。保存しない場合は、その文書の草稿も消す。
    */
-  requestClose = (): Promise<void> =>
-    this.exclusive(async () => {
-      this.syncText();
-      if (isDirty(this.state)) {
-        const choice = await this.deps.confirmDiscard(documentTitle(this.state));
-        if (choice === 'cancel') return;
-        if (choice === 'save') {
-          const result = await this.saveInner();
-          if (result !== 'written' && result !== 'unchanged') return;
-        } else {
-          await this.keeper.discard(this.state.draftId);
-        }
-      }
+  requestClose = (): Promise<void> => {
+    if (this.busy) {
+      // 実行中の操作（フォーカス時の外部変更の確認など）が終わってから処理する。捨てない。
+      if (!this.closing) this.closeRequested = true;
+      return Promise.resolve();
+    }
+    return this.exclusive(async () => {
+      this.closing = true;
       try {
-        await this.deps.bridge.closeApp();
-      } catch (e) {
-        this.deps.notify({ kind: 'error', message: describeError(e) });
+        this.syncText();
+        if (isDirty(this.state)) {
+          const choice = await this.deps.confirmDiscard(documentTitle(this.state));
+          if (choice === 'cancel') return;
+          if (choice === 'save') {
+            const result = await this.saveInner();
+            if (result !== 'written' && result !== 'unchanged') return;
+          } else {
+            await this.keeper.discard(this.state.draftId);
+          }
+        }
+        try {
+          await this.deps.bridge.closeApp();
+        } catch (e) {
+          this.deps.notify({ kind: 'error', message: describeError(e) });
+        }
+      } finally {
+        this.closing = false;
       }
     });
+  };
 }

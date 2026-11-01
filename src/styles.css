@@ -15,6 +15,9 @@
   --md-color-link: #1f5f8b;
   --md-color-code: #7a4a2b;
   --md-color-quote: #5d6a5d;
+  --md-color-quote-bar: #7d8f7d;
+  --md-color-code-bg: rgba(42, 40, 36, 0.06);
+  --md-surface-shadow: 0 1px 3px rgba(70, 58, 30, 0.1), 0 12px 44px rgba(70, 58, 30, 0.16);
   --md-color-caret: #1f5f8b;
   --md-color-selection: rgba(31, 95, 139, 0.22);
   --md-color-panel: #ebe6da;
@@ -35,6 +38,9 @@
   --md-color-link: #7fb4d9;
   --md-color-code: #d9a77c;
   --md-color-quote: #a3b4a3;
+  --md-color-quote-bar: #6f836f;
+  --md-color-code-bg: rgba(255, 255, 255, 0.06);
+  --md-surface-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 12px 44px rgba(0, 0, 0, 0.55);
   --md-color-caret: #7fb4d9;
   --md-color-selection: rgba(127, 180, 217, 0.3);
   --md-color-panel: #2a2d30;
@@ -88,18 +94,21 @@ body {
   inset: 0;
 }
 
-/* 本文面。本文と同じ幅の縦長の面で、不透明度は Preferences の surfaceOpacity。 */
+/* 本文面。本文（左右の余白を含む）と同じ幅の縦長の面で、不透明度は Preferences の surfaceOpacity。 */
+/* 枠線はなく、影で背景から浮かせる。左右の余白は、行長（--md-max-width）の外側に取る（式は theme.ts の PAD_X と同じ）。 */
 /* 外観パネルを開いて本文が収まるときは、--md-panel-reserve（パネルの占める幅）だけ右を空けて、残りの中央に置く。 */
 .canvas-surface {
+  --avail: calc(100% - var(--md-panel-reserve, 0px));
+  --pad: clamp(20px, calc((var(--avail) - var(--md-max-width, 680px)) / 2), 56px);
   position: absolute;
   top: 0;
   bottom: 0;
-  left: calc((100% - var(--md-panel-reserve, 0px)) / 2);
+  left: calc(var(--avail) / 2);
   z-index: 1;
-  width: min(var(--md-max-width, 680px), calc(100% - var(--md-panel-reserve, 0px)));
+  width: min(calc(var(--md-max-width, 680px) + 2 * var(--pad)), var(--avail));
   transform: translateX(-50%);
   background: var(--md-color-surface);
-  box-shadow: 0 0 0 1px var(--md-color-border);
+  box-shadow: var(--md-surface-shadow);
   pointer-events: none;
 }
 

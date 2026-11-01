@@ -18,6 +18,7 @@ import { BridgeError, type DocumentBridge, type DraftSummary } from './platform'
 import { applyPreferences } from './preferences/apply';
 import { normalizePreferences, type Preferences } from './preferences/preferences';
 import { useResolvedTheme } from './preferences/useResolvedTheme';
+import { charsPerLine, columnWidth } from './editor/layout';
 import { AppearancePanel } from './ui/AppearancePanel';
 import { ConflictBar } from './ui/ConflictBar';
 import { ConfirmDiscardDialog } from './ui/ConfirmDiscardDialog';
@@ -180,6 +181,11 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
 
   const viewportWidth = useViewportWidth();
   const reserve = panelOpen ? panelReserve(prefs.maxWidthPx, viewportWidth) : 0;
+  const lineChars = charsPerLine(
+    columnWidth(viewportWidth - reserve, prefs.maxWidthPx),
+    prefs.fontSizePx,
+    prefs.letterSpacing,
+  );
 
   const reveal = useCallback(() => setTyping(false), []);
   const chromeHidden = prefs.autoHideChrome && typing && !panelOpen;
@@ -381,6 +387,7 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
           prefs={prefs}
           mode={theme}
           contrast={canvas.contrast}
+          lineChars={lineChars}
           imageStatus={image.status}
           onChange={updatePrefs}
           onPickImage={() => void pickImage()}

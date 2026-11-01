@@ -10,6 +10,8 @@ export interface AppearancePanelProps {
   /** 表示中のテーマ（グラデーションの見本の色に使う）。 */
   mode: ThemeMode;
   contrast: ContrastReport;
+  /** 今の設定で、1 行に入る全角文字の数の目安。 */
+  lineChars: number;
   imageStatus: 'none' | 'loading' | 'ready' | 'error';
   onChange(patch: Partial<Preferences>): void;
   onPickImage(): void;
@@ -36,7 +38,7 @@ const FIRST_CONTROL = 'select, input, textarea';
  * 開いたら最初の部品にフォーカスし、Esc で閉じる。フォーカスの戻り先は App が管理する。
  */
 export function AppearancePanel(props: AppearancePanelProps) {
-  const { prefs, mode, contrast, imageStatus, onChange, onPickImage, onClose } = props;
+  const { prefs, mode, contrast, lineChars, imageStatus, onChange, onPickImage, onClose } = props;
   const rootRef = useRef<HTMLElement>(null);
   const titleId = useId();
 
@@ -94,8 +96,17 @@ export function AppearancePanel(props: AppearancePanelProps) {
           range={RANGES.paragraphSpacing}
           step={0.1}
           value={prefs.paragraphSpacing}
-          format={(v) => `${v.toFixed(1)}em`}
+          format={(v) => `${v.toFixed(1)}行`}
           onChange={(v) => onChange({ paragraphSpacing: v })}
+        />
+        <p className="hint">空行 1 つの高さ。見出し前の余白にも使います。</p>
+        <RangeField
+          label="字間"
+          range={RANGES.letterSpacing}
+          step={0.005}
+          value={prefs.letterSpacing}
+          format={(v) => `${v.toFixed(3)}em`}
+          onChange={(v) => onChange({ letterSpacing: v })}
         />
         <RangeField
           label="本文の最大幅"
@@ -105,6 +116,9 @@ export function AppearancePanel(props: AppearancePanelProps) {
           format={(v) => `${v}px`}
           onChange={(v) => onChange({ maxWidthPx: v })}
         />
+        <p className="hint" data-testid="chars-per-line">
+          1 行 約 {lineChars} 字（全角）
+        </p>
       </fieldset>
 
       <fieldset>

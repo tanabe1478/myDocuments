@@ -24,8 +24,14 @@ export interface Preferences {
   readonly fontSizePx: number;
   /** 倍率（font-size に対する比）。 */
   readonly lineHeight: number;
-  /** 段落間隔。em 単位（見出し上の余白などに使う）。 */
+  /**
+   * 段落間隔。空行 1 つの高さを、本文の行高に対する倍率で表す（1 は本文 1 行分、0 でも 4px は残す）。
+   * 見出し前の余白も、この値を基準にする。
+   * 以前は em 単位で見出し前の余白にだけ効いていた。値の範囲は変えていないので、旧い保存値は読み込める。
+   */
   readonly paragraphSpacing: number;
+  /** 字間。em 単位（文字サイズに対する比）。 */
+  readonly letterSpacing: number;
   readonly maxWidthPx: number;
   readonly theme: ThemeSetting;
   readonly focusMode: boolean;
@@ -48,12 +54,13 @@ export const DEFAULT_PREFERENCES: Preferences = {
     'system-ui, -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Noto Sans CJK JP", "Noto Sans JP", sans-serif',
   fontSizePx: 18,
   lineHeight: 1.9,
-  paragraphSpacing: 1,
+  paragraphSpacing: 0.6,
+  letterSpacing: 0.02,
   maxWidthPx: 680,
   theme: 'system',
   focusMode: false,
   typewriterMode: false,
-  autoHideChrome: false,
+  autoHideChrome: true,
   background: { kind: 'gradient', color: '#e9e4d4', gradientId: DEFAULT_GRADIENT_ID, imageId: null },
   imageBrightness: 0.8,
   overlayOpacity: 0.35,
@@ -65,6 +72,7 @@ export const RANGES = {
   fontSizePx: { min: 12, max: 48 },
   lineHeight: { min: 1.2, max: 3 },
   paragraphSpacing: { min: 0, max: 3 },
+  letterSpacing: { min: 0, max: 0.15 },
   maxWidthPx: { min: 320, max: 1600 },
   imageBrightness: { min: 0.2, max: 1 },
   overlayOpacity: { min: 0, max: 0.9 },
@@ -123,6 +131,7 @@ export function normalizePreferences(raw: unknown): Preferences {
     fontSizePx: number(r.fontSizePx, RANGES.fontSizePx, d.fontSizePx),
     lineHeight: number(r.lineHeight, RANGES.lineHeight, d.lineHeight),
     paragraphSpacing: number(r.paragraphSpacing, RANGES.paragraphSpacing, d.paragraphSpacing),
+    letterSpacing: number(r.letterSpacing, RANGES.letterSpacing, d.letterSpacing),
     maxWidthPx: number(r.maxWidthPx, RANGES.maxWidthPx, d.maxWidthPx),
     theme: THEMES.includes(r.theme as ThemeSetting) ? (r.theme as ThemeSetting) : d.theme,
     focusMode: boolean(r.focusMode, d.focusMode),

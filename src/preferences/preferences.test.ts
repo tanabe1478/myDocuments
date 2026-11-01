@@ -23,6 +23,7 @@ describe('normalizePreferences', () => {
       fontSizePx: 20,
       lineHeight: 2,
       paragraphSpacing: 1.5,
+      letterSpacing: 0.05,
       maxWidthPx: 720,
       theme: 'dark',
       focusMode: true,
@@ -127,6 +128,8 @@ describe('background and accessibility fields (R3-1)', () => {
       overlayOpacity: DEFAULT_PREFERENCES.overlayOpacity,
       surfaceOpacity: DEFAULT_PREFERENCES.surfaceOpacity,
       hideBackground: DEFAULT_PREFERENCES.hideBackground,
+      // Run 5 で増えた項目。
+      letterSpacing: DEFAULT_PREFERENCES.letterSpacing,
     });
   });
 
@@ -204,5 +207,36 @@ describe('resolveTheme', () => {
     expect(resolveTheme('system', false)).toBe('light');
     expect(resolveTheme('light', true)).toBe('light');
     expect(resolveTheme('dark', false)).toBe('dark');
+  });
+});
+
+describe('writing feel (Run 5)', () => {
+  it('has the new defaults: paragraph gap 0.6 line, letter spacing 0.02em, auto-hide on', () => {
+    const d = DEFAULT_PREFERENCES;
+    expect(d.paragraphSpacing).toBe(0.6);
+    expect(d.letterSpacing).toBe(0.02);
+    expect(d.autoHideChrome).toBe(true);
+    expect(RANGES.letterSpacing).toEqual({ min: 0, max: 0.15 });
+    expect(RANGES.paragraphSpacing).toEqual({ min: 0, max: 3 });
+  });
+
+  it('respects a saved autoHideChrome=false, and turns it on only when nothing was saved', () => {
+    expect(normalizePreferences({ autoHideChrome: false }).autoHideChrome).toBe(false);
+    expect(normalizePreferences({ autoHideChrome: true }).autoHideChrome).toBe(true);
+    expect(normalizePreferences({ theme: 'dark' }).autoHideChrome).toBe(true);
+    expect(normalizePreferences({ autoHideChrome: 'no' }).autoHideChrome).toBe(true);
+  });
+
+  it('keeps an old saved paragraphSpacing (em in the old format; still inside the range)', () => {
+    for (const old of [0, 1, 2, 3]) expect(normalizePreferences({ paragraphSpacing: old }).paragraphSpacing).toBe(old);
+    expect(normalizePreferences({ paragraphSpacing: 4 }).paragraphSpacing).toBe(DEFAULT_PREFERENCES.paragraphSpacing);
+  });
+
+  it('validates letterSpacing: range boundaries kept, out of range and wrong types reset', () => {
+    expect(normalizePreferences({ letterSpacing: 0 }).letterSpacing).toBe(0);
+    expect(normalizePreferences({ letterSpacing: 0.15 }).letterSpacing).toBe(0.15);
+    for (const bad of [-0.01, 0.16, '0.05', Number.NaN, null]) {
+      expect(normalizePreferences({ letterSpacing: bad }).letterSpacing).toBe(DEFAULT_PREFERENCES.letterSpacing);
+    }
   });
 });
