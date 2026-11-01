@@ -162,3 +162,42 @@ for (const spacing of [0, 0.6, 3]) {
     for (let i = 1; i < seen.length; i++) expect(seen[i]).toBeGreaterThan(seen[i - 1]!);
   });
 }
+
+// コードフェンスの背景帯は、開始・終了の ``` の外側（帯の内側）に上下の余白を持つ。
+// 余白は padding で付ける。margin だと CodeMirror の高さ計測とずれて、上下キーが行を飛ばす。
+for (const theme of ['light', 'dark'] as const) {
+  test(`コードフェンスの帯の上下に余白がある (${theme})`, async ({ page }) => {
+    const doc = ['前の本文', '```ts', 'const a = 1;', '```', '後の本文'].join('\n');
+    await launch(page, { files: { [DOC]: utf8(doc) }, openPath: DOC, preferences: { theme } });
+    await page.keyboard.press('ControlOrMeta+o');
+    await expect(docTitle(page)).toHaveText('motion.md');
+
+    const lines = page.locator('.cm-line');
+    const box = (i: number) =>
+      lines.nth(i).evaluate((el) => {
+        const cs = getComputedStyle(el);
+        return {
+          paddingTop: parseFloat(cs.paddingTop),
+          paddingBottom: parseFloat(cs.paddingBottom),
+          marginTop: parseFloat(cs.marginTop),
+          marginBottom: parseFloat(cs.marginBottom),
+          height: el.getBoundingClientRect().height,
+          bg: cs.backgroundColor,
+        };
+      });
+    const [start, body, end, plain] = await Promise.all([box(1), box(2), box(3), box(0)]);
+    expect(start.paddingTop).toBeGreaterThanOrEqual(6);
+    expect(end.paddingBottom).toBeGreaterThanOrEqual(6);
+    expect(body.paddingTop).toBe(0);
+    expect(body.paddingBottom).toBe(0);
+    // 余白は帯（背景色のある行）の内側で、行の高さに含まれる。margin は使わない。
+    expect(start.bg).not.toBe('rgba(0, 0, 0, 0)');
+    expect(start.height).toBeGreaterThan(body.height + 5);
+    expect(end.height).toBeGreaterThan(body.height + 5);
+    for (const b of [start, body, end]) {
+      expect(b.marginTop).toBe(0);
+      expect(b.marginBottom).toBe(0);
+    }
+    expect(plain.paddingTop).toBe(0);
+  });
+}

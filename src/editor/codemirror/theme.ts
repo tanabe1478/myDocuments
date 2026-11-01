@@ -69,8 +69,17 @@ export const editorTheme = EditorView.theme({
     margin: '0 -12px',
     backgroundColor: 'var(--md-color-code-bg)',
   },
-  '.cm-line.cm-md-fence-start': { borderTopLeftRadius: '6px', borderTopRightRadius: '6px' },
-  '.cm-line.cm-md-fence-end': { borderBottomLeftRadius: '6px', borderBottomRightRadius: '6px' },
+  // 帯の上下の余白は、開始・終了行の padding で付ける（margin は CodeMirror が高さに数えず、上下キーが行を飛ばす）。
+  '.cm-line.cm-md-fence-start': {
+    paddingTop: '0.6em',
+    borderTopLeftRadius: '6px',
+    borderTopRightRadius: '6px',
+  },
+  '.cm-line.cm-md-fence-end': {
+    paddingBottom: '0.6em',
+    borderBottomLeftRadius: '6px',
+    borderBottomRightRadius: '6px',
+  },
   // 引用: 行の左（本文の余白の中）に細い縦線。続く行で 1 本につながる。
   '.cm-md-quote': { position: 'relative' },
   '.cm-md-quote::before': {

@@ -9,7 +9,7 @@ import { EditorView, keymap } from '@codemirror/view';
  * そこで、標準の移動が論理行を 2 行以上動かしたときだけ、隣の行へ移し直す。
  * 折り返した行の中の移動や、標準の移動が正しいときは、標準のままにする。
  */
-function moveOneLine(view: EditorView, range: SelectionRange, forward: boolean, extend: boolean): SelectionRange {
+function moveOneLine(view: EditorView, range: SelectionRange, forward: boolean): SelectionRange {
   const { doc } = view.state;
   let moved = view.moveVertically(range, forward);
   const startLine = doc.lineAt(range.head).number;
@@ -31,29 +31,56 @@ function moveOneLine(view: EditorView, range: SelectionRange, forward: boolean, 
     }
     moved = EditorSelection.cursor(pos, forward ? 1 : -1, undefined, goal);
   }
-  return extend ? EditorSelection.range(range.anchor, moved.head, moved.goalColumn) : moved;
+  return moved;
 }
 
-function command(forward: boolean, extend: boolean) {
-  return (view: EditorView): boolean => {
-    const { state } = view;
-    view.dispatch({
-      selection: EditorSelection.create(
-        state.selection.ranges.map((r) => moveOneLine(view, r, forward, extend)),
-        state.selection.mainIndex,
-      ),
-      scrollIntoView: true,
-      userEvent: 'select',
-    });
-    return true;
-  };
+/**
+ * @codemirror/commands の cursorLineUp / cursorLineDown（cursorByLine）と同じ動き。
+ * 選択範囲があれば、その端（上なら先頭、下なら末尾）へ畳む。空なら 1 行動き、動かなければ（先頭行・末尾行）行の端へ。
+ */
+function cursorByLine(view: EditorView, forward: boolean): boolean {
+  const { state } = view;
+  const selection = EditorSelection.create(
+    state.selection.ranges.map((range) => {
+      if (!range.empty) return EditorSelection.cursor(forward ? range.to : range.from);
+      const moved = moveOneLine(view, range, forward);
+      return moved.head !== range.head ? moved : view.moveToLineBoundary(range, forward);
+    }),
+    state.selection.mainIndex,
+  );
+  if (selection.eq(state.selection, true)) return false;
+  view.dispatch({ selection, scrollIntoView: true, userEvent: 'select' });
+  return true;
 }
 
+/** selectLineUp / selectLineDown（selectByLine）と同じ動き。anchor を残して head を 1 行動かす。 */
+function selectByLine(view: EditorView, forward: boolean): boolean {
+  const { state } = view;
+  const selection = EditorSelection.create(
+    state.selection.ranges.map((r) => {
+      const range = r.undirectional && r.head >= r.anchor !== forward ? EditorSelection.range(r.head, r.anchor) : r;
+      const head = moveOneLine(view, range, forward);
+      return EditorSelection.range(range.anchor, head.head, head.goalColumn, head.bidiLevel || undefined, head.assoc);
+    }),
+    state.selection.mainIndex,
+  );
+  if (selection.eq(state.selection)) return false;
+  view.dispatch({ selection, scrollIntoView: true, userEvent: 'select' });
+  return true;
+}
+
+/**
+ * 行単位の上下移動を担う、defaultKeymap のキーをすべて上書きする。
+ * ArrowUp / ArrowDown と、mac の Ctrl-p / Ctrl-n（emacs 風。Shift 付きを含む）。
+ * ページ単位（PageUp / PageDown、mac の Ctrl-ArrowUp / Ctrl-ArrowDown）は、1 画面ぶん動くので対象外。
+ */
 export function verticalMotionExtension(): Extension {
   return Prec.high(
     keymap.of([
-      { key: 'ArrowDown', run: command(true, false), shift: command(true, true) },
-      { key: 'ArrowUp', run: command(false, false), shift: command(false, true) },
+      { key: 'ArrowDown', run: (v) => cursorByLine(v, true), shift: (v) => selectByLine(v, true), preventDefault: true },
+      { key: 'ArrowUp', run: (v) => cursorByLine(v, false), shift: (v) => selectByLine(v, false), preventDefault: true },
+      { mac: 'Ctrl-n', run: (v) => cursorByLine(v, true), shift: (v) => selectByLine(v, true) },
+      { mac: 'Ctrl-p', run: (v) => cursorByLine(v, false), shift: (v) => selectByLine(v, false) },
     ]),
   );
 }
