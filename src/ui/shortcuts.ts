@@ -3,7 +3,8 @@ export type ShortcutAction =
   | 'open'
   | 'save'
   | 'saveAs'
-  | 'appearance'
+  | 'settings'
+  | 'sidebar'
   | 'focusMode'
   | 'typewriterMode'
   | 'fullscreen';
@@ -27,7 +28,7 @@ export function isMacPlatform(): boolean {
 
 /**
  * macOS は Cmd、それ以外は Ctrl（以下 Mod）。
- * 新規 Mod+N、開く Mod+O、保存 Mod+S、別名保存 Mod+Shift+S、外観パネル Mod+,、
+ * 新規 Mod+N、開く Mod+O、保存 Mod+S、別名保存 Mod+Shift+S、設定画面 Mod+,、サイドバー Mod+B、
  * フォーカスモード Mod+Shift+F、タイプライターモード Mod+Shift+T。
  * 全画面は macOS が Ctrl+Cmd+F、Windows / Linux が F11（各 OS の標準）。
  * 検索の Mod+F（Shift なし）は CodeMirror の持ち物なので、ここでは扱わない。
@@ -46,7 +47,7 @@ export function matchShortcut(e: KeyLike, mac: boolean): ShortcutAction | null {
 
   const primary = mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
   if (!primary || e.altKey) return null;
-  if (!e.shiftKey && (e.key === ',' || e.code === 'Comma')) return 'appearance';
+  if (!e.shiftKey && (e.key === ',' || e.code === 'Comma')) return 'settings';
   switch (letter) {
     case 'n':
       return e.shiftKey ? null : 'new';
@@ -54,6 +55,8 @@ export function matchShortcut(e: KeyLike, mac: boolean): ShortcutAction | null {
       return e.shiftKey ? null : 'open';
     case 's':
       return e.shiftKey ? 'saveAs' : 'save';
+    case 'b':
+      return e.shiftKey ? null : 'sidebar';
     case 'f':
       return e.shiftKey ? 'focusMode' : null;
     case 't':
@@ -78,7 +81,7 @@ export function isTextEntryTarget(target: EventTarget | null): boolean {
 
 /**
  * ショートカットを実行してよいか。入力欄にフォーカスがあるときは、モードの切替
- * （フォーカスモード・タイプライターモード）だけ無視する。パネルの開閉・保存・全画面などは従来どおり。
+ * （フォーカスモード・タイプライターモード）だけ無視する。設定画面の開閉・サイドバー・保存・全画面などは従来どおり。
  */
 export function shouldHandleShortcut(action: ShortcutAction, target: EventTarget | null): boolean {
   if (action === 'focusMode' || action === 'typewriterMode') return !isTextEntryTarget(target);

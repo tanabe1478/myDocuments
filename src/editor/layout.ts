@@ -7,7 +7,7 @@
 export const PAD_MAX_PX = 56;
 export const PAD_MIN_PX = 20;
 
-/** 本文の左右の内側余白。available は本文を置ける幅（窓の幅から、外観パネルの占める幅を引いたもの）。 */
+/** 本文の左右の内側余白。available は本文の領域の幅（窓の幅から、サイドバーの占める幅を引いたもの）。 */
 export function contentPadding(available: number, maxWidthPx: number): number {
   const room = (available - maxWidthPx) / 2;
   return Math.min(Math.max(room, PAD_MIN_PX), PAD_MAX_PX);

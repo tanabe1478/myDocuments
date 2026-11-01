@@ -1,7 +1,7 @@
 import { expect, type CDPSession, type Page } from '@playwright/test';
 import { columnBox, docTitle, launch, solidPng, test, toast, utf8 } from './helpers';
 
-// 執筆キャンバス（Phase 1 後半）: 外観パネル、背景、コントラスト、フォーカス・タイプライター・自動非表示、
+// 執筆キャンバス（Phase 1 後半）: 設定画面の外観、背景、コントラスト、フォーカス・タイプライター・自動非表示、
 // 全画面、Reduced Motion、アクセシビリティ。
 
 const DOC = '/docs/canvas.md';
@@ -18,10 +18,11 @@ async function launchWithDoc(page: Page, text: string, preferences: Record<strin
   await expect(docTitle(page)).toHaveText('canvas.md');
 }
 
-const panel = (page: Page) => page.getByRole('dialog', { name: '外観' });
+/** 設定画面（モーダルの dialog）。外観の項目はこの中にある。 */
+const panel = (page: Page) => page.getByRole('dialog', { name: '設定' });
 
 async function openPanel(page: Page): Promise<void> {
-  await page.getByTestId('appearance-button').click();
+  await page.getByTestId('settings-button').click();
   await expect(panel(page)).toBeVisible();
 }
 
@@ -34,7 +35,7 @@ const savedPreferences = (page: Page) => page.evaluate(() => window.__mdeE2E!.sa
 const opacity = (page: Page, testId: string) =>
   page.getByTestId(testId).evaluate((el) => getComputedStyle(el).opacity);
 
-test.describe('外観パネル (R3-5)', () => {
+test.describe('設定画面の外観 (R3-5)', () => {
   test('(1) 文字サイズ・行高・最大幅・テーマの変更が本文に即時反映され、保存され、再読み込み後も維持される', async ({ page }) => {
     await launch(page, { preferences: { theme: 'light' } });
     await openPanel(page);
@@ -136,7 +137,7 @@ test.describe('外観パネル (R3-5)', () => {
     await expect(panel(page)).toHaveCount(0);
   });
 
-  test('非モーダルの dialog で、開閉のたびにフォーカスが元の場所へ戻る', async ({ page }) => {
+  test('モーダルの dialog で、開閉のたびにフォーカスが元の場所へ戻る', async ({ page }) => {
     await launch(page, { preferences: { theme: 'light' } });
     await expect(panel(page)).toHaveCount(0);
 
@@ -144,7 +145,7 @@ test.describe('外観パネル (R3-5)', () => {
     await page.locator('.cm-content').click();
     await page.keyboard.press('ControlOrMeta+,');
     await expect(panel(page)).toBeVisible();
-    await expect(panel(page)).toHaveAttribute('aria-modal', 'false');
+    await expect(panel(page)).toHaveAttribute('aria-modal', 'true');
     await expect(panel(page).locator(':focus')).toHaveCount(1);
     await page.keyboard.press('Escape');
     await expect(panel(page)).toHaveCount(0);
@@ -158,12 +159,12 @@ test.describe('外観パネル (R3-5)', () => {
     await expect(page.locator('.cm-content')).toBeFocused();
 
     // ボタンで開く → 閉じるボタン → ボタンへ戻る
-    const button = page.getByTestId('appearance-button');
+    const button = page.getByTestId('settings-button');
     await button.focus();
     await button.press('Enter');
     await expect(panel(page)).toBeVisible();
     await expect(button).toHaveAttribute('aria-expanded', 'true');
-    await panel(page).getByRole('button', { name: '外観パネルを閉じる' }).click();
+    await panel(page).getByRole('button', { name: '設定を閉じる' }).click();
     await expect(panel(page)).toHaveCount(0);
     await expect(button).toBeFocused();
   });
@@ -171,7 +172,8 @@ test.describe('外観パネル (R3-5)', () => {
   test('本文・ボタン・バーに名前がある（アクセシビリティ）', async ({ page }) => {
     await launch(page);
     await expect(page.getByRole('textbox', { name: '本文' })).toBeVisible();
-    await expect(page.getByRole('button', { name: '外観' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '設定' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'サイドバー' })).toBeVisible();
     await expect(page.getByRole('banner', { name: '上部バー' })).toBeVisible();
     await expect(page.getByRole('contentinfo', { name: '下部バー' })).toBeVisible();
     // 背景層と本文面は装飾（支援技術には見せない）
@@ -380,7 +382,7 @@ test.describe('自動非表示 (4)', () => {
     await page.keyboard.type('続き');
     await expect(page.locator('.app')).toHaveAttribute('data-chrome', 'hidden');
     await page.keyboard.press('F6');
-    await expect(page.getByTestId('appearance-button')).toBeFocused();
+    await expect(page.getByTestId('sidebar-toggle')).toBeFocused();
     await expect(page.locator('.app')).toHaveAttribute('data-chrome', 'visible');
     await expect.poll(() => page.locator('.topbar').evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
   });
@@ -392,7 +394,7 @@ test.describe('自動非表示 (4)', () => {
     await expect(page.locator('.app')).toHaveAttribute('data-chrome', 'hidden');
 
     await page.keyboard.press('F6');
-    await expect(page.getByTestId('appearance-button')).toBeFocused();
+    await expect(page.getByTestId('sidebar-toggle')).toBeFocused();
     await page.keyboard.press('F6');
     await expect(page.getByTestId('char-count')).toBeFocused();
     await expect(page.locator('.app')).toHaveAttribute('data-chrome', 'visible');
@@ -401,20 +403,23 @@ test.describe('自動非表示 (4)', () => {
     await page.keyboard.press('Shift+F6');
     await expect(page.getByTestId('char-count')).toBeFocused();
     await page.keyboard.press('Shift+F6');
-    await expect(page.getByTestId('appearance-button')).toBeFocused();
+    await expect(page.getByTestId('sidebar-toggle')).toBeFocused();
   });
 
-  test('隠れている間に Tab でバーへ入ると表示され、そこで Enter で外観パネルを開ける', async ({ page }) => {
+  test('隠れている間に Tab でバーへ入ると表示され、Tab で設定ボタンへ進んで Enter で設定画面を開ける', async ({ page }) => {
     await launch(page, { preferences: { theme: 'light', autoHideChrome: true } });
     await page.locator('.cm-content').click();
     await page.keyboard.type('x');
     await expect(page.locator('.app')).toHaveAttribute('data-chrome', 'hidden');
 
     await page.keyboard.press('F6');
+    await expect(page.getByTestId('sidebar-toggle')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId('settings-button')).toBeFocused();
     await page.keyboard.press('Enter');
     await expect(panel(page)).toBeVisible();
     await page.keyboard.press('Escape');
-    await expect(page.getByTestId('appearance-button')).toBeFocused();
+    await expect(page.getByTestId('settings-button')).toBeFocused();
   });
 
   test('隠れている間、バーの部品はポインタの操作を受けない', async ({ page }) => {
@@ -422,16 +427,28 @@ test.describe('自動非表示 (4)', () => {
     await page.locator('.cm-content').click();
     await page.keyboard.type('x');
     await expect(page.locator('.app')).toHaveAttribute('data-chrome', 'hidden');
-    await expect(page.getByTestId('appearance-button')).toHaveCSS('pointer-events', 'none');
+    await expect(page.getByTestId('settings-button')).toHaveCSS('pointer-events', 'none');
   });
 
-  test('外観パネルを開いている間は隠れない', async ({ page }) => {
+  test('入力で隠れた後に設定画面を開くと、バーが戻り、開いている間は隠れない', async ({ page }) => {
     await launch(page, { preferences: { theme: 'light', autoHideChrome: true } });
-    await openPanel(page);
     await page.locator('.cm-content').click();
     await page.keyboard.type('x');
+    await expect(page.locator('.app')).toHaveAttribute('data-chrome', 'hidden');
+    await page.keyboard.press('ControlOrMeta+,');
+    await expect(panel(page)).toBeVisible();
+    await expect(page.locator('.app')).toHaveAttribute('data-chrome', 'visible');
     await page.waitForTimeout(200);
     await expect(page.locator('.app')).toHaveAttribute('data-chrome', 'visible');
+  });
+
+  test('サイドバーの開閉は、入力中の自動非表示では隠れない（ユーザーが明示的に開閉する）', async ({ page }) => {
+    await launch(page, { preferences: { theme: 'light', autoHideChrome: true, sidebarOpen: true } });
+    await page.locator('.cm-content').click();
+    await page.keyboard.type('x');
+    await expect(page.locator('.app')).toHaveAttribute('data-chrome', 'hidden');
+    await expect(page.getByTestId('sidebar')).toBeVisible();
+    await expect(page.getByTestId('sidebar')).toHaveCSS('opacity', '1');
   });
 
   test('設定が OFF なら、入力しても隠れない', async ({ page }) => {
@@ -787,7 +804,7 @@ test.describe('全画面 (9) とショートカット', () => {
   });
 });
 
-// Run 3.1: フォーカスモードの段落判定、外観パネルと本文の重なり、入力欄でのショートカット、画像以外の背景。
+// Run 3.1: フォーカスモードの段落判定、入力欄でのショートカット、画像以外の背景。
 test.describe('フォーカスモードの段落判定 (a)(b)', () => {
   const IDLE = { focusMode: true };
 
@@ -854,80 +871,6 @@ test.describe('フォーカスモードの段落判定 (a)(b)', () => {
 
     for (let i = 0; i < 8; i++) await page.keyboard.press('ArrowDown'); // フェンス内の空行（行 9）
     await expect.poll(() => dimFlags(page)).toEqual([t, t, t, t, t, t, t, f, f, f, f, f]);
-  });
-});
-
-test.describe('外観パネルと本文の重なり (c)', () => {
-  const box = async (page: Page, selector: string) => {
-    const b = await page.locator(selector).boundingBox();
-    if (b === null) throw new Error(`no box: ${selector}`);
-    return b;
-  };
-
-  test('(c) 広い窓でパネルを開くと、本文の右端がパネルと重ならず、閉じると元の位置に戻る', async ({ page }) => {
-    await launchWithDoc(page, '本文');
-    const closed = await box(page, '.cm-content');
-    await openPanel(page);
-
-    await expect
-      .poll(async () => {
-        const content = await box(page, '.cm-content');
-        const surface = await box(page, '[data-testid="canvas-surface"]');
-        const p = await box(page, '[data-testid="appearance-panel"]');
-        return Math.max(content.x + content.width, surface.x + surface.width) <= p.x;
-      })
-      .toBe(true);
-    const content = await box(page, '.cm-content');
-    expect(content.x).toBeGreaterThanOrEqual(0);
-    expect(content.width).toBe(closed.width);
-
-    await page.keyboard.press('Escape');
-    await expect(panel(page)).toHaveCount(0);
-    await expect.poll(async () => (await box(page, '.cm-content')).x).toBe(closed.x);
-  });
-
-  test('(c) 本文の最大幅を広げると、収まらなくなった時点で重ねる（本文は動かさない）', async ({ page }) => {
-    await launchWithDoc(page, '本文');
-    await openPanel(page);
-    await panel(page).getByLabel('本文の最大幅').fill('1100');
-    // 1280px の窓に、1100px + パネルは収まらない。本文は窓の中央のまま。
-    await expect.poll(async () => Math.round((await columnBox(page)).width)).toBe(1100);
-    await expect.poll(async () => Math.round((await columnBox(page)).x)).toBe((1280 - 1100) / 2);
-  });
-
-  test('(c) 狭い窓では、今までどおり重ねて表示する（本文は動かさない）', async ({ page }) => {
-    await page.setViewportSize({ width: 900, height: 800 });
-    await launchWithDoc(page, '本文');
-    const closed = await box(page, '.cm-content');
-    await openPanel(page);
-    await page.waitForTimeout(400);
-    expect((await box(page, '.cm-content')).x).toBe(closed.x);
-    const p = await box(page, '[data-testid="appearance-panel"]');
-    expect(closed.x + closed.width).toBeGreaterThan(p.x);
-  });
-
-  test('(c) 窓の幅を変えると追従する。Reduced Motion では移動にアニメーションを付けない', async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: 'reduce' });
-    await launchWithDoc(page, '本文');
-    await openPanel(page);
-    const host = page.locator('.editor-host');
-    await expect(host).toHaveCSS('transition-duration', '0s');
-    await expect(page.getByTestId('canvas-surface')).toHaveCSS('transition-duration', '0s');
-    // アニメーションがないので、待たずにすぐ重ならない位置にある。
-    const content = (await page.locator('.cm-content').boundingBox())!;
-    const p = (await page.getByTestId('appearance-panel').boundingBox())!;
-    expect(content.x + content.width).toBeLessThanOrEqual(p.x);
-
-    await page.setViewportSize({ width: 900, height: 800 });
-    await expect.poll(async () => Math.round((await columnBox(page)).x)).toBe((900 - 680) / 2);
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await expect
-      .poll(async () => {
-        const c = (await page.locator('.cm-content').boundingBox())!;
-        const q = (await page.getByTestId('appearance-panel').boundingBox())!;
-        return c.x + c.width <= q.x;
-      })
-      .toBe(true);
   });
 });
 

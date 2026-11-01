@@ -13,7 +13,7 @@
 ## How to get to it (user POV)
 
 - 本文をクリックして、キーボードで入力・移動する。専用のボタンはない。
-- 段落間隔は外観パネルの「段落間隔」（Mod+, か外観ボタン）。既定値は起動時に自動で反映される。
+- 段落間隔は設定画面の「段落間隔」（Mod+, か設定ボタン）。既定値は起動時に自動で反映される。
 - Tab、Shift+Tab、Esc、ArrowUp、ArrowDown、Shift+ArrowUp、Shift+ArrowDown、Mod+Home、Mod+End。
 - 折り返しは窓の幅と本文の最大幅で決まる。ぶら下げインデントはリスト等の行を書くだけで働く。
 
@@ -26,7 +26,7 @@ Preconditions: Launch 済みで Doctor が全 PASS。カーソルや選択は、
 | feel-caret-position.json | 80 行の文書の末尾で 10 行書き足し、ArrowUp ×30 | 各書き足しの後、カーソルの下端が表示領域の下端から高さの 25% 以上。上へ戻るとき上端から 25% 以上 |
 | feel-paragraph-spacing.json | 段落間隔を既定、2、0、3 に変更 | 空行（.cm-line の 2 行目）の高さが 20.5、68.4、4、102.6（px） |
 | feel-hanging-indent.json | 長文のリスト・番号付き・引用・タスクを開く | 9 種類の記号の行で、折り返した行の左端が 1 行目の本文の左端と ±2px 以内。記号なしの段落は字下げなし |
-| feel-tab-indent.json | リスト、番号付き、引用、複数行選択、通常の段落で Tab と Shift+Tab、Esc と Tab | 本文が「- a」「  - b」と変わり、番号付きは「   2. b」、引用は「> > q」。通常の段落は不変でフォーカスも本文のまま。Esc → Tab で char-count、Esc → Shift+Tab で appearance-button にフォーカス |
+| feel-tab-indent.json | リスト、番号付き、引用、複数行選択、通常の段落で Tab と Shift+Tab、Esc と Tab | 本文が「- a」「  - b」と変わり、番号付きは「   2. b」、引用は「> > q」。通常の段落は不変でフォーカスも本文のまま。Esc → Tab で char-count、Esc → Shift+Tab で settings-button にフォーカス |
 | feel-vertical-motion-default.json、feel-vertical-motion-spacing0.json、feel-vertical-motion-spacing3.json | 30 行の文書（見出し、空行、リスト、引用、フェンス）を、段落間隔 0.6、0、3 で、先頭から ArrowDown ×29、末尾から ArrowUp ×29 | 行の間の隙間が 0.5px 未満。1 押下ごとにカーソルの行がちょうど 1 変わる |
 | feel-selection-collapse.json | 5 行の文書で、選択して ArrowUp、ArrowDown、Shift+ArrowUp、Shift+ArrowDown | 選択の anchor と head の位置が、下向きの選択は ArrowDown で末尾、ArrowUp で先頭へ畳まれる。上向きの選択も ArrowUp で先頭へ畳まれる。Shift 付きは anchor が動かず head が 1 行ずつ。先頭行の ArrowUp は行頭、末尾行の ArrowDown は行末 |
 

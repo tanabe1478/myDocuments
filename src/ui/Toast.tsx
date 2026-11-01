@@ -12,7 +12,7 @@ const OVERLAY_GAP_PX = 8;
 
 interface Props {
   notice: ToastNotice | null;
-  /** 置き場所（本文の列の外 / 本文に重ねる）。App が、窓の幅と外観パネルから決める（toastLayout.ts）。 */
+  /** 置き場所（本文の列の外 / 本文に重ねる）。App が、窓の幅とサイドバーから決める（toastLayout.ts）。 */
   layout: ToastLayout;
   onDismiss(id: number): void;
   /**

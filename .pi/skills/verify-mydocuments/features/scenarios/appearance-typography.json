@@ -1,8 +1,8 @@
 {
   "seed": { "preferences": { "theme": "light" } },
   "steps": [
-    { "click": { "testId": "appearance-button" }, "note": "entry point 1: 上部バーの「外観」ボタン" },
-    { "expect": { "role": "dialog", "name": "外観", "read": "visible", "equals": true } },
+    { "click": { "testId": "settings-button" }, "note": "entry point 1: 上部バー右の歯車の「設定」ボタン" },
+    { "expect": { "role": "dialog", "name": "設定", "read": "visible", "equals": true } },
     { "fill": { "panel": true, "label": "文字サイズ", "value": "24" } },
     { "fill": { "panel": true, "label": "行高", "value": "2.5" } },
     { "fill": { "panel": true, "label": "段落間隔", "value": "2" } },
@@ -17,16 +17,16 @@
     { "expect": { "css": "html", "read": "attr:data-theme", "equals": "dark" } },
     { "expect": { "eval": "document.documentElement.style.getPropertyValue('--md-paragraph-spacing')", "equals": "2" } },
     { "observe": "applied" },
-    { "screenshot": "panel-open-dark" },
+    { "screenshot": "settings-open-dark" },
     { "expect": { "eval": "(({ fontSizePx, lineHeight, maxWidthPx, paragraphSpacing, letterSpacing, theme }) => ({ fontSizePx, lineHeight, maxWidthPx, paragraphSpacing, letterSpacing, theme }))(window.__mdeE2E.savedPreferences.at(-1) || {})", "equals": { "fontSizePx": 24, "lineHeight": 2.5, "maxWidthPx": 800, "paragraphSpacing": 2, "letterSpacing": 0.1, "theme": "dark" }, "timeout": 4000 }, "note": "debounce の後に bridge へ保存される" },
     { "press": "Escape" },
-    { "expect": { "role": "dialog", "name": "外観", "read": "count", "equals": 0 } },
+    { "expect": { "role": "dialog", "name": "設定", "read": "count", "equals": 0 } },
     { "reload": true },
     { "expect": { "css": ".cm-content", "read": "css:font-size", "equals": "24px" }, "note": "再読み込み後も維持される" },
     { "press": "ControlOrMeta+," },
-    { "expect": { "role": "dialog", "name": "外観", "read": "visible", "equals": true }, "note": "entry point 2: Mod+, ショートカット" },
+    { "expect": { "role": "dialog", "name": "設定", "read": "visible", "equals": true }, "note": "entry point 2: Mod+, ショートカット" },
     { "press": "ControlOrMeta+," },
-    { "expect": { "role": "dialog", "name": "外観", "read": "count", "equals": 0 }, "note": "もう一度押すと閉じる" },
+    { "expect": { "role": "dialog", "name": "設定", "read": "count", "equals": 0 }, "note": "もう一度押すと閉じる" },
     { "screenshot": "after-reload-dark" }
   ]
 }

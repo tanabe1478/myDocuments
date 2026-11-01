@@ -1,6 +1,6 @@
 ---
 name: verify-mydocuments
-description: Immersive Markdown Editor（Tauri 2 + CodeMirror 6 の没入型 Markdown エディタ）の動作を、実ユーザー面で再現可能に起動・操作・証跡化する。primary は VITE_E2E ビルドの Web UI を Playwright（chromium）で操作する面、secondary は macOS の Tauri debug ビルドの窓の観測。文書の保存、外観、執筆モード、保存の信頼性、書き心地を変えたとき、または変更を検証して証跡を残したいときに使う。
+description: Immersive Markdown Editor（Tauri 2 + CodeMirror 6 の没入型 Markdown エディタ）の動作を、実ユーザー面で再現可能に起動・操作・証跡化する。primary は VITE_E2E ビルドの Web UI を Playwright（chromium）で操作する面、secondary は macOS の Tauri debug ビルドの窓の観測。文書の保存、設定画面と外観、左サイドバー、執筆モード、保存の信頼性、書き心地を変えたとき、または変更を検証して証跡を残したいときに使う。
 ---
 
 # verify-mydocuments
@@ -81,9 +81,9 @@ steps は上から順に実行し、外れたら止めて exit 1 にする。
 - 操作: press（key、times?）、type、insertText、click、fill（target に value を足す）、check、uncheck、select（target に option を足す）、waitFor、wait（ms）、mouseMove、mouseClick、viewport、reload、screenshot（名前）。
 - bridge の操作: externalWrite（{ path, text | null, notify? }。外部のプロセスによる書き換え。text が null なら削除）、focusWindow（ウィンドウのフォーカス復帰）、requestClose（窓を閉じる操作）、setPaths（{ open?, save?, image? }）。
 - 観測: observe（名前。files に仮想パスを並べると、バイト数、bom、crlf、lf、text を記録）、eval（ページ内で式を評価して記録）。
-- 検査: expect。対象は eval（式）か、testId / role+name / label / text / css のいずれか（外観パネル内なら panel: true）。read は text（既定）、count、visible、focused、attr:<name>、css:<prop>。比較は equals、not、contains、matches（正規表現）、gte、lte。timeout（既定 3000ms）まで再試行する。note は報告用の説明。
+- 検査: expect。対象は eval（式）か、testId / role+name / label / text / css のいずれか（設定画面の中なら panel: true）。read は text（既定）、count、visible、focused、attr:<name>、css:<prop>。比較は equals、not、contains、matches（正規表現）、gte、lte。timeout（既定 3000ms）まで再試行する。note は報告用の説明。
 
-key の ControlOrMeta はその OS の Mod キー（macOS は Cmd、それ以外は Ctrl）。安定したハンドルは data-testid（doc-title、unsaved-mark、toast、conflict-bar、conflict-diff、conflict-reload、conflict-keep、diff-dialog、recovery-dialog、appearance-button、char-count、canvas-bg、canvas-bg-image、canvas-surface、contrast-ratio、contrast-warning ほか）と、.cm-content、.cm-line、aria の名前（dialog「外観」、radio「単色」など）。観測の入口は window.__mdeE2E（calls、physicalWrites、log、conflicts、drafts、backups、savedPreferences、session、watched、closed、fullscreen、editor.getText()、readFile(path)）。
+key の ControlOrMeta はその OS の Mod キー（macOS は Cmd、それ以外は Ctrl）。安定したハンドルは data-testid（doc-title、unsaved-mark、toast、conflict-bar、conflict-diff、conflict-reload、conflict-keep、diff-dialog、recovery-dialog、settings-button、settings-dialog、sidebar、sidebar-toggle、sidebar-close、char-count、canvas-bg、canvas-bg-image、canvas-surface、contrast-ratio、contrast-warning ほか）と、.cm-content、.cm-line、aria の名前（dialog「設定」、radio「単色」「窓いっぱい」など）。観測の入口は window.__mdeE2E（calls、physicalWrites、log、conflicts、drafts、backups、savedPreferences、session、watched、closed、fullscreen、editor.getText()、readFile(path)）。
 
 ## Evidence
 

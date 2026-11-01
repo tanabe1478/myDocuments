@@ -54,7 +54,7 @@ describe('shouldHandleShortcut', () => {
 
   it('keeps the other shortcuts working in an input (panel toggle, save, fullscreen...)', () => {
     const input = body().querySelector('#i');
-    for (const a of ['new', 'open', 'save', 'saveAs', 'appearance', 'fullscreen'] as const) {
+    for (const a of ['new', 'open', 'save', 'saveAs', 'settings', 'sidebar', 'fullscreen'] as const) {
       expect(shouldHandleShortcut(a, input), a).toBe(true);
     }
   });

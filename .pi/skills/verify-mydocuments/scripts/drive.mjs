@@ -103,7 +103,7 @@ function buildSeed(raw = {}) {
 
 // ---- 対象の指定 ----
 function locate(page, t) {
-  const scope = t.panel ? page.getByRole('dialog', { name: '外観' }) : page;
+  const scope = t.panel ? page.getByRole('dialog', { name: '設定' }) : page;
   if (typeof t === 'string') return page.locator(t);
   if (t.testId) return scope.getByTestId(t.testId);
   if (t.role) return scope.getByRole(t.role, { name: t.name, exact: t.exact });

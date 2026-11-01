@@ -30,10 +30,11 @@ const editorText = (page: Page) => page.evaluate(() => window.__mdeE2E!.editor!.
 const lineHeights = (page: Page) =>
   page.locator('.cm-line').evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
 
-const panel = (page: Page) => page.getByRole('dialog', { name: '外観' });
+const panel = (page: Page) => page.getByRole('dialog', { name: '設定' });
 
+/** 設定画面を開く（モーダル）。 */
 async function openPanel(page: Page): Promise<void> {
-  await page.getByTestId('appearance-button').click();
+  await page.getByTestId('settings-button').click();
   await expect(panel(page)).toBeVisible();
 }
 
@@ -120,7 +121,7 @@ test.describe('段落間隔 (2)', () => {
     expect(h.at(-1)).toBeCloseTo(line * 0.6, 0);
   });
 
-  test('(2) 外観パネルで変えると、空行と見出し前の余白が即座に変わる。行の間に隙間（margin）はない', async ({ page }) => {
+  test('(2) 設定画面で変えると、空行と見出し前の余白が即座に変わる。行の間に隙間（margin）はない', async ({ page }) => {
     await launchWith(page, '# 見出し\n\n本文\n\n## 次の見出し');
     await expect(page.locator('.cm-md-blank').first()).toBeVisible();
     const headingPadding = () =>
@@ -404,7 +405,8 @@ test.describe('Tab でのインデント (4)', () => {
     await page.keyboard.press('Escape');
     await page.keyboard.press('Shift+Tab');
     await expect(page.locator('.cm-content')).not.toBeFocused();
-    await expect(page.getByTestId('appearance-button')).toBeFocused();
+    // 本文の直前にフォーカスできるのは、上部バーの最後の部品（設定ボタン）。
+    await expect(page.getByTestId('settings-button')).toBeFocused();
     expect(await editorText(page)).toBe('  - ab');
   });
 
@@ -412,7 +414,7 @@ test.describe('Tab でのインデント (4)', () => {
     await launch(page);
     await page.locator('.cm-content').click();
     await page.keyboard.press('F6');
-    await expect(page.getByTestId('appearance-button')).toBeFocused();
+    await expect(page.getByTestId('sidebar-toggle')).toBeFocused();
     await page.keyboard.press('F6');
     await expect(page.getByTestId('char-count')).toBeFocused();
     await page.keyboard.press('F6');
@@ -423,7 +425,7 @@ test.describe('Tab でのインデント (4)', () => {
 // ---- (6) 字間・行長の目安・長い URL ----
 
 test.describe('字間と行長 (6)', () => {
-  test('(6) 既定の字間は 0.02em。外観パネルで変えると computed style に反映され、保存され、再読み込み後も残る', async ({ page }) => {
+  test('(6) 既定の字間は 0.02em。設定画面で変えると computed style に反映され、保存され、再読み込み後も残る', async ({ page }) => {
     await launch(page, { preferences: { theme: 'light' } });
     await expect(page.locator('.cm-content')).toHaveCSS('letter-spacing', '0.36px');
     await openPanel(page);
@@ -443,14 +445,14 @@ test.describe('字間と行長 (6)', () => {
     expect(await spacing('.cm-line:not(.cm-md-h1)')).toBeCloseTo(0.36, 2);
   });
 
-  test('(6) 外観パネルに「1 行 約 N 字」が出て、実際の行の幅と文字サイズ・字間から求めた値と一致する', async ({ page }) => {
+  test('(6) 設定画面に「1 行 約 N 字」が出て、実際の行の幅と文字サイズ・字間から求めた値と一致する', async ({ page }) => {
     await launch(page, { preferences: { theme: 'light' } });
     await openPanel(page);
     const shown = async () => {
       const text = await page.getByTestId('chars-per-line').innerText();
       return Number(/約\s*(\d+)\s*字/.exec(text)![1]);
     };
-    // 実際の行の幅は、パネルの開閉や最大幅の変更で動く（移動の途中を測らないよう、poll の中で比べる）。
+    // 実際の行の幅は、最大幅の変更で動く（描画の途中を測らないよう、poll の中で比べる）。
     const diff = async (fontSize: number, spacing: number) =>
       (await shown()) - Math.floor((await columnBox(page)).width / (fontSize * (1 + spacing)) + 1e-6);
 
@@ -464,8 +466,8 @@ test.describe('字間と行長 (6)', () => {
     await panel(page).getByLabel('字間').fill('0.1');
     await expect.poll(() => diff(24, 0.1)).toBe(0);
     await panel(page).getByLabel('本文の最大幅').fill('900');
-    // 最大幅 900 は、パネルを開いた窓には収まらない。行の幅は 900 より狭くなる（パネルの開閉の移動が終わるまで待つ）。
-    await expect.poll(async () => (await columnBox(page)).width).toBeLessThan(900);
+    // 最大幅 900 は 1280px の窓に収まる。行の幅が 900 になり、表示の字数も追従する。
+    await expect.poll(async () => Math.round((await columnBox(page)).width)).toBe(900);
     await expect.poll(() => diff(24, 0.1)).toBe(0);
   });
 
@@ -574,8 +576,8 @@ test.describe('終了まわりの不具合 (8)', () => {
 // ---- 本文面 ----
 
 test.describe('本文面 (W5)', () => {
-  test('枠線はなく、影がある。左右の内側余白は広い窓で 56px', async ({ page }) => {
-    await launch(page, { preferences: { theme: 'light' } });
+  test('（本文に合わせる）枠線はなく、影がある。左右の内側余白は広い窓で 56px', async ({ page }) => {
+    await launch(page, { preferences: { theme: 'light', surfaceWidth: 'text' } });
     const surface = page.getByTestId('canvas-surface');
     const style = await surface.evaluate((el) => {
       const cs = getComputedStyle(el);
@@ -588,8 +590,8 @@ test.describe('本文面 (W5)', () => {
     expect(pad).toBe(56);
   });
 
-  test('窓が狭いと、余白は行長を保てる範囲で縮み、最小 20px になる。本文面は本文と同じ幅', async ({ page }) => {
-    await launch(page, { preferences: { theme: 'light' } });
+  test('（本文に合わせる）窓が狭いと、余白は行長を保てる範囲で縮み、最小 20px になる。本文面は本文と同じ幅', async ({ page }) => {
+    await launch(page, { preferences: { theme: 'light', surfaceWidth: 'text' } });
     const measure = () =>
       page.evaluate(() => {
         const content = document.querySelector('.cm-content')!;

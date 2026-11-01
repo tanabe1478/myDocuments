@@ -19,13 +19,14 @@ import { applyPreferences } from './preferences/apply';
 import { normalizePreferences, type Preferences } from './preferences/preferences';
 import { useResolvedTheme } from './preferences/useResolvedTheme';
 import { charsPerLine, columnWidth } from './editor/layout';
-import { AppearancePanel } from './ui/AppearancePanel';
 import { ConflictBar, isConflictBarVisible } from './ui/ConflictBar';
 import { ConfirmDiscardDialog } from './ui/ConfirmDiscardDialog';
 import { ConfirmRecreateDialog } from './ui/ConfirmRecreateDialog';
 import { DiffDialog } from './ui/DiffDialog';
 import { RecoveryDialog } from './ui/RecoveryDialog';
-import { panelReserve } from './ui/panelLayout';
+import { SettingsDialog } from './ui/SettingsDialog';
+import { Sidebar, SIDEBAR_ID } from './ui/Sidebar';
+import { sidebarMode, sidebarReserve } from './ui/sidebarLayout';
 import { isMacPlatform, matchShortcut, shouldHandleShortcut } from './ui/shortcuts';
 import { Toast, type ToastNotice } from './ui/Toast';
 import { toastLayout } from './ui/toastLayout';
@@ -62,10 +63,10 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
   const [diffOpen, setDiffOpen] = useState(false);
   const [notice, setNotice] = useState<ToastNotice | null>(null);
   const [prefs, setPrefs] = useState<Preferences>(initialPreferences);
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   /** 入力で隠した状態（autoHideChrome が ON のときだけ効く）。ポインタ・フォーカス・F6 で戻る。 */
   const [typing, setTyping] = useState(false);
-  const panelOriginRef = useRef<HTMLElement | null>(null);
+  const settingsOriginRef = useRef<HTMLElement | null>(null);
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
 
@@ -182,38 +183,49 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
   const characters = useMemo(() => countCharacters(state.text), [state.text]);
 
   const viewportWidth = useViewportWidth();
-  const reserve = panelOpen ? panelReserve(prefs.maxWidthPx, viewportWidth) : 0;
+  const sidebarOpen = prefs.sidebarOpen;
+  const sidebarLayoutMode = sidebarMode(viewportWidth);
+  // 本文の領域（サイドバーを除いた領域）の幅。狭い窓では、サイドバーは本文の上に重なるので、引かない。
+  const reserve = sidebarReserve(sidebarOpen, viewportWidth);
   const lineChars = charsPerLine(
     columnWidth(viewportWidth - reserve, prefs.maxWidthPx),
     prefs.fontSizePx,
     prefs.letterSpacing,
   );
 
-  // トースト: 列の外に場所があれば右下、なければ本文に重ねる。重ねている間は、覆う高さをエディタのスクロール余白に渡す。
+  // トースト: 本文の領域の中で、列の外に場所があれば右下、なければ本文に重ねる。重ねている間は、覆う高さをエディタのスクロール余白に渡す。
   const toast = useMemo(() => toastLayout(viewportWidth - reserve, prefs.maxWidthPx), [viewportWidth, reserve, prefs.maxWidthPx]);
   const setCoveredHeight = useCallback((px: number) => adapterRef.current?.setBottomInset(px), []);
 
   const reveal = useCallback(() => setTyping(false), []);
-  const chromeHidden = prefs.autoHideChrome && typing && !panelOpen;
+  const chromeHidden = prefs.autoHideChrome && typing && !settingsOpen;
 
-  const openPanel = useCallback((origin: HTMLElement | null) => {
-    panelOriginRef.current = origin;
-    setPanelOpen(true);
+  const openSettings = useCallback((origin: HTMLElement | null) => {
+    settingsOriginRef.current = origin;
+    setSettingsOpen(true);
   }, []);
 
   /** 閉じたら、開く前にフォーカスのあった場所へ戻す（なければ本文）。 */
-  const closePanel = useCallback(() => {
-    setPanelOpen(false);
-    const origin = panelOriginRef.current;
-    panelOriginRef.current = null;
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false);
+    const origin = settingsOriginRef.current;
+    settingsOriginRef.current = null;
     if (origin?.isConnected && origin !== document.body) origin.focus();
     else adapterRef.current?.focus();
   }, []);
 
-  const togglePanel = useCallback(() => {
-    if (panelOpen) closePanel();
-    else openPanel(document.activeElement instanceof HTMLElement ? document.activeElement : null);
-  }, [panelOpen, closePanel, openPanel]);
+  const toggleSettings = useCallback(() => {
+    if (settingsOpen) closeSettings();
+    else openSettings(document.activeElement instanceof HTMLElement ? document.activeElement : null);
+  }, [settingsOpen, closeSettings, openSettings]);
+
+  const toggleSidebar = useCallback(() => setPrefs((p) => ({ ...p, sidebarOpen: !p.sidebarOpen })), []);
+
+  /** 重ねて表示中のサイドバーを閉じる（中の閉じるボタン・Esc から）。 */
+  const closeSidebar = useCallback(() => {
+    setPrefs((p) => ({ ...p, sidebarOpen: false }));
+    adapterRef.current?.focus();
+  }, []);
 
   const pickImage = useCallback(async () => {
     try {
@@ -296,8 +308,12 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
         case 'saveAs':
           void runCommand(controller.saveAs);
           break;
-        case 'appearance':
-          togglePanel();
+        case 'settings':
+          toggleSettings();
+          break;
+        case 'sidebar':
+          // 設定画面（モーダル）を開いている間は、後ろのレイアウトを動かさない。
+          if (!settingsOpen) toggleSidebar();
           break;
         case 'focusMode':
           setPrefs((p) => ({ ...p, focusMode: !p.focusMode }));
@@ -312,7 +328,7 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [bridge, controller, runCommand, togglePanel, cycleRegion, notify]);
+  }, [bridge, controller, runCommand, toggleSettings, toggleSidebar, settingsOpen, cycleRegion, notify]);
 
   useEffect(() => {
     document.title = `${dirty ? '● ' : ''}${title} - Immersive Markdown Editor`;
@@ -346,55 +362,73 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
       className="app"
       data-chrome={chromeHidden ? 'hidden' : 'visible'}
       data-theme-mode={theme}
-      data-panel-shift={reserve > 0 ? 'true' : 'false'}
+      data-surface={prefs.surfaceWidth}
+      data-sidebar={sidebarOpen ? 'open' : 'closed'}
+      data-sidebar-mode={sidebarLayoutMode}
       data-conflict={isConflictBarVisible(external) ? 'true' : 'false'}
-      style={{ '--md-panel-reserve': `${reserve}px` } as React.CSSProperties}
     >
       <CanvasBackground layer={canvas.layer} imageUrl={image.url} />
-      <div className="canvas-surface" data-testid="canvas-surface" aria-hidden="true" style={{ opacity: canvas.surfaceOpacity }} />
-      <header className="topbar" ref={topbarRef} aria-label="上部バー" onFocus={reveal}>
-        <span className="doc-title" data-testid="doc-title">
-          {title}
-        </span>
-        {dirty && (
-          <span className="unsaved-mark" data-testid="unsaved-mark" role="img" aria-label="未保存の変更あり" title="未保存の変更あり">
-            ●
+      <Sidebar open={sidebarOpen} mode={sidebarLayoutMode} onClose={closeSidebar} />
+      <div className="workspace" data-testid="workspace">
+        <div className="canvas-surface" data-testid="canvas-surface" aria-hidden="true" style={{ opacity: canvas.surfaceOpacity }} />
+        <header className="topbar" ref={topbarRef} aria-label="上部バー" onFocus={reveal}>
+          <button
+            type="button"
+            className="chrome-button icon-button"
+            data-testid="sidebar-toggle"
+            aria-label="サイドバー"
+            aria-expanded={sidebarOpen}
+            aria-controls={SIDEBAR_ID}
+            title={`サイドバー（${isMacPlatform() ? '⌘B' : 'Ctrl+B'}）`}
+            onClick={toggleSidebar}
+          >
+            <SidebarIcon />
+          </button>
+          <span className="doc-title" data-testid="doc-title">
+            {title}
           </span>
-        )}
-        <span className="topbar-spacer" />
-        <button
-          type="button"
-          className="chrome-button"
-          data-testid="appearance-button"
-          aria-haspopup="dialog"
-          aria-expanded={panelOpen}
-          title={`外観（${isMacPlatform() ? '⌘' : 'Ctrl+'},）`}
-          onClick={(e) => (panelOpen ? closePanel() : openPanel(e.currentTarget))}
-        >
-          外観
-        </button>
-      </header>
-      <ConflictBar
-        external={external}
-        regionRef={conflictRef}
-        onShowDiff={() => setDiffOpen(true)}
-        onReload={() => void runCommand(controller.reloadFromDisk)}
-        onKeepMine={() => {
-          controller.keepMine();
-          adapterRef.current?.focus();
-        }}
-        onRecreate={() => void runCommand(controller.save)}
-      />
-      <main className="editor-host" ref={hostRef} />
-      <footer className="bottombar" ref={bottombarRef} aria-label="下部バー" onFocus={reveal}>
-        {/* 環境音のコントロールの置き場所（Phase 2）。いまは中身を作らない。 */}
-        <div className="bottombar-slot" data-slot="ambient" />
-        <span className="char-count" data-testid="char-count" tabIndex={0}>
-          {characters.toLocaleString('ja-JP')} 文字
-        </span>
-      </footer>
-      {panelOpen && (
-        <AppearancePanel
+          {dirty && (
+            <span className="unsaved-mark" data-testid="unsaved-mark" role="img" aria-label="未保存の変更あり" title="未保存の変更あり">
+              ●
+            </span>
+          )}
+          <span className="topbar-spacer" />
+          <button
+            type="button"
+            className="chrome-button icon-button"
+            data-testid="settings-button"
+            aria-label="設定"
+            aria-haspopup="dialog"
+            aria-expanded={settingsOpen}
+            title={`設定（${isMacPlatform() ? '⌘,' : 'Ctrl+,'}）`}
+            onClick={(e) => (settingsOpen ? closeSettings() : openSettings(e.currentTarget))}
+          >
+            <GearIcon />
+          </button>
+        </header>
+        <ConflictBar
+          external={external}
+          regionRef={conflictRef}
+          onShowDiff={() => setDiffOpen(true)}
+          onReload={() => void runCommand(controller.reloadFromDisk)}
+          onKeepMine={() => {
+            controller.keepMine();
+            adapterRef.current?.focus();
+          }}
+          onRecreate={() => void runCommand(controller.save)}
+        />
+        <main className="editor-host" ref={hostRef} />
+        <footer className="bottombar" ref={bottombarRef} aria-label="下部バー" onFocus={reveal}>
+          {/* 環境音のコントロールの置き場所（Phase 2）。いまは中身を作らない。 */}
+          <div className="bottombar-slot" data-slot="ambient" />
+          <span className="char-count" data-testid="char-count" tabIndex={0}>
+            {characters.toLocaleString('ja-JP')} 文字
+          </span>
+        </footer>
+        <Toast notice={notice} layout={toast} onDismiss={dismissNotice} onCoveredHeight={setCoveredHeight} />
+      </div>
+      {settingsOpen && (
+        <SettingsDialog
           prefs={prefs}
           mode={theme}
           contrast={canvas.contrast}
@@ -402,10 +436,9 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
           imageStatus={image.status}
           onChange={updatePrefs}
           onPickImage={() => void pickImage()}
-          onClose={closePanel}
+          onClose={closeSettings}
         />
       )}
-      <Toast notice={notice} layout={toast} onDismiss={dismissNotice} onCoveredHeight={setCoveredHeight} />
       {diskTextForDiff !== null && <DiffDialog mine={state.text} disk={diskTextForDiff} onClose={closeDiff} />}
       {confirm && <ConfirmDiscardDialog documentName={confirm.documentName} onChoose={choose} />}
       {recreate && <ConfirmRecreateDialog documentName={recreate.documentName} onChoose={chooseRecreate} />}
@@ -418,6 +451,24 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
         />
       )}
     </div>
+  );
+}
+
+function SidebarIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.4">
+      <rect x="1.7" y="2.7" width="12.6" height="10.6" rx="1.8" />
+      <line x1="6" y1="2.7" x2="6" y2="13.3" />
+    </svg>
+  );
+}
+
+function GearIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
   );
 }
 

@@ -1,11 +1,18 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId, useState } from 'react';
 import type { ContrastReport } from '../canvas/canvas';
 import { formatRatio, WCAG_AA, WCAG_AAA } from '../canvas/contrast';
 import { GRADIENTS, gradientCss, type ThemeMode } from '../canvas/gradients';
 import { FONT_PRESETS, presetIdOf } from '../preferences/fonts';
-import { RANGES, validFontFamily, type BackgroundKind, type Preferences, type ThemeSetting } from '../preferences/preferences';
+import {
+  RANGES,
+  validFontFamily,
+  type BackgroundKind,
+  type Preferences,
+  type SurfaceWidth,
+  type ThemeSetting,
+} from '../preferences/preferences';
 
-export interface AppearancePanelProps {
+export interface AppearanceSettingsProps {
   prefs: Preferences;
   /** 表示中のテーマ（グラデーションの見本の色に使う）。 */
   mode: ThemeMode;
@@ -15,7 +22,6 @@ export interface AppearancePanelProps {
   imageStatus: 'none' | 'loading' | 'ready' | 'error';
   onChange(patch: Partial<Preferences>): void;
   onPickImage(): void;
-  onClose(): void;
 }
 
 const THEME_OPTIONS: ReadonlyArray<{ value: ThemeSetting; label: string }> = [
@@ -30,46 +36,22 @@ const KIND_OPTIONS: ReadonlyArray<{ value: BackgroundKind; label: string }> = [
   { value: 'image', label: '画像' },
 ];
 
-/** 開いたときにフォーカスする、最初の設定項目（閉じるボタンではなく）。 */
-const FIRST_CONTROL = 'select, input, textarea';
+const SURFACE_WIDTH_OPTIONS: ReadonlyArray<{ value: SurfaceWidth; label: string }> = [
+  { value: 'fill', label: '窓いっぱい' },
+  { value: 'text', label: '本文に合わせる' },
+];
 
 /**
- * 外観パネル。非モーダルの dialog（本文は触れたままで、変更はすぐ本文に反映される）。
- * 開いたら最初の部品にフォーカスし、Esc で閉じる。フォーカスの戻り先は App が管理する。
+ * 設定画面の「外観」の節。文字組み、紙の幅、テーマ、背景、執筆の補助。
+ * 変更はすぐ本文に反映される（設定画面の枠は SettingsDialog.tsx）。
  */
-export function AppearancePanel(props: AppearancePanelProps) {
-  const { prefs, mode, contrast, lineChars, imageStatus, onChange, onPickImage, onClose } = props;
-  const rootRef = useRef<HTMLElement>(null);
-  const titleId = useId();
-
-  useEffect(() => {
-    rootRef.current?.querySelector<HTMLElement>(FIRST_CONTROL)?.focus();
-  }, []);
-
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      onClose();
-    }
-  };
+export function AppearanceSettings(props: AppearanceSettingsProps) {
+  const { prefs, mode, contrast, lineChars, imageStatus, onChange, onPickImage } = props;
+  const headingId = useId();
 
   return (
-    <section
-      ref={rootRef}
-      className="appearance-panel"
-      role="dialog"
-      aria-labelledby={titleId}
-      aria-modal="false"
-      data-testid="appearance-panel"
-      onKeyDown={onKeyDown}
-    >
-      <header className="panel-header">
-        <h2 id={titleId}>外観</h2>
-        <button type="button" className="panel-close" onClick={onClose} aria-label="外観パネルを閉じる">
-          ×
-        </button>
-      </header>
+    <section className="settings-section" aria-labelledby={headingId} data-testid="settings-appearance">
+      <h3 id={headingId}>外観</h3>
 
       <FontFields prefs={prefs} onChange={onChange} />
 
@@ -119,6 +101,25 @@ export function AppearancePanel(props: AppearancePanelProps) {
         <p className="hint" data-testid="chars-per-line">
           1 行 約 {lineChars} 字（全角）
         </p>
+      </fieldset>
+
+      <fieldset>
+        <legend>紙の幅</legend>
+        <div className="choices">
+          {SURFACE_WIDTH_OPTIONS.map((o) => (
+            <label key={o.value} className="choice">
+              <input
+                type="radio"
+                name="surface-width"
+                value={o.value}
+                checked={prefs.surfaceWidth === o.value}
+                onChange={() => onChange({ surfaceWidth: o.value })}
+              />
+              {o.label}
+            </label>
+          ))}
+        </div>
+        <p className="hint">「窓いっぱい」では、背景は本文面の透け具合（不透明度）でだけ見えます。背景を見せたいときは「本文に合わせる」にします。</p>
       </fieldset>
 
       <fieldset>
@@ -264,7 +265,7 @@ export function AppearancePanel(props: AppearancePanelProps) {
   );
 }
 
-function FontFields({ prefs, onChange }: Pick<AppearancePanelProps, 'prefs' | 'onChange'>) {
+function FontFields({ prefs, onChange }: Pick<AppearanceSettingsProps, 'prefs' | 'onChange'>) {
   const selectId = useId();
   const customId = useId();
   const errorId = useId();

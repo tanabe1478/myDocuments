@@ -5,7 +5,7 @@
 ## Features
 
 - [document-lifecycle.md](document-lifecycle.md): 文書の新規作成・開く・保存。BOM と改行の維持、内容が変わらないときは書かない、未保存マーク、混在改行の通知、未保存の確認。
-- [appearance-canvas.md](appearance-canvas.md): 外観パネルと執筆キャンバス。文字組み、フォント、テーマ、背景（単色・グラデーション・画像）、背景を表示しない、コントラスト表示。
+- [appearance-canvas.md](appearance-canvas.md): 設定画面（モーダル）、外観と執筆キャンバス、紙の幅（窓いっぱい・本文に合わせる）、左サイドバーの開閉。文字組み、フォント、テーマ、背景（単色・グラデーション・画像）、背景を表示しない、コントラスト表示。
 - [writing-modes.md](writing-modes.md): 執筆モード。フォーカスモード、タイプライターモード、入力中のバーの自動非表示と F6、全画面ショートカット。
 - [save-reliability.md](save-reliability.md): 保存の信頼性。外部変更の自動読み直し、競合バー、保存直前の検査、草稿、起動時の復旧、前回の文書の再オープン、終了時の確認。
 - [writing-feel.md](writing-feel.md): 書き心地。カーソルの位置、段落間隔、ぶら下げインデント、Tab / Shift+Tab、上下キーの 1 行ずつの移動、範囲選択の畳み。
@@ -22,7 +22,7 @@
 
 - シナリオは features/scenarios/<name>.json。`node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario <path>` で実行する。形式は SKILL.md の Drive 節。
 - 1 シナリオは 1 つの新しいページで始まる（seed を毎回注入し直す）。シナリオ間で状態を引き継がない。
-- 操作は、ユーザーが触る入口（キーボードショートカット、外観ボタン、ダイアログのボタン）で行う。bridge の直接操作（externalWrite、requestClose、focusWindow、setPaths）は、OS やファイルシステムの側で起きることの代わりにだけ使う。
+- 操作は、ユーザーが触る入口（キーボードショートカット、設定ボタン、サイドバーの開閉ボタン、ダイアログのボタン）で行う。bridge の直接操作（externalWrite、requestClose、focusWindow、setPaths）は、OS やファイルシステムの側で起きることの代わりにだけ使う。
 - 結果は、画面（doc-title、unsaved-mark、toast など）と副作用（バイト列、physicalWrites、log、草稿、保存された設定）の両方を expect する。
 - ショートカットは ControlOrMeta で書く。macOS の全画面（Ctrl+Cmd+F）のように OS 固有のものは、シナリオに platform を書く。
 

@@ -25,6 +25,8 @@ describe('normalizePreferences', () => {
       paragraphSpacing: 1.5,
       letterSpacing: 0.05,
       maxWidthPx: 720,
+      surfaceWidth: 'text',
+      sidebarOpen: true,
       theme: 'dark',
       focusMode: true,
       typewriterMode: true,
@@ -130,6 +132,9 @@ describe('background and accessibility fields (R3-1)', () => {
       hideBackground: DEFAULT_PREFERENCES.hideBackground,
       // Run 5 で増えた項目。
       letterSpacing: DEFAULT_PREFERENCES.letterSpacing,
+      // Run 8 で増えた項目。
+      surfaceWidth: DEFAULT_PREFERENCES.surfaceWidth,
+      sidebarOpen: DEFAULT_PREFERENCES.sidebarOpen,
     });
   });
 
@@ -238,5 +243,43 @@ describe('writing feel (Run 5)', () => {
     for (const bad of [-0.01, 0.16, '0.05', Number.NaN, null]) {
       expect(normalizePreferences({ letterSpacing: bad }).letterSpacing).toBe(DEFAULT_PREFERENCES.letterSpacing);
     }
+  });
+});
+
+describe('paper width and sidebar (Run 8)', () => {
+  it('defaults: the paper fills the body area and the sidebar is closed', () => {
+    expect(DEFAULT_PREFERENCES.surfaceWidth).toBe('fill');
+    expect(DEFAULT_PREFERENCES.sidebarOpen).toBe(false);
+  });
+
+  it('keeps both surfaceWidth values', () => {
+    expect(normalizePreferences({ surfaceWidth: 'fill' }).surfaceWidth).toBe('fill');
+    expect(normalizePreferences({ surfaceWidth: 'text' }).surfaceWidth).toBe('text');
+  });
+
+  it('resets an invalid surfaceWidth to the default, only for that field', () => {
+    for (const bad of ['wide', '', 'FILL', 1, true, null, {}, []]) {
+      const p = normalizePreferences({ surfaceWidth: bad, theme: 'dark' });
+      expect(p.surfaceWidth).toBe('fill');
+      expect(p.theme).toBe('dark');
+    }
+  });
+
+  it('keeps a boolean sidebarOpen and resets other types to closed', () => {
+    expect(normalizePreferences({ sidebarOpen: true }).sidebarOpen).toBe(true);
+    expect(normalizePreferences({ sidebarOpen: false }).sidebarOpen).toBe(false);
+    for (const bad of ['true', 1, 0, null, {}]) expect(normalizePreferences({ sidebarOpen: bad }).sidebarOpen).toBe(false);
+  });
+
+  it('reads a value saved before these fields existed: paper fills, sidebar closed', () => {
+    const p = normalizePreferences({ fontSizePx: 20, theme: 'dark' });
+    expect(p.surfaceWidth).toBe('fill');
+    expect(p.sidebarOpen).toBe(false);
+    expect(p.fontSizePx).toBe(20);
+  });
+
+  it('is idempotent', () => {
+    const once = normalizePreferences({ surfaceWidth: 'text', sidebarOpen: true });
+    expect(normalizePreferences(once)).toEqual(once);
   });
 });

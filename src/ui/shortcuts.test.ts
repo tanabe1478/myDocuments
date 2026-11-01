@@ -48,12 +48,38 @@ describe('matchShortcut', () => {
 });
 
 describe('writing canvas shortcuts', () => {
-  it('Mod+, opens the appearance panel (Cmd on macOS, Ctrl elsewhere)', () => {
-    expect(matchShortcut({ ...key(',', { metaKey: true }), code: 'Comma' }, true)).toBe('appearance');
-    expect(matchShortcut({ ...key(',', { ctrlKey: true }), code: 'Comma' }, false)).toBe('appearance');
+  it('Mod+, opens the settings dialog (Cmd on macOS, Ctrl elsewhere)', () => {
+    expect(matchShortcut({ ...key(',', { metaKey: true }), code: 'Comma' }, true)).toBe('settings');
+    expect(matchShortcut({ ...key(',', { ctrlKey: true }), code: 'Comma' }, false)).toBe('settings');
     expect(matchShortcut({ ...key(',', { ctrlKey: true }), code: 'Comma' }, true)).toBeNull();
     expect(matchShortcut({ ...key(',', { metaKey: true }), code: 'Comma' }, false)).toBeNull();
     expect(matchShortcut({ ...key(',', { ctrlKey: true, shiftKey: true }), code: 'Comma' }, false)).toBeNull();
+  });
+
+  it('Mod+B toggles the sidebar (Cmd on macOS, Ctrl elsewhere)', () => {
+    expect(matchShortcut(key('b', { metaKey: true }), true)).toBe('sidebar');
+    expect(matchShortcut(key('B', { metaKey: true }), true)).toBe('sidebar');
+    expect(matchShortcut(key('b', { ctrlKey: true }), false)).toBe('sidebar');
+    expect(matchShortcut(key('b', { ctrlKey: true }), true)).toBeNull();
+    expect(matchShortcut(key('b', { metaKey: true }), false)).toBeNull();
+  });
+
+  it('Mod+B needs the modifier alone: not plain B, not with Shift or Alt', () => {
+    expect(matchShortcut(key('b'), false)).toBeNull();
+    expect(matchShortcut(key('B', { ctrlKey: true, shiftKey: true }), false)).toBeNull();
+    expect(matchShortcut(key('b', { ctrlKey: true, altKey: true }), false)).toBeNull();
+    expect(matchShortcut(key('b', { metaKey: true, ctrlKey: true }), true)).toBeNull();
+  });
+
+  it('Mod+B falls back to the physical key when the logical key is not a Latin letter', () => {
+    expect(matchShortcut({ ...key('b', { ctrlKey: true }), key: 'ｂ' }, false)).toBe('sidebar');
+  });
+
+  it('Mod+B and Mod+, are ignored during IME composition', () => {
+    expect(matchShortcut(key('b', { ctrlKey: true, isComposing: true }), false)).toBeNull();
+    expect(matchShortcut(key('b', { ctrlKey: true, keyCode: 229 }), false)).toBeNull();
+    expect(matchShortcut({ ...key(',', { ctrlKey: true, isComposing: true }), code: 'Comma' }, false)).toBeNull();
+    expect(matchShortcut({ ...key(',', { ctrlKey: true, keyCode: 229 }), code: 'Comma' }, false)).toBeNull();
   });
 
   it('focus mode is Mod+Shift+F and typewriter mode is Mod+Shift+T', () => {

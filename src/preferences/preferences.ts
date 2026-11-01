@@ -1,11 +1,14 @@
 /**
  * 型付き Preferences。保存形式は JSON オブジェクトで、検証はここが唯一の定義
  * （Rust 側は中身を解釈しない）。範囲外・型違いの項目は、その項目だけ既定値に戻す。
- * 設定画面は src/ui/AppearancePanel.tsx。古い保存値（項目が足りない）も、足りない項目だけ既定値になる。
+ * 設定画面は src/ui/SettingsDialog.tsx。古い保存値（項目が足りない）も、足りない項目だけ既定値になる。
  */
 import { DEFAULT_GRADIENT_ID, isGradientId, type GradientId } from '../canvas/gradients';
 
 export type ThemeSetting = 'light' | 'dark' | 'system';
+
+/** 紙（本文面）の幅。fill: 本文領域（サイドバーを除いた領域）いっぱい。text: 本文の最大幅 + 左右の余白に合わせる。 */
+export type SurfaceWidth = 'fill' | 'text';
 
 export type BackgroundKind = 'color' | 'gradient' | 'image';
 
@@ -33,6 +36,9 @@ export interface Preferences {
   /** 字間。em 単位（文字サイズに対する比）。 */
   readonly letterSpacing: number;
   readonly maxWidthPx: number;
+  readonly surfaceWidth: SurfaceWidth;
+  /** 左サイドバーを開いているか。次の起動で復元する。 */
+  readonly sidebarOpen: boolean;
   readonly theme: ThemeSetting;
   readonly focusMode: boolean;
   readonly typewriterMode: boolean;
@@ -57,6 +63,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   paragraphSpacing: 0.6,
   letterSpacing: 0.02,
   maxWidthPx: 680,
+  surfaceWidth: 'fill',
+  sidebarOpen: false,
   theme: 'system',
   focusMode: false,
   typewriterMode: false,
@@ -80,6 +88,7 @@ export const RANGES = {
 } as const;
 
 const THEMES: readonly ThemeSetting[] = ['light', 'dark', 'system'];
+const SURFACE_WIDTHS: readonly SurfaceWidth[] = ['fill', 'text'];
 const BACKGROUND_KINDS: readonly BackgroundKind[] = ['color', 'gradient', 'image'];
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 const IMAGE_ID = /^[0-9a-f]{64}$/;
@@ -133,6 +142,8 @@ export function normalizePreferences(raw: unknown): Preferences {
     paragraphSpacing: number(r.paragraphSpacing, RANGES.paragraphSpacing, d.paragraphSpacing),
     letterSpacing: number(r.letterSpacing, RANGES.letterSpacing, d.letterSpacing),
     maxWidthPx: number(r.maxWidthPx, RANGES.maxWidthPx, d.maxWidthPx),
+    surfaceWidth: SURFACE_WIDTHS.includes(r.surfaceWidth as SurfaceWidth) ? (r.surfaceWidth as SurfaceWidth) : d.surfaceWidth,
+    sidebarOpen: boolean(r.sidebarOpen, d.sidebarOpen),
     theme: THEMES.includes(r.theme as ThemeSetting) ? (r.theme as ThemeSetting) : d.theme,
     focusMode: boolean(r.focusMode, d.focusMode),
     typewriterMode: boolean(r.typewriterMode, d.typewriterMode),

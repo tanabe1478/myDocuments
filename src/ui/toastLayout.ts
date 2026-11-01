@@ -18,10 +18,10 @@ export interface ToastLayout {
 
 /**
  * トーストの置き場所。本文の列の右側の余白に、最小幅と左右のマージンが収まるときだけ列の外に置く。
- * 収まらないとき（狭い窓、外観パネルで本文が寄って余白が狭いとき）は、本文に重ねる。
+ * 収まらないとき（狭い窓、サイドバーで本文の領域が狭くなって余白が狭いとき）は、本文に重ねる。
  *
- * available: 本文を置ける幅（窓の幅から、外観パネルの占める幅を引いたもの）。
- * 列の位置は styles.css の .canvas-surface と theme.ts の .cm-content と同じ式（本文は available の中央）。
+ * available: 本文の領域の幅（窓の幅から、サイドバーの占める幅を引いたもの）。
+ * 列の位置は styles.css の .canvas-surface と theme.ts の .cm-content と同じ式（本文は available の中央、右の余白は本文の領域の右端まで）。
  */
 export function toastLayout(available: number, maxWidthPx: number): ToastLayout {
   const content = columnWidth(available, maxWidthPx) + contentPadding(available, maxWidthPx) * 2;

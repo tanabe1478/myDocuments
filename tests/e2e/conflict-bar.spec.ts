@@ -275,18 +275,16 @@ test.describe('競合バーの出現・消失とカーソル行', () => {
 });
 
 test.describe('競合バーの幅と位置', () => {
-  test('(c) 外観パネルを開いても、バーは本文の列に揃い、パネルと重ならない', async ({ page }) => {
-    // 入力で上部バーが隠れると外観ボタンを押せないので、自動非表示は切る。
-    await openDoc(page, longText(20), { autoHideChrome: false });
+  test('(c) サイドバーを開いても、バーは本文の列に揃い、サイドバーと重ならない。閉じると元の中央へ戻る', async ({ page }) => {
+    await openDoc(page, longText(20));
     await page.locator('.cm-content').click();
     await page.keyboard.type('追記');
-    await page.getByTestId('appearance-button').click();
-    const panel = page.getByRole('dialog', { name: '外観' });
-    await expect(panel).toBeVisible();
-    await expect(page.locator('.app')).toHaveAttribute('data-panel-shift', 'true');
+    await page.keyboard.press('ControlOrMeta+b');
+    const sidebar = page.getByTestId('sidebar');
+    await expect(sidebar).toBeVisible();
     await externalWrite(page, DOC, '外部の版');
     await expect(conflictBar(page)).toBeVisible();
-    // 本文が寄るアニメーションの終わりを待つ。
+    // 本文が右へ寄る動きの終わりを待つ。
     await expect
       .poll(async () => {
         const column = await columnBox(page);
@@ -296,13 +294,13 @@ test.describe('競合バーの幅と位置', () => {
       .toBe(true);
 
     const bar = await box(page, BAR);
-    const panelBox = await box(page, '.appearance-panel');
-    expect(bar.right).toBeLessThanOrEqual(panelBox.left);
+    const side = await box(page, '[data-testid=sidebar]');
+    expect(bar.left).toBeGreaterThanOrEqual(side.right);
     expect((await overlaps(page)).count).toBe(0);
 
-    // パネルを閉じると、本文とバーが中央へ戻り、列に揃ったまま。
-    await page.keyboard.press('Escape');
-    await expect(panel).toHaveCount(0);
+    // 閉じると、本文とバーが中央へ戻り、列に揃ったまま。
+    await page.keyboard.press('ControlOrMeta+b');
+    await expect(sidebar).toBeHidden();
     await expect
       .poll(async () => {
         const column = await columnBox(page);
@@ -383,7 +381,7 @@ test.describe('競合バーの表示条件とアクセシビリティ', () => {
 
     // F6: 本文 → 上部バー → 競合バー → 下部バー → 本文。
     await page.keyboard.press('F6');
-    await expect(page.getByTestId('appearance-button')).toBeFocused();
+    await expect(page.getByTestId('sidebar-toggle')).toBeFocused();
     await page.keyboard.press('F6');
     await expect(page.getByTestId('conflict-diff')).toBeFocused();
     await page.keyboard.press('F6');

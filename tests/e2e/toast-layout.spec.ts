@@ -84,22 +84,21 @@ test.describe('広い窓（1280x800）のトースト', () => {
     expect(t.bottom).toBeLessThanOrEqual(count.top);
   });
 
-  test('(b) 外観パネルを開いていても、パネルと重ならない', async ({ page }) => {
+  test('(b) サイドバーを開いていても、サイドバーと重ならず、本文の領域の中に収まる', async ({ page }) => {
     await openDoc(page, longText(40), { autoHideChrome: false });
     await page.locator('.cm-content').click();
-    await page.getByTestId('appearance-button').click();
-    await expect(page.getByRole('dialog', { name: '外観' })).toBeVisible();
-    await expect(page.locator('.app')).toHaveAttribute('data-panel-shift', 'true');
-    // 本文が寄るアニメーションの終わりを待つ。
-    await expect
-      .poll(async () => (await box(page, '.cm-content')).right)
-      .toBeLessThanOrEqual((await box(page, '.appearance-panel')).left);
+    await page.keyboard.press('ControlOrMeta+b');
+    await expect(page.getByTestId('sidebar')).toBeVisible();
+    // 本文の領域が右へ寄る動きの終わりを待つ。
+    await expect.poll(async () => (await box(page, '.workspace')).left).toBe(260);
     await page.getByTestId('char-count').focus();
     await showToast(page);
 
     const t = await box(page, '[data-testid=toast]');
-    const panel = await box(page, '.appearance-panel');
-    expect(intersects(t, panel), JSON.stringify({ t, panel })).toBe(false);
+    const side = await box(page, '[data-testid=sidebar]');
+    expect(intersects(t, side), JSON.stringify({ t, side })).toBe(false);
+    expect(t.left).toBeGreaterThanOrEqual(side.right);
+    expect(t.right).toBeLessThanOrEqual(1280);
   });
 
   test('エラーのトーストも、列の外に出て、クリックで閉じる（role は alert のまま）', async ({ page }) => {

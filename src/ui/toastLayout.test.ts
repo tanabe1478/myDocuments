@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { panelReserve } from './panelLayout';
+import { SIDEBAR_WIDTH_PX, sidebarReserve } from './sidebarLayout';
 import { TOAST_MAX_WIDTH_PX, TOAST_MIN_WIDTH_PX, toastLayout } from './toastLayout';
 
 describe('toastLayout', () => {
@@ -31,13 +31,14 @@ describe('toastLayout', () => {
     expect(toastLayout(1216, 680).placement).toBe('margin');
   });
 
-  it('外観パネルを開いて本文が寄ると、余白が狭くなり、本文に重ねる（パネルには入らない）', () => {
-    const reserve = panelReserve(680, 1280);
-    expect(reserve).toBeGreaterThan(0);
+  it('サイドバーを開いて本文の領域が狭くなると、余白が狭くなり、本文に重ねる（サイドバーには入らない）', () => {
+    const reserve = sidebarReserve(true, 1280);
+    expect(reserve).toBe(SIDEBAR_WIDTH_PX);
+    expect(toastLayout(1280, 680).placement).toBe('margin');
     expect(toastLayout(1280 - reserve, 680).placement).toBe('overlay');
-    // 十分広い窓なら、パネルを開いたままでも列とパネルの間に置ける。
+    // 十分広い窓なら、サイドバーを開いたままでも本文の領域の右の余白に置ける。
     const wide = 2000;
-    expect(toastLayout(wide - panelReserve(680, wide), 680).placement).toBe('margin');
+    expect(toastLayout(wide - sidebarReserve(true, wide), 680).placement).toBe('margin');
   });
 
   it('最大幅を狭くすると余白が広がる', () => {

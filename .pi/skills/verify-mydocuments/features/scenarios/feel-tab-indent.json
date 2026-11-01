@@ -227,7 +227,7 @@
     },
     {
       "expect": {
-        "testId": "appearance-button",
+        "testId": "settings-button",
         "read": "focused",
         "equals": true
       },

@@ -2,7 +2,7 @@ import { DEFAULT_PREFERENCES } from './preferences';
 
 /**
  * フォントの選択肢。同梱フォントはなく、OS にあるものを順に試す font-family。
- * 一覧にない指定は、外観パネルの自由入力で行う。
+ * 一覧にない指定は、設定画面の自由入力で行う。
  */
 export interface FontPreset {
   readonly id: string;

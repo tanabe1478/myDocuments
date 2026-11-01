@@ -76,11 +76,11 @@
     },
     {
       "expect": {
-        "testId": "appearance-button",
+        "testId": "sidebar-toggle",
         "read": "focused",
         "equals": true
       },
-      "note": "F6: 本文 → 上部バー"
+      "note": "F6: 本文 → 上部バー（左端のサイドバーの開閉ボタン）"
     },
     {
       "expect": {
@@ -126,23 +126,34 @@
       "press": "Shift+F6"
     },
     {
+      "press": "Tab"
+    },
+    {
+      "expect": {
+        "testId": "settings-button",
+        "read": "focused",
+        "equals": true
+      },
+      "note": "上部バーの中で Tab を進めると、設定ボタンに届く"
+    },
+    {
       "press": "Enter"
     },
     {
       "expect": {
         "role": "dialog",
-        "name": "外観",
+        "name": "設定",
         "read": "visible",
         "equals": true
       },
-      "note": "バーのボタンから Enter で外観パネルが開く"
+      "note": "バーのボタンから Enter で設定画面が開く"
     },
     {
       "press": "Escape"
     },
     {
       "expect": {
-        "testId": "appearance-button",
+        "testId": "settings-button",
         "read": "focused",
         "equals": true
       }

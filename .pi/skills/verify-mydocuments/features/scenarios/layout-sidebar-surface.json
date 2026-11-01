@@ -1,0 +1,374 @@
+{
+  "seed": {
+    "files": {
+      "/docs/layout.md": {
+        "text": "# 窓いっぱいの紙\n\n書く場所は、左のサイドバーを開いても、紙を本文に合わせても、同じ位置の列に収まる。\n\n- 列の長さは本文の最大幅で決まる\n- サイドバーを開くと、本文の領域が右へ寄る\n\n> 背景は、紙の外側か、紙の透け具合で見える。\n\nもう少し長い段落を置いて、行の折り返しと余白を目で確かめる。吾輩は猫である。名前はまだ無い。どこで生れたかとんと見当がつかぬ。何でも薄暗いじめじめした所でニャーニャー泣いていた事だけは記憶している。\n"
+      }
+    },
+    "openPath": "/docs/layout.md",
+    "preferences": {
+      "theme": "light",
+      "autoHideChrome": false
+    }
+  },
+  "steps": [
+    {
+      "press": "ControlOrMeta+o"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "layout.md"
+      }
+    },
+    {
+      "expect": {
+        "css": ".app",
+        "read": "attr:data-surface",
+        "equals": "fill",
+        "note": "既定は紙が窓いっぱい"
+      }
+    },
+    {
+      "expect": {
+        "testId": "sidebar",
+        "read": "visible",
+        "equals": false,
+        "note": "サイドバーは既定で閉じている"
+      }
+    },
+    {
+      "expect": {
+        "testId": "sidebar-toggle",
+        "read": "attr:aria-expanded",
+        "equals": "false"
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const r = document.querySelector('[data-testid=canvas-surface]').getBoundingClientRect(); return { left: Math.round(r.left), width: Math.round(r.width), right: Math.round(r.right) }; })()",
+        "equals": {
+          "left": 0,
+          "width": 1280,
+          "right": 1280
+        },
+        "note": "fill: 紙が本文の領域（窓全体）いっぱい"
+      }
+    },
+    {
+      "expect": {
+        "testId": "canvas-surface",
+        "read": "css:box-shadow",
+        "equals": "none",
+        "note": "fill では影を付けない"
+      }
+    },
+    {
+      "observe": "light-fill-closed",
+      "eval": {
+        "column": "(() => { const c = document.querySelector('.cm-content'); const cs = getComputedStyle(c); const r = c.getBoundingClientRect(); return { x: Math.round(r.left + parseFloat(cs.paddingLeft)), width: Math.round(r.width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) }; })()"
+      }
+    },
+    {
+      "screenshot": "light-fill-closed"
+    },
+    {
+      "press": "ControlOrMeta+b"
+    },
+    {
+      "expect": {
+        "testId": "sidebar",
+        "read": "visible",
+        "equals": true,
+        "note": "Mod+B で開く（本文にフォーカスがあるまま）"
+      }
+    },
+    {
+      "expect": {
+        "testId": "sidebar-toggle",
+        "read": "attr:aria-expanded",
+        "equals": "true"
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-content",
+        "read": "focused",
+        "equals": true
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const r = document.querySelector('.workspace').getBoundingClientRect(); return { left: Math.round(r.left), width: Math.round(r.width), right: Math.round(r.right) }; })()",
+        "equals": {
+          "left": 260,
+          "width": 1020,
+          "right": 1280
+        },
+        "timeout": 3000,
+        "note": "本文の領域が 260px 右へ押し出される"
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const r = document.querySelector('[data-testid=canvas-surface]').getBoundingClientRect(); return { left: Math.round(r.left), width: Math.round(r.width), right: Math.round(r.right) }; })()",
+        "equals": {
+          "left": 260,
+          "width": 1020,
+          "right": 1280
+        },
+        "note": "fill: 紙は残りの領域いっぱい"
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = document.querySelector('[data-testid=sidebar]').getBoundingClientRect(); return ['.topbar', '.bottombar', '.editor-host', '.cm-content'].every((q) => document.querySelector(q).getBoundingClientRect().left >= s.right); })()",
+        "equals": true,
+        "note": "上部バー・下部バー・本文がサイドバーと重ならない"
+      }
+    },
+    {
+      "observe": "light-fill-open",
+      "eval": {
+        "column": "(() => { const c = document.querySelector('.cm-content'); const cs = getComputedStyle(c); const r = c.getBoundingClientRect(); return { x: Math.round(r.left + parseFloat(cs.paddingLeft)), width: Math.round(r.width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) }; })()"
+      }
+    },
+    {
+      "screenshot": "light-fill-open"
+    },
+    {
+      "press": "ControlOrMeta+,"
+    },
+    {
+      "expect": {
+        "role": "dialog",
+        "name": "設定",
+        "read": "visible",
+        "equals": true,
+        "note": "entry point: Mod+, で設定画面"
+      }
+    },
+    {
+      "expect": {
+        "role": "dialog",
+        "name": "設定",
+        "read": "attr:aria-modal",
+        "equals": "true"
+      }
+    },
+    {
+      "screenshot": "settings-open-light"
+    },
+    {
+      "check": {
+        "panel": true,
+        "role": "radio",
+        "name": "本文に合わせる"
+      }
+    },
+    {
+      "expect": {
+        "css": ".app",
+        "read": "attr:data-surface",
+        "equals": "text"
+      }
+    },
+    {
+      "expect": {
+        "eval": "Math.round(document.querySelector('[data-testid=canvas-surface]').getBoundingClientRect().width)",
+        "equals": 792,
+        "note": "text: 本文の最大幅 680 + 左右の余白 56 × 2"
+      }
+    },
+    {
+      "press": "Escape"
+    },
+    {
+      "expect": {
+        "role": "dialog",
+        "name": "設定",
+        "read": "count",
+        "equals": 0
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-content",
+        "read": "focused",
+        "equals": true,
+        "note": "閉じるとフォーカスは本文へ戻る"
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const r = document.querySelector('[data-testid=canvas-surface]').getBoundingClientRect(); return Math.round(r.left + r.width / 2); })()",
+        "equals": 770,
+        "note": "text: 紙は本文の領域（260〜1280）の中央"
+      }
+    },
+    {
+      "screenshot": "light-text-open"
+    },
+    {
+      "press": "ControlOrMeta+b"
+    },
+    {
+      "expect": {
+        "testId": "sidebar",
+        "read": "visible",
+        "equals": false
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const r = document.querySelector('[data-testid=canvas-surface]').getBoundingClientRect(); return Math.round(r.left + r.width / 2); })()",
+        "equals": 640,
+        "timeout": 3000,
+        "note": "閉じると窓の中央へ戻る"
+      }
+    },
+    {
+      "screenshot": "light-text-closed"
+    },
+    {
+      "press": "ControlOrMeta+,"
+    },
+    {
+      "check": {
+        "panel": true,
+        "role": "radio",
+        "name": "ダーク"
+      }
+    },
+    {
+      "expect": {
+        "css": "html",
+        "read": "attr:data-theme",
+        "equals": "dark"
+      }
+    },
+    {
+      "press": "Escape"
+    },
+    {
+      "screenshot": "dark-text-closed"
+    },
+    {
+      "press": "ControlOrMeta+b"
+    },
+    {
+      "expect": {
+        "testId": "sidebar",
+        "read": "visible",
+        "equals": true
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const r = document.querySelector('.workspace').getBoundingClientRect(); return { left: Math.round(r.left), width: Math.round(r.width), right: Math.round(r.right) }; })()",
+        "equals": {
+          "left": 260,
+          "width": 1020,
+          "right": 1280
+        },
+        "timeout": 3000
+      }
+    },
+    {
+      "screenshot": "dark-text-open"
+    },
+    {
+      "press": "ControlOrMeta+,"
+    },
+    {
+      "check": {
+        "panel": true,
+        "role": "radio",
+        "name": "窓いっぱい"
+      }
+    },
+    {
+      "press": "Escape"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const r = document.querySelector('[data-testid=canvas-surface]').getBoundingClientRect(); return { left: Math.round(r.left), width: Math.round(r.width), right: Math.round(r.right) }; })()",
+        "equals": {
+          "left": 260,
+          "width": 1020,
+          "right": 1280
+        }
+      }
+    },
+    {
+      "screenshot": "dark-fill-open"
+    },
+    {
+      "press": "ControlOrMeta+b"
+    },
+    {
+      "expect": {
+        "testId": "sidebar",
+        "read": "visible",
+        "equals": false
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const r = document.querySelector('[data-testid=canvas-surface]').getBoundingClientRect(); return { left: Math.round(r.left), width: Math.round(r.width), right: Math.round(r.right) }; })()",
+        "equals": {
+          "left": 0,
+          "width": 1280,
+          "right": 1280
+        },
+        "timeout": 3000
+      }
+    },
+    {
+      "screenshot": "dark-fill-closed"
+    },
+    {
+      "press": "ControlOrMeta+b"
+    },
+    {
+      "expect": {
+        "testId": "sidebar",
+        "read": "visible",
+        "equals": true
+      }
+    },
+    {
+      "expect": {
+        "eval": "(({ sidebarOpen, surfaceWidth, theme }) => ({ sidebarOpen, surfaceWidth, theme }))(window.__mdeE2E.savedPreferences.at(-1) || {})",
+        "equals": {
+          "sidebarOpen": true,
+          "surfaceWidth": "fill",
+          "theme": "dark"
+        },
+        "timeout": 4000,
+        "note": "debounce の後に保存される"
+      }
+    },
+    {
+      "reload": true
+    },
+    {
+      "expect": {
+        "testId": "sidebar",
+        "read": "visible",
+        "equals": true,
+        "note": "再読み込み後もサイドバーは開いている"
+      }
+    },
+    {
+      "expect": {
+        "css": ".app",
+        "read": "attr:data-surface",
+        "equals": "fill"
+      }
+    },
+    {
+      "screenshot": "after-reload-open"
+    }
+  ]
+}

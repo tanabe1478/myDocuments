@@ -1,0 +1,136 @@
+{
+  "seed": {
+    "files": {
+      "/docs/narrow.md": {
+        "text": "# 窓いっぱいの紙\n\n書く場所は、左のサイドバーを開いても、紙を本文に合わせても、同じ位置の列に収まる。\n\n- 列の長さは本文の最大幅で決まる\n- サイドバーを開くと、本文の領域が右へ寄る\n\n> 背景は、紙の外側か、紙の透け具合で見える。\n\nもう少し長い段落を置いて、行の折り返しと余白を目で確かめる。吾輩は猫である。名前はまだ無い。どこで生れたかとんと見当がつかぬ。何でも薄暗いじめじめした所でニャーニャー泣いていた事だけは記憶している。\n"
+      }
+    },
+    "openPath": "/docs/narrow.md",
+    "preferences": {
+      "theme": "light",
+      "autoHideChrome": false
+    }
+  },
+  "steps": [
+    {
+      "press": "ControlOrMeta+o"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "narrow.md"
+      }
+    },
+    {
+      "viewport": {
+        "width": 560,
+        "height": 700
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.innerWidth",
+        "equals": 560,
+        "timeout": 3000
+      }
+    },
+    {
+      "press": "ControlOrMeta+b"
+    },
+    {
+      "expect": {
+        "testId": "sidebar",
+        "read": "visible",
+        "equals": true
+      }
+    },
+    {
+      "expect": {
+        "css": ".app",
+        "read": "attr:data-sidebar-mode",
+        "equals": "overlay",
+        "note": "押し出すと本文が最小幅（320px + 余白）を割るので、重ねて表示する"
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const r = document.querySelector('.workspace').getBoundingClientRect(); return { left: Math.round(r.left), width: Math.round(r.width), right: Math.round(r.right) }; })()",
+        "equals": {
+          "left": 0,
+          "width": 560,
+          "right": 560
+        },
+        "timeout": 3000,
+        "note": "本文の領域は動かない"
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const c = document.querySelector('.cm-content'); const cs = getComputedStyle(c); return Math.round(c.getBoundingClientRect().width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)); })()",
+        "gte": 320,
+        "note": "本文の列は 320px 以上のまま、潰れない"
+      }
+    },
+    {
+      "expect": {
+        "testId": "sidebar-close",
+        "read": "visible",
+        "equals": true,
+        "note": "上部バーの開閉ボタンが隠れるので、中に閉じるボタンを出す"
+      }
+    },
+    {
+      "screenshot": "narrow-overlay-open"
+    },
+    {
+      "click": {
+        "testId": "sidebar-close"
+      }
+    },
+    {
+      "expect": {
+        "testId": "sidebar",
+        "read": "visible",
+        "equals": false
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-content",
+        "read": "focused",
+        "equals": true
+      }
+    },
+    {
+      "viewport": {
+        "width": 700,
+        "height": 700
+      }
+    },
+    {
+      "press": "ControlOrMeta+b"
+    },
+    {
+      "expect": {
+        "css": ".app",
+        "read": "attr:data-sidebar-mode",
+        "equals": "push",
+        "note": "700 - 260 = 440 >= 360 なので押し出す"
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const r = document.querySelector('.workspace').getBoundingClientRect(); return { left: Math.round(r.left), width: Math.round(r.width), right: Math.round(r.right) }; })()",
+        "equals": {
+          "left": 260,
+          "width": 440,
+          "right": 700
+        },
+        "timeout": 3000
+      }
+    },
+    {
+      "screenshot": "narrow-push-open"
+    }
+  ]
+}

@@ -25,6 +25,7 @@
   --md-color-match: rgba(240, 190, 60, 0.35);
   --md-color-match-selected: rgba(240, 150, 40, 0.5);
   --md-color-accent: #b4532a;
+  --md-settings-scrim: rgba(40, 34, 20, 0.16);
 }
 
 :root[data-theme='dark'] {
@@ -48,6 +49,7 @@
   --md-color-match: rgba(240, 190, 60, 0.3);
   --md-color-match-selected: rgba(240, 150, 40, 0.5);
   --md-color-accent: #e0875f;
+  --md-settings-scrim: rgba(0, 0, 0, 0.3);
 }
 
 html,
@@ -67,12 +69,23 @@ body {
 .app {
   position: relative;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   height: 100%;
   overflow: hidden;
 }
 
-/* 背景層（z 0）→ 本文面（z 1）→ 本文（z 2）→ 上下のバー（z 5）→ 外観パネル（z 8）。 */
+/* 本文の領域。左サイドバーを除いた残り全部で、本文面・本文・上下のバー・競合バー・トーストはこの中に置く（位置の基準）。
+   サイドバーを開くと、この領域が右へ押し出されて狭くなる（重ならない）。 */
+.workspace {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 背景層（z 0、窓全体）→ 本文面（z 1）→ 本文（z 2）→ 上下のバー（z 5）→ サイドバー（z 6）→ 設定画面（z 8）→ トースト（z 10）→ 確認のダイアログ（z 20）。 */
 .canvas-bg {
   position: absolute;
   inset: 0;
@@ -94,22 +107,30 @@ body {
   inset: 0;
 }
 
-/* 本文面。本文（左右の余白を含む）と同じ幅の縦長の面で、不透明度は Preferences の surfaceOpacity。 */
-/* 枠線はなく、影で背景から浮かせる。左右の余白は、行長（--md-max-width）の外側に取る（式は theme.ts の PAD_X と同じ）。 */
-/* 外観パネルを開いて本文が収まるときは、--md-panel-reserve（パネルの占める幅）だけ右を空けて、残りの中央に置く。 */
+/* 本文面。不透明度は Preferences の surfaceOpacity。幅は Preferences の surfaceWidth（.app の data-surface）。
+   fill（既定）: 本文の領域いっぱい。左右の背景の帯をなくすので、影は付けない。
+   text: 本文（左右の余白を含む）と同じ幅の縦長の面で、枠線はなく、影で背景から浮かせる。左右の余白は、
+   行長（--md-max-width）の外側に取る（式は theme.ts の PAD_X と同じ）。本文の領域の中央に置く。
+   どちらでも、1 行の長さは --md-max-width で決まる（本文の列は本文の領域の中央）。 */
 .canvas-surface {
-  --avail: calc(100% - var(--md-panel-reserve, 0px));
-  --pad: clamp(20px, calc((var(--avail) - var(--md-max-width, 680px)) / 2), 56px);
+  --pad: clamp(20px, calc((100% - var(--md-max-width, 680px)) / 2), 56px);
   position: absolute;
   top: 0;
   bottom: 0;
-  left: calc(var(--avail) / 2);
+  left: 50%;
   z-index: 1;
-  width: min(calc(var(--md-max-width, 680px) + 2 * var(--pad)), var(--avail));
+  width: min(calc(var(--md-max-width, 680px) + 2 * var(--pad)), 100%);
   transform: translateX(-50%);
   background: var(--md-color-surface);
   box-shadow: var(--md-surface-shadow);
   pointer-events: none;
+}
+
+.app[data-surface='fill'] .canvas-surface {
+  left: 0;
+  width: 100%;
+  transform: none;
+  box-shadow: none;
 }
 
 .editor-host {
@@ -117,7 +138,6 @@ body {
   z-index: 2;
   flex: 1;
   min-height: 0;
-  margin-right: var(--md-panel-reserve, 0px);
 }
 
 .topbar,
@@ -174,11 +194,19 @@ body {
   color: var(--md-color-text);
 }
 
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 9px;
+}
+
 .chrome-button:focus-visible,
 .char-count:focus-visible,
-.appearance-panel button:focus-visible,
-.appearance-panel input:focus-visible,
-.appearance-panel select:focus-visible {
+.settings-dialog button:focus-visible,
+.settings-dialog input:focus-visible,
+.settings-dialog select:focus-visible,
+.sidebar button:focus-visible {
   outline: 2px solid var(--md-color-link);
   outline-offset: 2px;
 }
@@ -201,12 +229,12 @@ body {
 }
 
 /* トースト。本文の列の外に余白があるとき（data-placement='margin'）は、列の右の余白の右下（文字数表示の上）に置く。
-   幅は列と窓の端の間（--md-toast-width。Toast.tsx が toastLayout.ts の式で与える）。右は、外観パネルを開いたときの本文の寄せに合わせる。
+   幅は列と本文の領域の端の間（--md-toast-width。Toast.tsx が toastLayout.ts の式で与える）。
    余白がないとき（'overlay'）は、本文に重ねて中央の下に置く。本文の高さは変えない（エディタ側がスクロールの余白で逃がす）。 */
 .toast-region {
   position: absolute;
   left: 0;
-  right: var(--md-panel-reserve, 0px);
+  right: 0;
   bottom: 20px;
   z-index: 10;
   display: flex;
@@ -216,7 +244,7 @@ body {
 
 .toast-region[data-placement='margin'] {
   left: auto;
-  right: calc(var(--md-panel-reserve, 0px) + 16px);
+  right: 16px;
   bottom: 56px;
   width: var(--md-toast-width);
   justify-content: flex-end;
@@ -303,17 +331,24 @@ body {
   outline-offset: 2px;
 }
 
-/* 外観パネル（非モーダルの dialog）。 */
-.appearance-panel {
+/* 設定画面（モーダルの dialog）。窓の中央に出し、幕は薄くして、後ろの本文の変化が見えるようにする。
+   高さが窓に収まらないときは、見出し（設定・閉じるボタン）を残して、本文の部分だけスクロールする。 */
+.settings-backdrop {
   position: absolute;
-  top: 52px;
-  right: 16px;
-  bottom: 52px;
+  inset: 0;
   z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--md-settings-scrim);
+}
+
+.settings-dialog {
+  display: flex;
+  flex-direction: column;
   box-sizing: border-box;
-  width: min(340px, calc(100% - 32px));
-  overflow-y: auto;
-  padding: 12px 16px 16px;
+  width: min(560px, calc(100% - 32px));
+  max-height: calc(100% - 48px);
   border: 1px solid var(--md-color-border);
   border-radius: 10px;
   background: var(--md-color-panel);
@@ -322,32 +357,47 @@ body {
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
 }
 
-.panel-header {
+.settings-header {
   display: flex;
+  flex: none;
   align-items: center;
   justify-content: space-between;
+  padding: 12px 16px 8px;
+  border-bottom: 1px solid var(--md-color-border);
 }
 
-.appearance-panel h2 {
+.settings-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 16px 16px;
+}
+
+.settings-dialog h2 {
   margin: 0;
-  font-size: 15px;
+  font-size: 16px;
 }
 
-.appearance-panel fieldset {
+.settings-section h3 {
+  margin: 12px 0 0;
+  font-size: 14px;
+}
+
+.settings-dialog fieldset {
   margin: 12px 0 0;
   padding: 0;
   border: 0;
   border-top: 1px solid var(--md-color-border);
 }
 
-.appearance-panel legend {
+.settings-dialog legend {
   padding: 8px 0 4px;
   font-weight: 600;
 }
 
-.appearance-panel button,
-.appearance-panel select,
-.appearance-panel input[type='text'] {
+.settings-dialog button,
+.settings-dialog select,
+.settings-dialog input[type='text'] {
   padding: 4px 10px;
   border: 1px solid var(--md-color-border);
   border-radius: 6px;
@@ -356,80 +406,80 @@ body {
   font: inherit;
 }
 
-.appearance-panel button {
+.settings-dialog button {
   cursor: pointer;
 }
 
-.panel-close {
+.settings-close {
   padding: 0 8px !important;
   font-size: 18px !important;
   line-height: 1.4;
 }
 
-.appearance-panel input[type='range'],
-.appearance-panel input[type='radio'],
-.appearance-panel input[type='checkbox'] {
+.settings-dialog input[type='range'],
+.settings-dialog input[type='radio'],
+.settings-dialog input[type='checkbox'] {
   accent-color: var(--md-color-link);
 }
 
-.appearance-panel .field {
+.settings-dialog .field {
   display: flex;
   flex-direction: column;
   gap: 2px;
   margin: 6px 0;
 }
 
-.appearance-panel .field-head {
+.settings-dialog .field-head {
   display: flex;
   justify-content: space-between;
 }
 
-.appearance-panel .field-inline {
+.settings-dialog .field-inline {
   flex-direction: row;
   align-items: center;
   gap: 10px;
 }
 
-.appearance-panel .value,
-.appearance-panel .hint {
+.settings-dialog .value,
+.settings-dialog .hint {
   color: var(--md-color-chrome-text);
 }
 
-.appearance-panel .hint {
+.settings-dialog .hint {
   margin: 4px 0;
   font-size: 12px;
 }
 
-.appearance-panel .hint.warn {
+.settings-dialog .hint.warn {
   color: var(--md-color-accent);
   font-weight: 600;
 }
 
-.appearance-panel input[type='range'] {
+.settings-dialog input[type='range'] {
   width: 100%;
   margin: 2px 0;
 }
 
-.appearance-panel .choices {
+.settings-dialog .choices {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 14px;
   margin: 4px 0;
 }
 
-.appearance-panel .gradient-choices {
+.settings-dialog .gradient-choices {
   flex-direction: column;
 }
 
-.appearance-panel .choice,
-.appearance-panel .check {
+.settings-dialog .choice,
+.settings-dialog .check {
   display: flex;
   align-items: center;
   gap: 6px;
   min-height: 24px;
 }
 
-.appearance-panel .swatch {
+.settings-dialog .swatch {
   display: inline-block;
   width: 36px;
   height: 16px;
@@ -437,11 +487,86 @@ body {
   border-radius: 4px;
 }
 
-.appearance-panel .image-row {
+.settings-dialog .image-row {
   display: flex;
   align-items: center;
   gap: 10px;
   margin: 6px 0;
+}
+
+/* 左サイドバー。本文の領域の左に、幅 260px で置く（push）。閉じているときは幅 0 で、見えず、フォーカスも受けない（inert）。
+   窓が狭くて押し出すと本文が最小幅を割るとき（data-mode='overlay'）は、本文を動かさず、本文の上に重ねる。
+   配色はパネルと同じ（ライト・ダークとも、見出しは本文の文字色、補足は chrome の文字色で、AA を満たす）。 */
+.sidebar {
+  position: relative;
+  z-index: 6;
+  flex: none;
+  box-sizing: border-box;
+  width: 0;
+  overflow: hidden;
+  visibility: hidden;
+  background: var(--md-color-panel);
+  color: var(--md-color-text);
+  font: 13px/1.5 system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI", "Noto Sans CJK JP", sans-serif;
+}
+
+.sidebar[data-open='true'] {
+  width: 260px;
+  visibility: visible;
+}
+
+.sidebar[data-mode='overlay'] {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 260px;
+  max-width: 100%;
+  transform: translateX(-100%);
+}
+
+.sidebar[data-mode='overlay'][data-open='true'] {
+  transform: none;
+  box-shadow: 0 0 28px rgba(0, 0, 0, 0.28);
+}
+
+.sidebar-inner {
+  box-sizing: border-box;
+  width: 260px;
+  height: 100%;
+  padding: 52px 16px 16px;
+  border-right: 1px solid var(--md-color-border);
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sidebar h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.sidebar-close {
+  padding: 0 8px;
+  border: 1px solid var(--md-color-border);
+  border-radius: 6px;
+  background: var(--md-color-bg);
+  color: inherit;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.sidebar-empty {
+  margin: 12px 0 0;
+  color: var(--md-color-chrome-text);
 }
 
 /* アニメーションは Reduced Motion でないときだけ（reduce では transition を付けない）。 */
@@ -459,10 +584,19 @@ body {
     transition: opacity 0.25s ease;
   }
 
-  /* 外観パネルの開閉に合わせた、本文と競合バーの移動。 */
-  .editor-host,
-  .conflict-region {
-    transition: margin-right 0.2s ease;
+  /* サイドバーの開閉。押し出すとき（push）は幅、重ねるとき（overlay）は位置を動かす。見えなくなるのは動き終わってから。 */
+  .sidebar {
+    transition:
+      width 0.18s ease,
+      transform 0.18s ease,
+      visibility 0s linear 0.18s;
+  }
+
+  .sidebar[data-open='true'] {
+    transition:
+      width 0.18s ease,
+      transform 0.18s ease,
+      visibility 0s;
   }
 
   /* 競合バーの出現。本文の領域の高さは変えず、バー自身の不透明度だけ。 */
@@ -474,12 +608,6 @@ body {
     from {
       opacity: 0;
     }
-  }
-
-  .canvas-surface {
-    transition:
-      left 0.2s ease,
-      width 0.2s ease;
   }
 }
 
@@ -497,15 +625,14 @@ body {
 /* 外部変更の競合バー。本文に重ねず、.app の縦の並びの中（本文の上）に専用の場所を取る。表示中は本文の領域が縮む。
    選択が要る間は、自動非表示でも隠さない（上部バーの opacity とは独立）。
    上部バー・下部バーは本文に重なる浮動表示なので、領域の上端には上部バーの高さ（52px）を空ける。
-   幅は本文の列（--md-max-width。左右の余白 20px を除いた領域に収める）。右は、外観パネルを開いたときの本文の寄せ
-   （--md-panel-reserve）に合わせる（.editor-host と同じ）。 */
+   幅は本文の列（--md-max-width。左右の余白 20px を除いた領域に収める）。位置は本文の領域（.workspace）の中央で、
+   サイドバーを開いて領域が狭くなっても、サイドバーとは重ならない。 */
 .conflict-region {
   position: relative;
   z-index: 3;
   flex: none;
   box-sizing: border-box;
   padding: 52px 20px 0;
-  margin-right: var(--md-panel-reserve, 0px);
 }
 
 .conflict-bar {
