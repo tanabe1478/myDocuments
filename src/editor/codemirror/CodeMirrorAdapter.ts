@@ -6,6 +6,7 @@ import type { EditorAdapter, EditorSelection } from '../EditorAdapter';
 import { focusModeExtension } from './focusMode';
 import { historyKeymap } from './historyKeymap';
 import { indentKeymap } from './indentKeymap';
+import { keepCursorVisibleExtension } from './keepCursorVisible';
 import { markdownDecorations } from './markdownDecorations';
 import { readingPositionExtension } from './readingPosition';
 import { editorTheme } from './theme';
@@ -133,6 +134,7 @@ export class CodeMirrorAdapter implements EditorAdapter {
       this.typewriterCompartment.of(this.typewriterExtension()),
       search({ top: true }),
       readingPositionExtension(),
+      keepCursorVisibleExtension(),
       indentKeymap(),
       verticalMotionExtension(),
       keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),

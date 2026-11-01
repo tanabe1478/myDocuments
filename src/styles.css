@@ -442,9 +442,21 @@ body {
     transition: opacity 0.25s ease;
   }
 
-  /* 外観パネルの開閉に合わせた、本文の移動。 */
-  .editor-host {
+  /* 外観パネルの開閉に合わせた、本文と競合バーの移動。 */
+  .editor-host,
+  .conflict-region {
     transition: margin-right 0.2s ease;
+  }
+
+  /* 競合バーの出現。本文の領域の高さは変えず、バー自身の不透明度だけ。 */
+  .conflict-bar {
+    animation: conflict-bar-in 0.2s ease;
+  }
+
+  @keyframes conflict-bar-in {
+    from {
+      opacity: 0;
+    }
   }
 
   .canvas-surface {
@@ -454,29 +466,45 @@ body {
   }
 }
 
-/* 外部変更の競合バー。選択が要る間は、自動非表示でも隠さない。 */
+/* 外部変更の競合バー。本文に重ねず、.app の縦の並びの中（本文の上）に専用の場所を取る。表示中は本文の領域が縮む。
+   選択が要る間は、自動非表示でも隠さない（上部バーの opacity とは独立）。
+   上部バー・下部バーは本文に重なる浮動表示なので、領域の上端には上部バーの高さ（52px）を空ける。
+   幅は本文の列（--md-max-width。左右の余白 20px を除いた領域に収める）。右は、外観パネルを開いたときの本文の寄せ
+   （--md-panel-reserve）に合わせる（.editor-host と同じ）。 */
+.conflict-region {
+  position: relative;
+  z-index: 3;
+  flex: none;
+  box-sizing: border-box;
+  padding: 52px 20px 0;
+  margin-right: var(--md-panel-reserve, 0px);
+}
+
 .conflict-bar {
-  position: absolute;
-  top: 52px;
-  left: 50%;
-  z-index: 6;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   gap: 8px;
-  max-width: min(94vw, 760px);
-  padding: 8px 14px;
-  transform: translateX(-50%);
+  box-sizing: border-box;
+  width: min(var(--md-max-width, 680px), 100%);
+  margin: 0 auto;
+  padding: 10px 14px;
   border: 1px solid var(--md-color-accent);
   border-radius: 10px;
   background: var(--md-color-panel);
   color: var(--md-color-text);
   font: 13px/1.5 var(--md-font-family);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 
 .conflict-message {
-  flex: 1 1 auto;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .conflict-bar button {
@@ -487,6 +515,10 @@ body {
   color: inherit;
   font: inherit;
   cursor: pointer;
+}
+
+.conflict-bar button:hover {
+  border-color: var(--md-color-accent);
 }
 
 .conflict-bar button:focus-visible {

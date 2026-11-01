@@ -12,6 +12,7 @@
     { "expect": { "testId": "conflict-reload", "read": "visible", "equals": true } },
     { "expect": { "testId": "conflict-keep", "read": "visible", "equals": true }, "note": "3 つの選択肢" },
     { "expect": { "eval": "window.__mdeE2E.editor.getText()", "equals": "一行目\n二行目（自分の追記）" } },
+    { "expect": { "testId": "conflict-bar", "read": "css:opacity", "equals": "1" }, "note": "出現のフェードが終わるまで待つ（途中で撮ると、バーが薄く写る）" },
     { "screenshot": "conflict-bar" },
     { "click": { "testId": "conflict-diff" } },
     { "expect": { "testId": "diff-dialog", "read": "visible", "equals": true } },

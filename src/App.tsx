@@ -51,6 +51,7 @@ interface PendingRecovery {
 export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; initialPreferences: Preferences }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const topbarRef = useRef<HTMLElement>(null);
+  const conflictRef = useRef<HTMLDivElement>(null);
   const bottombarRef = useRef<HTMLElement>(null);
   const adapterRef = useRef<EditorAdapter | null>(null);
   const noticeId = useRef(0);
@@ -242,13 +243,16 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
 
   const cycleRegion = useCallback(
     (direction: 1 | -1) => {
-      const regions: Array<{ el: HTMLElement | null; focus(): void }> = [
+      // 競合バーは、表示中（conflictRef が付いているとき）だけ巡回に含める。
+      const all: Array<{ el: HTMLElement | null; focus(): void }> = [
         { el: hostRef.current, focus: () => adapterRef.current?.focus() },
         { el: topbarRef.current, focus: () => firstFocusable(topbarRef.current)?.focus() },
+        { el: conflictRef.current, focus: () => firstFocusable(conflictRef.current)?.focus() },
         { el: bottombarRef.current, focus: () => firstFocusable(bottombarRef.current)?.focus() },
       ];
+      const regions = all.filter((r) => r.el !== null);
       const active = document.activeElement;
-      const current = regions.findIndex((r) => r.el !== null && active !== null && r.el.contains(active));
+      const current = regions.findIndex((r) => active !== null && r.el?.contains(active));
       const next = regions[(Math.max(current, 0) + direction + regions.length) % regions.length];
       reveal();
       next?.focus();
@@ -265,7 +269,7 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
   useEffect(() => {
     const mac = isMacPlatform();
     const onKeyDown = (e: KeyboardEvent) => {
-      // F6: 本文 → 上部バー → 下部バー → 本文（Shift で逆順）。バーが隠れていても届く。
+      // F6: 本文 → 上部バー → 競合バー（表示中のみ）→ 下部バー → 本文（Shift で逆順）。バーが隠れていても届く。
       if (e.key === 'F6' && !e.isComposing && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         cycleRegion(e.shiftKey ? -1 : 1);
@@ -366,6 +370,7 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
       </header>
       <ConflictBar
         external={external}
+        regionRef={conflictRef}
         onShowDiff={() => setDiffOpen(true)}
         onReload={() => void runCommand(controller.reloadFromDisk)}
         onKeepMine={() => {

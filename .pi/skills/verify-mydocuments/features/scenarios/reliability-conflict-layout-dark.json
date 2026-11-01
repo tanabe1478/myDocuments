@@ -1,0 +1,85 @@
+{
+  "seed": {
+    "files": {
+      "/docs/note.md": {
+        "text": "元の本文\n\n2 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n3 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n4 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n5 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n6 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n7 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n8 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n9 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n10 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n11 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n12 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n13 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n14 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n15 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n16 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n17 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n18 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n19 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n20 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n21 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n22 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n23 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n24 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n25 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n26 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n27 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n28 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n29 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n30 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。\n31 段落目。外部の変更で競合バーが出ても、この本文が隠れないことを確かめる。"
+      }
+    },
+    "openPath": "/docs/note.md",
+    "preferences": {
+      "theme": "dark"
+    }
+  },
+  "steps": [
+    {
+      "press": "ControlOrMeta+o"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "note.md"
+      }
+    },
+    {
+      "click": ".cm-content"
+    },
+    {
+      "press": "ControlOrMeta+Home"
+    },
+    {
+      "type": "追記"
+    },
+    {
+      "externalWrite": {
+        "path": "/docs/note.md",
+        "text": "外部が書き換えた版",
+        "notify": true
+      }
+    },
+    {
+      "expect": {
+        "testId": "conflict-bar",
+        "read": "visible",
+        "equals": true
+      },
+      "note": "1280x800 ダーク: 競合バーが出る"
+    },
+    {
+      "expect": {
+        "testId": "conflict-bar",
+        "read": "css:opacity",
+        "equals": "1"
+      },
+      "note": "出現のフェードが終わるまで待つ（途中で撮ると、バーが薄く写る）"
+    },
+    {
+      "screenshot": "reliability-conflict-layout-dark"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const bar = document.querySelector('[data-testid=conflict-bar]').getBoundingClientRect(); const sc = document.querySelector('.cm-scroller').getBoundingClientRect(); const hit = (a, b) => a.top < b.bottom && a.bottom > b.top && a.left < b.right && a.right > b.left; return [...document.querySelectorAll('.cm-line')].filter((l) => { const r = l.getBoundingClientRect(); return r.height > 0 && hit(r, sc) && hit(r, bar); }).length; })()",
+        "equals": 0
+      },
+      "note": "競合バーと、表示されている本文の行が重ならない"
+    },
+    {
+      "expect": {
+        "css": ".cm-line",
+        "read": "visible",
+        "equals": true
+      },
+      "note": "本文の 1 行目が表示されている"
+    },
+    {
+      "observe": "reliability-conflict-layout-dark",
+      "files": [
+        "/docs/note.md"
+      ],
+      "eval": {
+        "barRect": "JSON.stringify(document.querySelector('[data-testid=conflict-bar]').getBoundingClientRect())",
+        "scrollerRect": "JSON.stringify(document.querySelector('.cm-scroller').getBoundingClientRect())",
+        "firstLine": "JSON.stringify(document.querySelector('.cm-line').getBoundingClientRect())"
+      }
+    }
+  ]
+}

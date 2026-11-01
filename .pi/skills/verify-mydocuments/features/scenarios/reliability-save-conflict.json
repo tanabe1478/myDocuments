@@ -14,6 +14,7 @@
     { "expect": { "eval": "({ writes: window.__mdeE2E.physicalWrites, conflicts: window.__mdeE2E.conflicts })", "equals": { "writes": 0, "conflicts": 1 } } },
     { "expect": { "eval": "new TextDecoder().decode(Uint8Array.from(window.__mdeE2E.readFile('/docs/note.md')))", "equals": "保存直前に外部が書いた版" }, "note": "外部の版は壊れていない" },
     { "expect": { "testId": "unsaved-mark", "read": "visible", "equals": true } },
+    { "expect": { "testId": "conflict-bar", "read": "css:opacity", "equals": "1" }, "note": "出現のフェードが終わるまで待つ（途中で撮ると、バーが薄く写る）" },
     { "screenshot": "save-conflict" },
     { "observe": "save-conflict", "files": ["/docs/note.md"] },
     { "requestClose": true },
