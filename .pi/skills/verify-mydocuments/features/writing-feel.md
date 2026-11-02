@@ -9,11 +9,13 @@
 - FEEL-5: Esc の直後の Tab は、本文の外へフォーカスを移す（Shift+Tab は逆向き）。Esc の後に別のキーを押せば、Tab はまたインデントになる。
 - FEEL-6: ArrowDown と ArrowUp は、見出し、空行、リスト、引用、コードフェンスのどこでも、1 回で全行を 1 行ずつ動く。行を飛ばさず、止まらない。
 - FEEL-7: 範囲選択中の ArrowUp と ArrowDown は、選択の端へ畳む。Shift 付きは anchor を残して head だけを 1 行ずつ動かす。
+- FEEL-8: リストの項目で Enter を押すと、次の項目を続ける（記号、番号付きは次の番号、タスクは `- [ ] `、入れ子はインデントを保つ。引用の中のリストも）。項目の間に空行のあるリスト（loose list）でも、既定（設定画面「編集」の「リストの継続」が「空行を入れない」）では空行を入れない。「リストの形に合わせる」にすると、次の項目の前にも空行を入れる。変更は文書を開き直さずに効き、保存され、再読み込み後も保たれる。空の項目での Enter はリストを終える（入れ子は 1 段戻す）。項目の途中での Enter は後半を次の項目にする。.txt では続けない。
 
 ## How to get to it (user POV)
 
 - 本文をクリックして、キーボードで入力・移動する。専用のボタンはない。
 - 段落間隔は設定画面の「段落間隔」（Mod+, か設定ボタン）。既定値は起動時に自動で反映される。
+- リストの項目で Enter。設定は設定画面（Mod+, か設定ボタン）の「編集」の節の「リストの継続」（ラジオ「空行を入れない」「リストの形に合わせる」）。
 - Tab、Shift+Tab、Esc、ArrowUp、ArrowDown、Shift+ArrowUp、Shift+ArrowDown、Mod+Home、Mod+End。
 - 折り返しは窓の幅と本文の最大幅で決まる。ぶら下げインデントはリスト等の行を書くだけで働く。
 
@@ -28,6 +30,8 @@ Preconditions: Launch 済みで Doctor が全 PASS。カーソルや選択は、
 | feel-hanging-indent.json | 長文のリスト・番号付き・引用・タスクを開く | 9 種類の記号の行で、折り返した行の左端が 1 行目の本文の左端と ±2px 以内。記号なしの段落は字下げなし |
 | feel-tab-indent.json | リスト、番号付き、引用、複数行選択、通常の段落で Tab と Shift+Tab、Esc と Tab | 本文が「- a」「  - b」と変わり、番号付きは「   2. b」、引用は「> > q」。通常の段落は不変でフォーカスも本文のまま。Esc → Tab で char-count、Esc → Shift+Tab で settings-button にフォーカス |
 | feel-vertical-motion-default.json、feel-vertical-motion-spacing0.json、feel-vertical-motion-spacing3.json | 30 行の文書（見出し、空行、リスト、引用、フェンス）を、段落間隔 0.6、0、3 で、先頭から ArrowDown ×29、末尾から ArrowUp ×29 | 行の間の隙間が 0.5px 未満。1 押下ごとにカーソルの行がちょうど 1 変わる |
+| feel-list-continuation.json | 項目の間に空行のあるリストの末尾で Enter。続けて「次の項目」と入力して保存。Mod+, で「編集」の節を開き「リストの形に合わせる」にして Esc、Enter、Undo。「空行を入れない」へ戻して Enter。最後に「リストの形に合わせる」にして reload | 既定では末尾に「\n- 」だけが入り（空行なし）、保存された本文は「- 次の項目」で終わる。「リストの形に合わせる」では「\n\n- 」が入り、Undo 1 回で戻る。戻すとすぐ「\n- 」になる。保存された設定の listContinuation が preserve になり、reload 後も選ばれている。画像は before-enter.png、after-enter-tight.png、settings-editing-light.png、after-enter-preserve.png、after-enter-tight-again.png、after-reload-preserve.png |
+| feel-list-continuation-dark.json | ダークで設定画面を開き、「編集」の節までスクロール | 節の見出しが「外観」「編集」の順。「リストの継続」の既定は「空行を入れない」。画像は settings-editing-dark.png |
 | feel-selection-collapse.json | 5 行の文書で、選択して ArrowUp、ArrowDown、Shift+ArrowUp、Shift+ArrowDown | 選択の anchor と head の位置が、下向きの選択は ArrowDown で末尾、ArrowUp で先頭へ畳まれる。上向きの選択も ArrowUp で先頭へ畳まれる。Shift 付きは anchor が動かず head が 1 行ずつ。先頭行の ArrowUp は行頭、末尾行の ArrowDown は行末 |
 
 ```
@@ -39,6 +43,8 @@ node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenari
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/feel-vertical-motion-spacing0.json
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/feel-vertical-motion-spacing3.json
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/feel-selection-collapse.json
+node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/feel-list-continuation.json
+node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/feel-list-continuation-dark.json
 ```
 
 ## Gotchas
@@ -49,4 +55,8 @@ node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenari
 - 空行を飛ばさない上下移動は、行と行の間に margin を付けないことに依存する。隙間の検査（0.5px 未満）が先に失敗したら、移動の失敗はその副作用の可能性が高い。
 - Tab の検証で、前のキー入力から時間が空いても結果は変わらないが、Esc の直後でなければ Tab はインデントになる。Esc を挟む順序を変えるとシナリオの意味が変わる。
 - 実 IME の変換中の挙動（変換中の空行、リストの行）は、この Skill のシナリオに含めない。tests/e2e/writing-feel.spec.ts は CDP で変換を模擬するが、実際の IME ではない。
+- Enter でのリストの継続は、本文の末尾にカーソルを置いてから押す（click の後に Mod+End）。設定画面を開いたまま Enter を押すと設定画面の操作になるので、Esc で閉じてフォーカスが本文へ戻ってから押す。入力中は上部バーが隠れるので、設定画面は設定ボタンではなく Mod+, で開く。
+- 設定画面は縦に長く、「編集」の節は「外観」の下にある。スクリーンショットには、シナリオの eval で「編集」の節をスクロールして入れる。
+- IME の変換中の Enter（変換中は項目が増えない）は、このシナリオの範囲外。実 IME ではなく、CDP の keyboard.press('Enter') は変換を確定して改行してしまうので、模擬にもならない。tests/e2e/list-continuation.spec.ts が keyCode 229 の keydown で確かめる。
+- loose list は、項目の間に空行があるリスト（「- a」「空行」「- b」）。「- a」「- b」のように空行がないリスト（tight list）の Enter は、設定にかかわらず同じ。
 - 見た目（行の隙間、字間の自然さ）は数値では測れない部分がある。screenshot（caret-after-typing.png、hanging-indent.png、spacing-2.png など）を目で見て確かめる。

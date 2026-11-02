@@ -1,0 +1,264 @@
+{
+  "seed": {
+    "files": {
+      "/docs/list.md": {
+        "text": "大規模処理\n- パッチ\n  - Batches\n  - 他にも\n\n\n\n- temperature について"
+      }
+    },
+    "openPath": "/docs/list.md",
+    "preferences": {
+      "theme": "light",
+      "autoHideChrome": false
+    }
+  },
+  "steps": [
+    {
+      "press": "ControlOrMeta+o"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "list.md"
+      }
+    },
+    {
+      "click": ".cm-content"
+    },
+    {
+      "press": "ControlOrMeta+End"
+    },
+    {
+      "screenshot": "before-enter"
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText()",
+        "equals": "大規模処理\n- パッチ\n  - Batches\n  - 他にも\n\n\n\n- temperature について\n- "
+      },
+      "note": "既定（空行を入れない）: 空行は入らず、改行と記号だけが入る"
+    },
+    {
+      "screenshot": "after-enter-tight"
+    },
+    {
+      "type": "次の項目"
+    },
+    {
+      "press": "ControlOrMeta+s"
+    },
+    {
+      "expect": {
+        "testId": "unsaved-mark",
+        "read": "count",
+        "equals": 0
+      }
+    },
+    {
+      "observe": "saved-tight",
+      "files": [
+        "/docs/list.md"
+      ]
+    },
+    {
+      "press": "ControlOrMeta+,"
+    },
+    {
+      "expect": {
+        "role": "dialog",
+        "name": "設定",
+        "read": "visible",
+        "equals": true
+      }
+    },
+    {
+      "expect": {
+        "eval": "document.querySelector('input[name=list-continuation]:checked').value",
+        "equals": "tight"
+      },
+      "note": "設定画面の「編集」の節の既定は「空行を入れない」"
+    },
+    {
+      "eval": "document.querySelector('[data-testid=settings-editing]').scrollIntoView({ block: 'end' })"
+    },
+    {
+      "expect": {
+        "testId": "settings-editing",
+        "read": "visible",
+        "equals": true
+      }
+    },
+    {
+      "screenshot": "settings-editing-light"
+    },
+    {
+      "check": {
+        "panel": true,
+        "role": "radio",
+        "name": "リストの形に合わせる"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.savedPreferences.at(-1)?.listContinuation",
+        "equals": "preserve",
+        "timeout": 4000
+      },
+      "note": "debounce の後に bridge へ保存される"
+    },
+    {
+      "press": "Escape"
+    },
+    {
+      "expect": {
+        "role": "dialog",
+        "name": "設定",
+        "read": "count",
+        "equals": 0
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-content",
+        "read": "focused",
+        "equals": true
+      }
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText()",
+        "equals": "大規模処理\n- パッチ\n  - Batches\n  - 他にも\n\n\n\n- temperature について\n- 次の項目\n\n- "
+      },
+      "note": "「リストの形に合わせる」: 文書を開き直さずに、次の項目の前にも空行が入る"
+    },
+    {
+      "screenshot": "after-enter-preserve"
+    },
+    {
+      "press": "ControlOrMeta+z"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText()",
+        "equals": "大規模処理\n- パッチ\n  - Batches\n  - 他にも\n\n\n\n- temperature について\n- 次の項目"
+      },
+      "note": "Enter は Undo 1 回で戻る"
+    },
+    {
+      "press": "ControlOrMeta+,"
+    },
+    {
+      "expect": {
+        "role": "dialog",
+        "name": "設定",
+        "read": "visible",
+        "equals": true
+      }
+    },
+    {
+      "check": {
+        "panel": true,
+        "role": "radio",
+        "name": "空行を入れない"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.savedPreferences.at(-1)?.listContinuation",
+        "equals": "tight",
+        "timeout": 4000
+      },
+      "note": "debounce の後に bridge へ保存される"
+    },
+    {
+      "press": "Escape"
+    },
+    {
+      "expect": {
+        "role": "dialog",
+        "name": "設定",
+        "read": "count",
+        "equals": 0
+      }
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText()",
+        "equals": "大規模処理\n- パッチ\n  - Batches\n  - 他にも\n\n\n\n- temperature について\n- 次の項目\n- "
+      },
+      "note": "「空行を入れない」へ戻すと、文書を開き直さずに、すぐ空行が入らなくなる"
+    },
+    {
+      "screenshot": "after-enter-tight-again"
+    },
+    {
+      "press": "ControlOrMeta+,"
+    },
+    {
+      "expect": {
+        "role": "dialog",
+        "name": "設定",
+        "read": "visible",
+        "equals": true
+      }
+    },
+    {
+      "check": {
+        "panel": true,
+        "role": "radio",
+        "name": "リストの形に合わせる"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.savedPreferences.at(-1)?.listContinuation",
+        "equals": "preserve",
+        "timeout": 4000
+      },
+      "note": "debounce の後に bridge へ保存される"
+    },
+    {
+      "press": "Escape"
+    },
+    {
+      "expect": {
+        "role": "dialog",
+        "name": "設定",
+        "read": "count",
+        "equals": 0
+      }
+    },
+    {
+      "reload": true
+    },
+    {
+      "press": "ControlOrMeta+,"
+    },
+    {
+      "expect": {
+        "role": "dialog",
+        "name": "設定",
+        "read": "visible",
+        "equals": true
+      }
+    },
+    {
+      "expect": {
+        "eval": "document.querySelector('input[name=list-continuation]:checked').value",
+        "equals": "preserve"
+      },
+      "note": "再読み込み後も「リストの形に合わせる」が保たれる"
+    },
+    {
+      "screenshot": "after-reload-preserve"
+    }
+  ]
+}

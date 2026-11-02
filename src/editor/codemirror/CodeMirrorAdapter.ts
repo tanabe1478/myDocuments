@@ -3,11 +3,13 @@ import { search, searchKeymap } from '@codemirror/search';
 import { Compartment, EditorState, type Extension } from '@codemirror/state';
 import { EditorView, drawSelection, keymap } from '@codemirror/view';
 import type { TextKind } from '../../document/fileKinds';
+import type { ListContinuation } from '../../preferences/preferences';
 import type { EditorAdapter, EditorSelection } from '../EditorAdapter';
 import { focusModeExtension } from './focusMode';
 import { historyKeymap } from './historyKeymap';
 import { indentKeymap } from './indentKeymap';
 import { keepCursorVisibleExtension } from './keepCursorVisible';
+import { listContinuationExtension } from './listContinuation';
 import { markdownDecorations, plainTextDecorations } from './markdownDecorations';
 import { readingPositionExtension } from './readingPosition';
 import { editorTheme } from './theme';
@@ -31,12 +33,14 @@ export class CodeMirrorAdapter implements EditorAdapter {
   private focusMode = false;
   private typewriterMode = false;
   private textKind: TextKind = 'markdown';
+  private listContinuation: ListContinuation = 'tight';
   /** 本文の下側を覆う要素（トースト）の高さ。scrollMargins の下側に使う（レイアウトは変えない）。 */
   private bottomInset = 0;
   // setText は state を作り直すので、モードは Compartment で持ち、作り直しても現在の値で始める。
   private readonly focusCompartment = new Compartment();
   private readonly typewriterCompartment = new Compartment();
   private readonly kindCompartment = new Compartment();
+  private readonly listCompartment = new Compartment();
 
   mount(el: HTMLElement): void {
     if (this.view) throw new Error('CodeMirrorAdapter is already mounted');
@@ -96,6 +100,12 @@ export class CodeMirrorAdapter implements EditorAdapter {
         this.focusCompartment.reconfigure(this.focusExtension()),
       ],
     });
+  }
+
+  setListContinuation(mode: ListContinuation): void {
+    if (this.listContinuation === mode) return;
+    this.listContinuation = mode;
+    this.view?.dispatch({ effects: this.listCompartment.reconfigure(listContinuationExtension(mode)) });
   }
 
   setBottomInset(px: number): void {
@@ -172,6 +182,7 @@ export class CodeMirrorAdapter implements EditorAdapter {
       this.kindCompartment.of(this.kindExtension()),
       this.focusCompartment.of(this.focusExtension()),
       this.typewriterCompartment.of(this.typewriterExtension()),
+      this.listCompartment.of(listContinuationExtension(this.listContinuation)),
       search({ top: true }),
       readingPositionExtension(),
       keepCursorVisibleExtension(),

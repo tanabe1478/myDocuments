@@ -1,0 +1,66 @@
+{
+  "seed": {
+    "files": {
+      "/docs/list.md": {
+        "text": "大規模処理\n- パッチ\n  - Batches\n  - 他にも\n\n\n\n- temperature について"
+      }
+    },
+    "openPath": "/docs/list.md",
+    "preferences": {
+      "theme": "dark",
+      "autoHideChrome": false
+    }
+  },
+  "steps": [
+    {
+      "press": "ControlOrMeta+o"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "list.md"
+      }
+    },
+    {
+      "press": "ControlOrMeta+,"
+    },
+    {
+      "expect": {
+        "role": "dialog",
+        "name": "設定",
+        "read": "visible",
+        "equals": true
+      }
+    },
+    {
+      "expect": {
+        "eval": "document.querySelector('input[name=list-continuation]:checked').value",
+        "equals": "tight"
+      },
+      "note": "既定は「空行を入れない」"
+    },
+    {
+      "eval": "document.querySelector('[data-testid=settings-editing]').scrollIntoView({ block: 'end' })"
+    },
+    {
+      "expect": {
+        "eval": "[...document.querySelectorAll('.settings-section h3')].map((h) => h.textContent)",
+        "equals": [
+          "外観",
+          "編集"
+        ],
+        "note": "節の順は「外観」「編集」"
+      }
+    },
+    {
+      "expect": {
+        "testId": "settings-editing",
+        "read": "visible",
+        "equals": true
+      }
+    },
+    {
+      "screenshot": "settings-editing-dark"
+    }
+  ]
+}

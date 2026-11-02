@@ -149,6 +149,7 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
     adapter.setTextKind(textKindOf(controller.getState().path));
     adapter.setFocusMode(prefsRef.current.focusMode);
     adapter.setTypewriterMode(prefsRef.current.typewriterMode);
+    adapter.setListContinuation(prefsRef.current.listContinuation);
     const off = adapter.onChange((text) => {
       controller.handleEdit(text);
       setTyping(true);
@@ -211,6 +212,7 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
 
   useEffect(() => adapterRef.current?.setFocusMode(prefs.focusMode), [prefs.focusMode]);
   useEffect(() => adapterRef.current?.setTypewriterMode(prefs.typewriterMode), [prefs.typewriterMode]);
+  useEffect(() => adapterRef.current?.setListContinuation(prefs.listContinuation), [prefs.listContinuation]);
 
   // 設定を CSS 変数と data-theme に反映する（即時）。
   useEffect(() => applyPreferences(prefs), [prefs]);

@@ -140,7 +140,12 @@ test.describe('設定画面（モーダル）(a)', () => {
 
     // 最後の項目から Tab で最初へ、最初から Shift+Tab で最後へ。
     const ends = await dialog(page).evaluate((el) => {
-      const items = Array.from(el.querySelectorAll<HTMLElement>('button, input, select, textarea')).filter((e) => e.getClientRects().length > 0);
+      // Tab で止まる要素だけ（同じ名前のラジオは、選択中の 1 つだけ）。
+      const items = Array.from(el.querySelectorAll<HTMLInputElement>('button, input, select, textarea')).filter(
+        (e) =>
+          e.getClientRects().length > 0 &&
+          !(e.type === 'radio' && !e.checked && e.name !== '' && el.querySelector(`input[type="radio"][name="${CSS.escape(e.name)}"]:checked`)),
+      );
       items[items.length - 1]!.focus();
       return { first: items[0]!.outerHTML, last: items[items.length - 1]!.outerHTML };
     });

@@ -1,4 +1,5 @@
 import type { TextKind } from '../document/fileKinds';
+import type { ListContinuation } from '../preferences/preferences';
 
 /** 選択範囲。本文（LF 正規化済みの文字列）上の UTF-16 オフセット。 */
 export interface EditorSelection {
@@ -19,6 +20,8 @@ export interface EditorSelection {
  *   setText で文書を読み込み直しても、設定は保たれる。
  * - setTextKind は表示だけを変える（markdown: Markdown の装飾あり、plain: 素のテキスト）。本文・履歴・選択範囲には触れない。
  *   setText で文書を読み込み直しても、種類は保たれる。
+ * - setListContinuation は Enter でのリストの継続（空行を入れるか）だけを変える。本文・履歴・選択範囲には触れない。
+ *   setText で文書を読み込み直しても、設定は保たれる。.txt と .text では Markdown の継続そのものが働かない（今と同じ）。
  * - setBottomInset は本文のレイアウトを変えない。スクロールの余白（カーソル行を表示領域の端から離す距離）だけを変える。
  */
 export interface EditorAdapter {
@@ -34,6 +37,8 @@ export interface EditorAdapter {
   setTypewriterMode(on: boolean): void;
   /** 本文の表示の種類。.txt と .text は plain（Markdown の装飾を付けない）。 */
   setTextKind(kind: TextKind): void;
+  /** Enter でのリストの継続。tight: 項目の間に空行のあるリスト（loose list）でも空行を入れない。preserve: 空行を入れてリストの形に合わせる。 */
+  setListContinuation(mode: ListContinuation): void;
   /**
    * 本文の下側を、重ねて表示する要素（トースト）が覆っている高さ（px。0 で解除）。
    * カーソル行がその下に隠れないよう、スクロールの余白に使う。本文の高さ（レイアウト）は変えない。

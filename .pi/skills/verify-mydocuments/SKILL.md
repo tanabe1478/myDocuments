@@ -1,6 +1,6 @@
 ---
 name: verify-mydocuments
-description: Immersive Markdown Editor（Tauri 2 + CodeMirror 6 の没入型 Markdown エディタ）の動作を、実ユーザー面で再現可能に起動・操作・証跡化する。primary は VITE_E2E ビルドの Web UI を Playwright（chromium）で操作する面、secondary は macOS の Tauri debug ビルドの窓の観測。文書の保存、設定画面と外観、左サイドバーとエクスプローラー（フォルダツリー、作成・名前の変更・ゴミ箱への移動、外部の変更の自動反映）、執筆モード、保存の信頼性、書き心地を変えたとき、または変更を検証して証跡を残したいときに使う。
+description: Immersive Markdown Editor（Tauri 2 + CodeMirror 6 の没入型 Markdown エディタ）の動作を、実ユーザー面で再現可能に起動・操作・証跡化する。primary は VITE_E2E ビルドの Web UI を Playwright（chromium）で操作する面、secondary は macOS の Tauri debug ビルドの窓の観測。文書の保存、設定画面（外観と編集の節）と外観、左サイドバーとエクスプローラー（フォルダツリー、作成・名前の変更・ゴミ箱への移動、外部の変更の自動反映）、執筆モード、保存の信頼性、書き心地（Enter でのリストの継続を含む）を変えたとき、または変更を検証して証跡を残したいときに使う。
 ---
 
 # verify-mydocuments
@@ -85,7 +85,7 @@ steps は上から順に実行し、外れたら止めて exit 1 にする。
 - 観測: observe（名前。files に仮想パスを並べると、バイト数、bom、crlf、lf、text を記録）、eval（ページ内で式を評価して記録）。
 - 検査: expect。対象は eval（式）か、testId / role+name / label / text / css のいずれか（設定画面の中なら panel: true）。read は text（既定）、count、visible、focused、attr:<name>、css:<prop>。比較は equals、not、contains、matches（正規表現）、gte、lte。timeout（既定 3000ms）まで再試行する。note は報告用の説明。
 
-key の ControlOrMeta はその OS の Mod キー（macOS は Cmd、それ以外は Ctrl）。安定したハンドルは data-testid（doc-title、unsaved-mark、toast、conflict-bar、conflict-diff、conflict-reload、conflict-keep、diff-dialog、recovery-dialog、settings-button、settings-dialog、sidebar、sidebar-toggle、sidebar-close、sidebar-empty、open-folder、retry-folder、restore-failure、change-folder、refresh-folder、new-file、new-folder、folder-name、file-tree、explorer-tree-area、tree-item、tree-note、tree-name-input、tree-name-error、tree-context-menu、confirm-trash、trash-ok、trash-cancel、char-count、canvas-bg、canvas-bg-image、canvas-surface、contrast-ratio、contrast-warning ほか）と、.cm-content、.cm-line、aria の名前（ツリーは role treeitem と名前）（dialog「設定」、radio「単色」「窓いっぱい」など）。観測の入口は window.__mdeE2E（calls、physicalWrites、log、conflicts、drafts、backups、savedPreferences、session、openedFolder、listed、watched、watchedFolders、trashed、renames、closed、fullscreen、editor.getText()、readFile(path)）。
+key の ControlOrMeta はその OS の Mod キー（macOS は Cmd、それ以外は Ctrl）。安定したハンドルは data-testid（doc-title、unsaved-mark、toast、conflict-bar、conflict-diff、conflict-reload、conflict-keep、diff-dialog、recovery-dialog、settings-button、settings-dialog、settings-editing、sidebar、sidebar-toggle、sidebar-close、sidebar-empty、open-folder、retry-folder、restore-failure、change-folder、refresh-folder、new-file、new-folder、folder-name、file-tree、explorer-tree-area、tree-item、tree-note、tree-name-input、tree-name-error、tree-context-menu、confirm-trash、trash-ok、trash-cancel、char-count、canvas-bg、canvas-bg-image、canvas-surface、contrast-ratio、contrast-warning ほか）と、.cm-content、.cm-line、aria の名前（ツリーは role treeitem と名前）（dialog「設定」、radio「単色」「窓いっぱい」など）。観測の入口は window.__mdeE2E（calls、physicalWrites、log、conflicts、drafts、backups、savedPreferences、session、openedFolder、listed、watched、watchedFolders、trashed、renames、closed、fullscreen、editor.getText()、readFile(path)）。
 
 ## Evidence
 

@@ -10,6 +10,12 @@ export type ThemeSetting = 'light' | 'dark' | 'system';
 /** 紙（本文面）の幅。fill: 本文領域（サイドバーを除いた領域）いっぱい。text: 本文の最大幅 + 左右の余白に合わせる。 */
 export type SurfaceWidth = 'fill' | 'text';
 
+/**
+ * リストで Enter を押して次の項目を続けるときの空行の扱い。
+ * tight: 空行を入れない。preserve: 項目の間に空行のあるリスト（loose list）では、次の項目の前にも空行を入れる。
+ */
+export type ListContinuation = 'tight' | 'preserve';
+
 export type BackgroundKind = 'color' | 'gradient' | 'image';
 
 export interface BackgroundSetting {
@@ -53,6 +59,8 @@ export interface Preferences {
   readonly surfaceOpacity: number;
   /** 背景を描かず、テーマの既定配色だけにする（アクセシビリティ）。 */
   readonly hideBackground: boolean;
+  /** リストで Enter を押したときの継続（空行を入れるか）。 */
+  readonly listContinuation: ListContinuation;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -74,6 +82,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   overlayOpacity: 0.35,
   surfaceOpacity: 0.85,
   hideBackground: false,
+  listContinuation: 'tight',
 };
 
 export const RANGES = {
@@ -89,6 +98,7 @@ export const RANGES = {
 
 const THEMES: readonly ThemeSetting[] = ['light', 'dark', 'system'];
 const SURFACE_WIDTHS: readonly SurfaceWidth[] = ['fill', 'text'];
+const LIST_CONTINUATIONS: readonly ListContinuation[] = ['tight', 'preserve'];
 const BACKGROUND_KINDS: readonly BackgroundKind[] = ['color', 'gradient', 'image'];
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 const IMAGE_ID = /^[0-9a-f]{64}$/;
@@ -153,5 +163,8 @@ export function normalizePreferences(raw: unknown): Preferences {
     overlayOpacity: number(r.overlayOpacity, RANGES.overlayOpacity, d.overlayOpacity),
     surfaceOpacity: number(r.surfaceOpacity, RANGES.surfaceOpacity, d.surfaceOpacity),
     hideBackground: boolean(r.hideBackground, d.hideBackground),
+    listContinuation: LIST_CONTINUATIONS.includes(r.listContinuation as ListContinuation)
+      ? (r.listContinuation as ListContinuation)
+      : d.listContinuation,
   };
 }

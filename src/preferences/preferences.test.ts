@@ -36,6 +36,7 @@ describe('normalizePreferences', () => {
       overlayOpacity: 0.6,
       surfaceOpacity: 0.7,
       hideBackground: true,
+      listContinuation: 'preserve',
     };
     expect(normalizePreferences(valid)).toEqual(valid);
   });
@@ -135,6 +136,8 @@ describe('background and accessibility fields (R3-1)', () => {
       // Run 8 で増えた項目。
       surfaceWidth: DEFAULT_PREFERENCES.surfaceWidth,
       sidebarOpen: DEFAULT_PREFERENCES.sidebarOpen,
+      // Run 11 で増えた項目。
+      listContinuation: DEFAULT_PREFERENCES.listContinuation,
     });
   });
 
@@ -203,6 +206,27 @@ describe('background and accessibility fields (R3-1)', () => {
       hideBackground: true,
     });
     expect(normalizePreferences(once)).toEqual(once);
+  });
+});
+
+describe('listContinuation (Run 11)', () => {
+  it('defaults to tight', () => {
+    expect(DEFAULT_PREFERENCES.listContinuation).toBe('tight');
+    expect(normalizePreferences({}).listContinuation).toBe('tight');
+    expect(normalizePreferences(null).listContinuation).toBe('tight');
+  });
+
+  it('keeps the two valid values', () => {
+    expect(normalizePreferences({ listContinuation: 'tight' }).listContinuation).toBe('tight');
+    expect(normalizePreferences({ listContinuation: 'preserve' }).listContinuation).toBe('preserve');
+  });
+
+  it('resets any other value to the default, only for that field', () => {
+    for (const bad of ['loose', '', 'Preserve', 1, true, null, ['preserve'], {}]) {
+      const p = normalizePreferences({ listContinuation: bad, theme: 'dark' });
+      expect(p.listContinuation).toBe('tight');
+      expect(p.theme).toBe('dark');
+    }
   });
 });
 
