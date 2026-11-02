@@ -3,6 +3,7 @@ mod documents;
 mod drafts;
 mod entries;
 mod error;
+mod external;
 mod folders;
 mod preferences;
 mod session;
@@ -258,6 +259,13 @@ async fn watch_folders(
         })
 }
 
+/// リンクを既定のブラウザで開く。http / https でホストのある URL だけ（それ以外は InvalidInput）。
+/// 検査はここでも行う（Web UI の検査は信用しない）。プラグインの JavaScript 向けのコマンドは許可していない。
+#[tauri::command]
+async fn open_external_url(app: AppHandle, url: String) -> Result<(), CommandError> {
+    external::open(&app, &url)
+}
+
 /// UI が終了の確認を済ませた後に呼ぶ。アプリを終了する。
 #[tauri::command]
 async fn close_app(app: AppHandle, guard: State<'_, CloseGuard>) -> Result<(), CommandError> {
@@ -302,6 +310,9 @@ fn show_main_window(app: &AppHandle) {
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        // リンクを開くための Rust 側の API（OpenerExt）だけを使う。JavaScript 向けのコマンドは capabilities で許可せず、
+        // <a> のクリックを横取りする注入スクリプトも無効にする（開く入口は open_external_url だけ）。
+        .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build())
         .manage(KnownPaths::default())
         .manage(OpenFolders::default())
         .manage(DocumentWatcher::default())
@@ -326,6 +337,7 @@ pub fn run() {
             rename_entry,
             trash_entry,
             watch_folders,
+            open_external_url,
             close_app,
             load_preferences,
             save_preferences,

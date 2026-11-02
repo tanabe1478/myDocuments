@@ -203,3 +203,66 @@ test.describe('リストの継続 (Run 11)', () => {
     expect(await text(page)).toBe(`${LOOSE}日本\n- `);
   });
 });
+
+// Run 12 (N4): 空行のないリスト（tight list）の、空の 2 項目目で Enter を押したとき。
+// lang-markdown の既定は、空の項目の前に空行を入れてリストを loose にする。設定が「空行を入れない」のときは、これを止める
+// （空の項目の記号を取り除いて、リストを終える）。「リストの形に合わせる」では、これまでどおり空行を入れる。
+test.describe('tight list の空の 2 項目目 (Run 12, N4)', () => {
+  test('(i) 既定（空行を入れない）では、`- a` の次の空の項目で Enter を押しても、空行が入らない', async ({ page }) => {
+    await launchWith(page, '');
+    await page.locator('.cm-content').click();
+    await page.keyboard.insertText('- a');
+    await page.keyboard.press('Enter');
+    expect(await text(page)).toBe('- a\n- ');
+    await page.keyboard.press('Enter');
+    expect(await text(page)).toBe('- a\n');
+    // 項目と、記号を取り除いた行の間に、空行はない（行は 2 つ）。続けて書くと、その行に入る。
+    expect(await page.locator('.cm-line').count()).toBe(2);
+    await page.keyboard.type('段落');
+    expect(await text(page)).toBe('- a\n段落');
+
+    await page.keyboard.press('ControlOrMeta+s');
+    await expect(unsavedMark(page)).toHaveCount(0);
+    expect(await fileBytes(page, DOC)).toEqual(utf8('- a\n段落'));
+  });
+
+  test('(i) 番号付き・タスク・入れ子でも、空の 2 項目目で空行が入らない（入れ子は 1 段戻る）', async ({ page }) => {
+    for (const [source, expected] of [
+      ['1. a', '1. a\n'],
+      ['- [ ] a', '- [ ] a\n'],
+      // 入れ子の空の項目は、1 段戻る（外側の項目の記号になる）。
+      ['- a\n  - b', '- a\n  - b\n- '],
+    ] as const) {
+      await launchWith(page, '');
+      await page.locator('.cm-content').click();
+      await page.keyboard.insertText(source);
+      await page.keyboard.press('Enter');
+      await page.keyboard.press('Enter');
+      expect(await text(page), source).not.toMatch(/\n[ >]*\n/);
+      expect(await text(page), source).toBe(expected);
+      await page.reload();
+      await expect(page.locator('html')).toHaveAttribute('data-ready', 'true');
+    }
+  });
+
+  test('(i) 「リストの形に合わせる」では、これまでどおり空行を入れる', async ({ page }) => {
+    await launchWith(page, '', { listContinuation: 'preserve' });
+    await page.locator('.cm-content').click();
+    await page.keyboard.insertText('- a');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    expect(await text(page)).toBe('- a\n\n- ');
+  });
+
+  test('(i) 3 項目目以降の空の項目は、どちらの設定でもリストを終える（変わらない）', async ({ page }) => {
+    for (const mode of ['tight', 'preserve']) {
+      const other = await page.context().newPage();
+      await launchWith(other, '', { listContinuation: mode });
+      await other.locator('.cm-content').click();
+      await other.keyboard.insertText('- a\n- b');
+      await other.keyboard.press('Enter');
+      await other.keyboard.press('Enter');
+      expect(await text(other), mode).toBe('- a\n- b\n');
+    }
+  });
+});

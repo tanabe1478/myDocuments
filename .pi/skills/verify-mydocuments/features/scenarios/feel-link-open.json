@@ -1,0 +1,150 @@
+{
+  "seed": {
+    "files": {
+      "/docs/links.md": {
+        "text": "[公開](https://example.com/a \"題\")\n<https://auto.example.com/b>\nhttps://bare.example.com/c\n[相対](./other.md)\n[スクリプト](javascript:alert(1))\n\n終わり"
+      }
+    },
+    "openPath": "/docs/links.md",
+    "preferences": {
+      "theme": "light",
+      "autoHideChrome": false
+    }
+  },
+  "steps": [
+    {
+      "press": "ControlOrMeta+o"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "links.md"
+      }
+    },
+    {
+      "click": ".cm-content"
+    },
+    {
+      "press": "ControlOrMeta+End"
+    },
+    {
+      "eval": "window.__sel = 0; window.__mdeE2E.editor.onSelectionChange((s) => (window.__sel = s.head)); true"
+    },
+    {
+      "press": "ControlOrMeta+End"
+    },
+    {
+      "expect": {
+        "eval": "window.__sel",
+        "equals": 138,
+        "note": "カーソルは末尾"
+      }
+    },
+    {
+      "click": {
+        "css": ".cm-md-link",
+        "force": false,
+        "modifiers": [
+          "ControlOrMeta"
+        ]
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.openedUrls",
+        "equals": [
+          "https://example.com/a"
+        ],
+        "note": "⌘/Ctrl+クリックで http/https のリンクが開かれる（メモリ bridge は記録だけ）"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__sel",
+        "equals": 138,
+        "note": "カーソルは動かない"
+      }
+    },
+    {
+      "click": {
+        "css": ".cm-line:nth-child(2) .cm-md-link",
+        "modifiers": [
+          "ControlOrMeta"
+        ]
+      }
+    },
+    {
+      "click": {
+        "css": ".cm-line:nth-child(3) .cm-md-link",
+        "modifiers": [
+          "ControlOrMeta"
+        ]
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.openedUrls",
+        "equals": [
+          "https://example.com/a",
+          "https://auto.example.com/b",
+          "https://bare.example.com/c"
+        ]
+      }
+    },
+    {
+      "click": {
+        "css": ".cm-line:nth-child(4) .cm-md-link",
+        "modifiers": [
+          "ControlOrMeta"
+        ]
+      }
+    },
+    {
+      "expect": {
+        "testId": "toast",
+        "equals": "このリンクは開けません",
+        "note": "相対パスは開かずトーストで知らせる"
+      }
+    },
+    {
+      "screenshot": "relative-link-toast"
+    },
+    {
+      "click": {
+        "css": ".cm-line:nth-child(5) .cm-md-link",
+        "modifiers": [
+          "ControlOrMeta"
+        ]
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.openedUrls.length",
+        "equals": 3,
+        "note": "javascript: も開かない"
+      }
+    },
+    {
+      "click": {
+        "css": ".cm-line:nth-child(1) .cm-md-link"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.openedUrls.length",
+        "equals": 3,
+        "note": "普通のクリックは開かず、カーソルを置く"
+      }
+    },
+    {
+      "expect": {
+        "eval": "document.querySelectorAll('.cm-line')[0].textContent",
+        "equals": "[公開](https://example.com/a \"題\")",
+        "note": "クリックした行は記法が表示される"
+      }
+    },
+    {
+      "screenshot": "plain-click"
+    }
+  ]
+}

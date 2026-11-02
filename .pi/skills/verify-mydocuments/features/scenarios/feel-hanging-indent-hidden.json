@@ -1,0 +1,118 @@
+{
+  "seed": {
+    "files": {
+      "/docs/hang.md": {
+        "text": "- 朝の光が川面に反射して、遠くの橋が白く霞んでいた。歩きながら考えたことを、帰ってからすぐに書き留めておく。朝の光が川面に反射して、遠くの橋が白く霞んでいた。歩きながら考えたことを、帰ってからすぐに書き留めておく。\n  - 朝の光が川面に反射して、遠くの橋が白く霞んでいた。歩きながら考えたことを、帰ってからすぐに書き留めておく。朝の光が川面に反射して、遠くの橋が白く霞んでいた。歩きながら考えたことを、帰ってからすぐに書き留めておく。\n1. 朝の光が川面に反射して、遠くの橋が白く霞んでいた。歩きながら考えたことを、帰ってからすぐに書き留めておく。朝の光が川面に反射して、遠くの橋が白く霞んでいた。歩きながら考えたことを、帰ってからすぐに書き留めておく。\n10. 朝の光が川面に反射して、遠くの橋が白く霞んでいた。歩きながら考えたことを、帰ってからすぐに書き留めておく。朝の光が川面に反射して、遠くの橋が白く霞んでいた。歩きながら考えたことを、帰ってからすぐに書き留めておく。\n> 朝の光が川面に反射して、遠くの橋が白く霞んでいた。歩きながら考えたことを、帰ってからすぐに書き留めておく。朝の光が川面に反射して、遠くの橋が白く霞んでいた。歩きながら考えたことを、帰ってからすぐに書き留めておく。\n> > 朝の光が川面に反射して、遠くの橋が白く霞んでいた。歩きながら考えたことを、帰ってからすぐに書き留めておく。朝の光が川面に反射して、遠くの橋が白く霞んでいた。歩きながら考えたことを、帰ってからすぐに書き留めておく。\n> - 朝の光が川面に反射して、遠くの橋が白く霞んでいた。歩きながら考えたことを、帰ってからすぐに書き留めておく。朝の光が川面に反射して、遠くの橋が白く霞んでいた。歩きながら考えたことを、帰ってからすぐに書き留めておく。\n- [ ] 朝の光が川面に反射して、遠くの橋が白く霞んでいた。歩きながら考えたことを、帰ってからすぐに書き留めておく。朝の光が川面に反射して、遠くの橋が白く霞んでいた。歩きながら考えたことを、帰ってからすぐに書き留めておく。\n* 朝の光が川面に反射して、遠くの橋が白く霞んでいた。歩きながら考えたことを、帰ってからすぐに書き留めておく。朝の光が川面に反射して、遠くの橋が白く霞んでいた。歩きながら考えたことを、帰ってからすぐに書き留めておく。\n朝の光が川面に反射して、遠くの橋が白く霞んでいた。歩きながら考えたことを、帰ってからすぐに書き留めておく。朝の光が川面に反射して、遠くの橋が白く霞んでいた。歩きながら考えたことを、帰ってからすぐに書き留めておく。"
+      }
+    },
+    "openPath": "/docs/hang.md",
+    "preferences": {
+      "theme": "light",
+      "markupDisplay": "cursorLine"
+    }
+  },
+  "viewport": {
+    "width": 1280,
+    "height": 2600
+  },
+  "steps": [
+    {
+      "press": "ControlOrMeta+o"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "hang.md"
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-line",
+        "read": "count",
+        "equals": 10
+      }
+    },
+    {
+      "click": ".cm-content"
+    },
+    {
+      "press": "ControlOrMeta+End"
+    },
+    {
+      "eval": "window.__hangHidden = (index) => { const line = document.querySelectorAll('.cm-line')[index]; const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT); const rects = []; for (let n = walker.nextNode(); n; n = walker.nextNode()) { for (let i = 0; i < n.length; i++) { const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + 1); const b = r.getClientRects()[0]; if (b) rects.push({ ch: n.data[i], left: b.left, top: b.top }); } } const start = rects.findIndex((r) => r.ch === '朝'); const first = rects[start]; const lefts = []; let last = first.top; for (const r of rects.slice(start)) { if (r.top > last + 5) { lefts.push(r.left); last = r.top; } } return { firstLeft: first.left, wrappedLefts: lefts, contentLeft: line.getBoundingClientRect().left }; }; true"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const e = window.__hangHidden(0); return e.wrappedLefts.length >= 1 && e.wrappedLefts.every((l) => Math.abs(l - e.firstLeft) <= 2) && e.firstLeft - e.contentLeft > 5; })()",
+        "equals": true
+      },
+      "note": "記号を隠した行 箇条書き（-）: 折り返した行の左端が 1 行目の本文に揃う（±2px）"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const e = window.__hangHidden(1); return e.wrappedLefts.length >= 1 && e.wrappedLefts.every((l) => Math.abs(l - e.firstLeft) <= 2) && e.firstLeft - e.contentLeft > 5; })()",
+        "equals": true
+      },
+      "note": "記号を隠した行 入れ子の箇条書き: 折り返した行の左端が 1 行目の本文に揃う（±2px）"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const e = window.__hangHidden(2); return e.wrappedLefts.length >= 1 && e.wrappedLefts.every((l) => Math.abs(l - e.firstLeft) <= 2) && e.firstLeft - e.contentLeft > 5; })()",
+        "equals": true
+      },
+      "note": "記号を隠した行 番号付き（1.）: 折り返した行の左端が 1 行目の本文に揃う（±2px）"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const e = window.__hangHidden(3); return e.wrappedLefts.length >= 1 && e.wrappedLefts.every((l) => Math.abs(l - e.firstLeft) <= 2) && e.firstLeft - e.contentLeft > 5; })()",
+        "equals": true
+      },
+      "note": "記号を隠した行 番号付き（10.）: 折り返した行の左端が 1 行目の本文に揃う（±2px）"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const e = window.__hangHidden(4); return e.wrappedLefts.length >= 1 && e.wrappedLefts.every((l) => Math.abs(l - e.firstLeft) <= 2) && Math.abs(e.firstLeft - e.contentLeft) <= 2; })()",
+        "equals": true
+      },
+      "note": "記号を隠した行 引用（>）。記号を隠すので字下げしない: 折り返した行の左端が 1 行目の本文に揃う（±2px）"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const e = window.__hangHidden(5); return e.wrappedLefts.length >= 1 && e.wrappedLefts.every((l) => Math.abs(l - e.firstLeft) <= 2) && Math.abs(e.firstLeft - e.contentLeft) <= 2; })()",
+        "equals": true
+      },
+      "note": "記号を隠した行 入れ子の引用（> >）。字下げしない: 折り返した行の左端が 1 行目の本文に揃う（±2px）"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const e = window.__hangHidden(6); return e.wrappedLefts.length >= 1 && e.wrappedLefts.every((l) => Math.abs(l - e.firstLeft) <= 2) && e.firstLeft - e.contentLeft > 5; })()",
+        "equals": true
+      },
+      "note": "記号を隠した行 引用の中の箇条書き: 折り返した行の左端が 1 行目の本文に揃う（±2px）"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const e = window.__hangHidden(7); return e.wrappedLefts.length >= 1 && e.wrappedLefts.every((l) => Math.abs(l - e.firstLeft) <= 2) && e.firstLeft - e.contentLeft > 5; })()",
+        "equals": true
+      },
+      "note": "記号を隠した行 タスク（- [ ]）。チェックボックスの後ろに揃う: 折り返した行の左端が 1 行目の本文に揃う（±2px）"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const e = window.__hangHidden(8); return e.wrappedLefts.length >= 1 && e.wrappedLefts.every((l) => Math.abs(l - e.firstLeft) <= 2) && e.firstLeft - e.contentLeft > 5; })()",
+        "equals": true
+      },
+      "note": "記号を隠した行 箇条書き（*）: 折り返した行の左端が 1 行目の本文に揃う（±2px）"
+    },
+    {
+      "expect": {
+        "eval": "[...document.querySelectorAll('.cm-line')].slice(0, 9).map((l) => l.textContent.slice(0, 6)).join('|')",
+        "contains": "•"
+      },
+      "note": "箇条書きは • に置き換わって見える"
+    },
+    {
+      "screenshot": "hanging-indent-hidden"
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-import { insertNewlineContinueMarkup } from '@codemirror/lang-markdown';
+import { insertNewlineContinueMarkupCommand } from '@codemirror/lang-markdown';
 import { EditorSelection, Prec, type ChangeSpec, type Extension, type StateCommand, type Transaction } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
 import type { ListContinuation } from '../../preferences/preferences';
@@ -44,12 +44,21 @@ function withoutSeparatorBlankLine(state: Parameters<StateCommand>[0]['state'], 
 }
 
 /**
- * Enter: lang-markdown の insertNewlineContinueMarkup と同じ。ただし loose list でも空行を足さない。
+ * lang-markdown の既定の Enter。ただし、空行のないリスト（tight list）の空の 2 項目目で Enter を押したとき、
+ * その項目の前に空行を入れてリストを loose にする動作（nonTightLists）だけを止める。止めたときは、
+ * 空の項目の記号を取り除いてリストを終える（3 項目目以降の空の項目や、1 項目目と同じ扱い）。
+ */
+const continueWithoutLoosening = insertNewlineContinueMarkupCommand({ nonTightLists: false });
+
+/**
+ * Enter: lang-markdown の insertNewlineContinueMarkup と同じ。ただし空行を足さない。
+ * - loose list（項目の間に空行のあるリスト）で次の項目を続けるとき、次の項目の前の空行を足さない。
+ * - tight list の空の 2 項目目で押しても、空行を入れてリストを loose にしない（空の項目の記号を取り除いて、リストを終える）。
  * Markdown でない文脈（.txt など）や、継続の対象でない位置では false を返し、次のキー割り当てに回す。
  */
 export const insertNewlineContinueTight: StateCommand = ({ state, dispatch }) => {
   let captured: Transaction | null = null;
-  const handled = insertNewlineContinueMarkup({
+  const handled = continueWithoutLoosening({
     state,
     dispatch: (tr) => {
       captured = tr;

@@ -100,7 +100,7 @@ describe('insertNewlineContinueTight: loose list で空行を入れない', () =
     expect(tight('> a|').doc).toBe(preserve('> a|').doc);
   });
 
-  it('(9) tight list は lang-markdown と同じ結果になる', () => {
+  it('(9) tight list は lang-markdown と同じ結果になる（空の 2 項目目を除く）', () => {
     for (const source of [
       '- a\n- b|',
       '1. a\n2. b|',
@@ -109,8 +109,8 @@ describe('insertNewlineContinueTight: loose list で空行を入れない', () =
       '- a|',
       '* a\n* b|',
       '10. a\n11. b|',
-      '- a\n- |',
       '- a|\n- b',
+      '- a\n- b\n- |',
       '段落|',
       '',
     ]) {
@@ -121,9 +121,34 @@ describe('insertNewlineContinueTight: loose list で空行を入れない', () =
     }
   });
 
-  it('tight list の空の 2 項目目で Enter を押すと、lang-markdown の既定どおりリストを loose にする（変えない）', () => {
-    expect(tight('- a\n- |').withCursor).toBe('- a\n\n- |');
+  it('(10) N4: tight list の空の 2 項目目で Enter を押しても、空行を入れずにリストを loose にしない', () => {
+    // lang-markdown の既定は、空の項目の前に空行を入れて、リストを loose にする。
     expect(preserve('- a\n- |').withCursor).toBe('- a\n\n- |');
+    // tight は、空の項目の記号を取り除いてリストを終える（カーソルは空の行の頭）。
+    expect(tight('- a\n- |').withCursor).toBe('- a\n|');
+    expect(tight('- a\n- |').doc).toBe('- a\n');
+    // 項目の前に空行は入らない（行は 2 つのまま。2 行目はカーソルのある空の行）。
+    expect(tight('- a\n- |').doc.split('\n')).toEqual(['- a', '']);
+    expect(preserve('- a\n- |').doc.split('\n')).toEqual(['- a', '', '- ']);
+  });
+
+  it('(10b) N4: 番号付き・タスク・入れ子・引用の中でも、空の 2 項目目で空行を入れない', () => {
+    expect(tight('1. a\n2. |').withCursor).toBe('1. a\n|');
+    expect(tight('- [ ] a\n- [ ] |').doc).not.toContain('\n\n');
+    expect(tight('- a\n  - b\n  - |').doc).not.toContain('\n\n');
+    expect(tight('> - a\n> - |').doc).not.toMatch(/\n>?\s*\n/);
+    // 比較: 既定は空行を入れる。
+    expect(preserve('1. a\n2. |').doc).toContain('\n\n');
+  });
+
+  it('(10c) N4: 3 項目目以降の空の項目と、1 項目目の空の項目は、これまでどおりリストを終える', () => {
+    expect(tight('- a\n- b\n- |').withCursor).toBe('- a\n- b\n|');
+    expect(tight('- |').withCursor).toBe('|');
+    expect(tight('- a\n- b\n- |').doc).toBe(preserve('- a\n- b\n- |').doc);
+  });
+
+  it('(10d) N4: preserve（リストの形に合わせる）は、これまでどおり空行を入れる', () => {
+    expect(preserve('- a\n- |').doc).toBe('- a\n\n- ');
   });
 
   it('複数のカーソルでも、それぞれ空行を入れない', () => {

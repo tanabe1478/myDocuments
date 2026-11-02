@@ -18,6 +18,7 @@ import {
   type SaveResult,
   type SessionInfo,
 } from '../DocumentBridge';
+import { isOpenableExternalUrl } from '../externalUrl';
 import { decodeBytes, encodeText, sameBytes, sha256Hex, sniffImageMime } from './bytes';
 
 /** 取り込める画像の上限（Rust 側と同じ）。 */
@@ -97,6 +98,8 @@ export interface E2EState {
   renames: Array<{ from: string; to: string }>;
   /** closeApp が呼ばれたか（アプリが終了したことの代わり）。 */
   closed: boolean;
+  /** openExternalUrl に渡された URL（渡された順）。実際にはブラウザを開かない。 */
+  openedUrls: string[];
   /** 全画面かどうか（toggleFullscreen が切り替える）。 */
   fullscreen: boolean;
   /** 取り込み済みの背景画像（imageId → 画像）。 */
@@ -206,6 +209,7 @@ export function createMemoryBridge(): DocumentBridge {
     trashed: [],
     renames: [],
     closed: false,
+    openedUrls: [],
     fullscreen: false,
     images: new Map(),
     imagePath: seed.imagePath ?? null,
@@ -576,6 +580,11 @@ export function createMemoryBridge(): DocumentBridge {
       const image = state.images.get(imageId);
       if (!image) throw new BridgeError('not-found', 'no such image');
       return image;
+    },
+    async openExternalUrl(url) {
+      // ネイティブ側と同じ規則（http / https でホストあり）。通ったものを記録するだけで、実際には開かない。
+      if (!isOpenableExternalUrl(url)) throw new BridgeError('invalid-input', 'only http and https urls can be opened');
+      state.openedUrls.push(url);
     },
     async toggleFullscreen() {
       state.calls.fullscreen++;

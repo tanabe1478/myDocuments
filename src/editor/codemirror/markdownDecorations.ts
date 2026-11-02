@@ -1,9 +1,28 @@
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { HighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirror/language';
-import { RangeSetBuilder, StateEffect, type Extension, type Line } from '@codemirror/state';
-import { Decoration, ViewPlugin, type DecorationSet, type EditorView, type ViewUpdate } from '@codemirror/view';
+import { Facet, RangeSetBuilder, StateEffect, type Extension, type Line } from '@codemirror/state';
+import {
+  Decoration,
+  EditorView,
+  ViewPlugin,
+  WidgetType,
+  type DecorationSet,
+  type ViewUpdate,
+} from '@codemirror/view';
 import { tags } from '@lezer/highlight';
+import type { MarkupDisplay } from '../../preferences/preferences';
 import { fallbackPrefixWidthEm, hangPrefix, isBlankLine, measurableText } from '../lineKinds';
+import {
+  MARKER_WIDGET_EM,
+  activeLines,
+  collectMarkup,
+  hangPieces,
+  isActiveLine,
+  sameActiveLines,
+  type ActiveLines,
+  type LinkRange,
+  type MarkupSpan,
+} from '../liveMarkup';
 
 /**
  * Markdown の見た目。表示だけを変え、本文には何も加えない。
@@ -13,11 +32,15 @@ import { fallbackPrefixWidthEm, hangPrefix, isBlankLine, measurableText } from '
  * - 引用: 行の左に縦線（cm-md-quote）。
  * - リストと引用: 折り返したとき 2 行目以降を記号の後ろに揃える（ぶら下げインデント。行の style で付ける）。
  * - 強調・リンク・コード・引用: 太字、斜体、下線、等幅などで表示する。
- * - 記法記号（#、*、`、[]、> など）: 薄く表示する。非表示にはしない
- *   （自動非表示は IME と範囲選択への影響を確認してから、仕様 §5.2）。
+ * - 記法記号（#、*、`、[]、> など）: 薄く表示する。
+ * - 記法の隠し方（ADR-004、設定「記号の表示」）: 既定（cursorLine）では、カーソルのある行と選択にかかる行だけ
+ *   記号を薄く表示し、ほかの行では記号を隠す（見出しの #、箇条書きの • への置き換え、リンクの []() など）。
+ *   隠す範囲を決めるのは liveMarkup.ts（純関数）。ここは、それを Decoration.replace で表示にするだけで、本文は書き換えない。
+ *   always なら、すべての行で記号を薄く表示する（隠さない）。
  * 色は CSS 変数（styles.css）で、明暗テーマに追従する。
- * 行の装飾（class と style）だけを付け、本文には何も加えない。IME の変換中も、装飾の付け替えで
- * 変換中のテキストノードは作り直されない（行の属性だけが変わる）。
+ * 行の装飾（class と style）と、隠す範囲（replace）だけを付け、本文には何も加えない。
+ * IME の変換中（view.compositionStarted）は、表示の切り替え（隠す・見せる）を、他の行も含めて保留し、
+ * 変換が終わってから反映する。隠している範囲は、本文の変化に位置だけ追従させる（変換中のテキストノードを作り直さない）。
  */
 export const markdownHighlightStyle = HighlightStyle.define([
   { tag: [tags.heading1, tags.heading2, tags.heading3, tags.heading4, tags.heading5, tags.heading6], fontWeight: '700' },
@@ -87,14 +110,84 @@ class PrefixMeter {
   }
 }
 
+/** 記号の見せ方（設定）。Compartment で差し替える（CodeMirrorAdapter.ts）。 */
+export const markupDisplayFacet = Facet.define<MarkupDisplay, MarkupDisplay>({
+  combine: (values) => values[0] ?? 'cursorLine',
+});
+
+/** 隠した行の • とチェックボックス。幅は固定の箱（MARKER_WIDGET_EM）なので、ぶら下げの幅を計算で決められる。 */
+class MarkerWidget extends WidgetType {
+  constructor(
+    private readonly marker: 'bullet' | 'task',
+    private readonly done = false,
+  ) {
+    super();
+  }
+
+  eq(other: MarkerWidget): boolean {
+    return other.marker === this.marker && other.done === this.done;
+  }
+
+  toDOM(): HTMLElement {
+    const el = document.createElement('span');
+    if (this.marker === 'bullet') {
+      el.className = 'cm-md-marker cm-md-bullet';
+      el.textContent = '\u2022';
+      return el;
+    }
+    el.className = `cm-md-marker cm-md-task${this.done ? ' cm-md-task-done' : ''}`;
+    el.setAttribute('role', 'img');
+    el.setAttribute('aria-label', this.done ? '完了' : '未完了');
+    const box = document.createElement('span');
+    box.className = 'cm-md-task-box';
+    el.appendChild(box);
+    return el;
+  }
+
+  // クリックは、今までどおり本文のカーソルの位置決めに使う（チェックの切り替えはしない）。
+  ignoreEvent(): boolean {
+    return false;
+  }
+}
+
+const hideMark = Decoration.replace({});
+const bulletMark = Decoration.replace({ widget: new MarkerWidget('bullet') });
+const taskMark = Decoration.replace({ widget: new MarkerWidget('task', false) });
+const taskDoneMark = Decoration.replace({ widget: new MarkerWidget('task', true) });
+const linkMark = Decoration.mark({ class: 'cm-md-link' });
+
+function hiddenDecorations(spans: readonly MarkupSpan[]): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>();
+  for (const s of spans) {
+    const deco =
+      s.kind === 'hide' ? hideMark : s.kind === 'bullet' ? bulletMark : s.done ? taskDoneMark : taskMark;
+    builder.add(s.from, s.to, deco);
+  }
+  return builder.finish();
+}
+
+function linkDecorations(links: readonly LinkRange[]): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>();
+  for (const l of links) builder.add(l.from, l.to, linkMark);
+  return builder.finish();
+}
+
 interface LineSpec {
   classes: Set<string>;
   /** リストか引用の中の行（ぶら下げインデントの候補）。 */
   hangCandidate: boolean;
 }
 
-function blockLines(view: EditorView, meter: PrefixMeter): DecorationSet {
+function blockLines(view: EditorView, meter: PrefixMeter, hidden: readonly MarkupSpan[]): DecorationSet {
   const { doc } = view.state;
+  // 隠している行ごとの、隠す範囲（行頭の位置で引く）。
+  const hiddenByLine = new Map<number, MarkupSpan[]>();
+  for (const s of hidden) {
+    const key = doc.lineAt(s.from).from;
+    const list = hiddenByLine.get(key);
+    if (list) list.push(s);
+    else hiddenByLine.set(key, [s]);
+  }
   const specs = new Map<number, LineSpec>();
   const fenced = new Set<number>();
   const specOf = (from: number): LineSpec => {
@@ -167,9 +260,19 @@ function blockLines(view: EditorView, meter: PrefixMeter): DecorationSet {
     const spec = specs.get(from)!;
     let attributes: { style: string } | undefined;
     if (spec.hangCandidate && !fenced.has(from) && !spec.classes.has('cm-md-blank')) {
-      const prefix = hangPrefix(doc.lineAt(from).text);
-      if (prefix !== '') {
-        const em = meter.widthEm(prefix).toFixed(4);
+      const line = doc.lineAt(from);
+      const hiddenHere = hiddenByLine.get(from);
+      let width = 0;
+      if (hiddenHere) {
+        // 隠した行: 実際に見える部分（記号を隠し、• とチェックボックスは固定の幅の箱）の幅に揃える。
+        const pieces = hangPieces(line.text, line.from, hiddenHere);
+        width = pieces.texts.reduce((sum, t) => sum + meter.widthEm(t), 0) + pieces.widgets * MARKER_WIDGET_EM;
+      } else {
+        const prefix = hangPrefix(line.text);
+        if (prefix !== '') width = meter.widthEm(prefix);
+      }
+      if (width > 0) {
+        const em = width.toFixed(4);
         attributes = { style: `padding-left:${em}em;text-indent:-${em}em` };
       }
     }
@@ -179,15 +282,53 @@ function blockLines(view: EditorView, meter: PrefixMeter): DecorationSet {
   return builder.finish();
 }
 
+/** 変換の終了後に、保留していた再計算を促す。 */
+const refreshMarkup = StateEffect.define<null>();
+
+/** IME の変換終了から再計算までの待ち（CodeMirror が変換の終了を確定する時間より後。focusMode.ts と同じ）。 */
+const AFTER_COMPOSITION_MS = 60;
+
+/** 本文の変化に、隠している範囲の位置を追従させる（変換中。範囲が消えたものは捨てる）。 */
+function mapSpans(spans: readonly MarkupSpan[], update: ViewUpdate): MarkupSpan[] {
+  const out: MarkupSpan[] = [];
+  for (const s of spans) {
+    const from = update.changes.mapPos(s.from, 1);
+    const to = update.changes.mapPos(s.to, -1);
+    if (to > from) out.push({ ...s, from, to, line: update.state.doc.lineAt(from).number });
+  }
+  return out;
+}
+
+function mapLinks(links: readonly LinkRange[], update: ViewUpdate): LinkRange[] {
+  const out: LinkRange[] = [];
+  for (const l of links) {
+    const from = update.changes.mapPos(l.from, 1);
+    const to = update.changes.mapPos(l.to, -1);
+    if (to > from) out.push({ ...l, from, to });
+  }
+  return out;
+}
+
 class BlockLinePlugin {
-  decorations: DecorationSet;
+  lineDecorations: DecorationSet;
+  hideDecorations: DecorationSet = Decoration.none;
+  linkDecorations: DecorationSet = Decoration.none;
+  /** いま隠している範囲（カーソルのない行の記号）。 */
+  private hidden: MarkupSpan[] = [];
+  /** リンクの範囲（クラスを付ける。⌘/Ctrl+クリックの対象）。 */
+  links: LinkRange[] = [];
+  private active: ActiveLines = [];
+  /** 変換中に、表示の切り替えを見送った。変換が終わったら反映する。 */
+  private stale = false;
+  private timer: ReturnType<typeof setTimeout> | null = null;
   private readonly meter: PrefixMeter;
   private readonly observer: MutationObserver | null;
 
-  constructor(view: EditorView) {
+  constructor(private readonly view: EditorView) {
     this.meter = new PrefixMeter(view);
     this.meter.refreshKey();
-    this.decorations = blockLines(view, this.meter);
+    this.recomputeMarkup(view);
+    this.lineDecorations = blockLines(view, this.meter, this.hidden);
     // フォント・字間の設定は、<html> の style（CSS 変数）で変わる。変わったらぶら下げの幅を測り直す。
     this.observer =
       typeof MutationObserver === 'function'
@@ -198,26 +339,96 @@ class BlockLinePlugin {
     this.observer?.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
   }
 
-  update(update: ViewUpdate) {
-    if (
-      update.docChanged ||
-      update.viewportChanged ||
-      syntaxTree(update.startState) !== syntaxTree(update.state) ||
-      update.transactions.some((tr) => tr.effects.some((e) => e.is(relayout)))
-    ) {
-      this.decorations = blockLines(update.view, this.meter);
+  /** 隠す範囲とリンクを、いまの構文木と選択から決め直す。 */
+  private recomputeMarkup(view: EditorView): void {
+    const { state } = view;
+    const ranges = view.visibleRanges;
+    const from = ranges[0]?.from ?? 0;
+    const to = ranges[ranges.length - 1]?.to ?? state.doc.length;
+    const markup = collectMarkup(syntaxTree(state), state.doc, from, to);
+    this.links = markup.links;
+    if (state.facet(markupDisplayFacet) === 'cursorLine') {
+      this.active = activeLines(state.doc, state.selection.ranges);
+      this.hidden = markup.spans.filter((s) => !isActiveLine(this.active, s.line));
+    } else {
+      this.active = [];
+      this.hidden = [];
     }
+    this.hideDecorations = hiddenDecorations(this.hidden);
+    this.linkDecorations = linkDecorations(this.links);
+  }
+
+  update(update: ViewUpdate) {
+    const forced = update.transactions.some((tr) => tr.effects.some((e) => e.is(refreshMarkup)));
+    const relaid = update.transactions.some((tr) => tr.effects.some((e) => e.is(relayout)));
+    const display = update.state.facet(markupDisplayFacet);
+    const displayChanged = display !== update.startState.facet(markupDisplayFacet);
+    const treeChanged = syntaxTree(update.startState) !== syntaxTree(update.state);
+    const layoutChanged = update.docChanged || update.viewportChanged || treeChanged;
+
+    if (update.view.compositionStarted && !displayChanged) {
+      // IME の変換中: 隠す・見せるの切り替えは、他の行も含めて保留する（変換中のテキストノードに触れない）。
+      // 隠している範囲は、本文の変化に位置だけ追従させる。
+      if (layoutChanged || update.selectionSet) this.stale = true;
+      if (update.docChanged) {
+        this.hidden = mapSpans(this.hidden, update);
+        this.links = mapLinks(this.links, update);
+        this.hideDecorations = hiddenDecorations(this.hidden);
+        this.linkDecorations = linkDecorations(this.links);
+      }
+      if (layoutChanged || relaid) this.lineDecorations = blockLines(update.view, this.meter, this.hidden);
+      return;
+    }
+
+    let recompute = layoutChanged || displayChanged || forced || this.stale;
+    if (!recompute && update.selectionSet && display === 'cursorLine') {
+      // 行の表示を切り替えるのは、選択のかかる行が変わったときだけ。
+      recompute = !sameActiveLines(this.active, activeLines(update.state.doc, update.state.selection.ranges));
+    }
+    if (recompute) {
+      this.stale = false;
+      this.recomputeMarkup(update.view);
+    }
+    if (recompute || relaid) this.lineDecorations = blockLines(update.view, this.meter, this.hidden);
+  }
+
+  compositionEnded(): void {
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      if (this.stale) this.view.dispatch({ effects: refreshMarkup.of(null) });
+    }, AFTER_COMPOSITION_MS);
   }
 
   destroy() {
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = null;
     this.observer?.disconnect();
     this.meter.destroy();
   }
 }
 
 const blockLineDecorations = ViewPlugin.fromClass(BlockLinePlugin, {
-  decorations: (plugin) => plugin.decorations,
+  decorations: (plugin) => plugin.lineDecorations,
+  eventHandlers: {
+    compositionend(this: BlockLinePlugin) {
+      this.compositionEnded();
+      return false;
+    },
+  },
+  provide: (plugin) => [
+    // 隠す範囲（replace）とリンクの印（mark）は、行の装飾とは別の出所で渡す（並べ替えの制約を避ける）。
+    EditorView.decorations.of((view) => view.plugin(plugin)?.hideDecorations ?? Decoration.none),
+    EditorView.decorations.of((view) => view.plugin(plugin)?.linkDecorations ?? Decoration.none),
+  ],
 });
+
+/** いまの画面にあるリンクの範囲（⌘/Ctrl+クリックで開く対象。linkOpen.ts が使う）。 */
+export function visibleLinks(view: EditorView): readonly LinkRange[] {
+  const plugin = view.plugin(blockLineDecorations);
+  if (!plugin) return [];
+  return plugin.links;
+}
 
 export function markdownDecorations(): Extension {
   return [markdown({ base: markdownLanguage }), syntaxHighlighting(markdownHighlightStyle), blockLineDecorations];

@@ -17,6 +17,7 @@ import { ExplorerController, type TrashTarget } from './explorer/controller';
 import type { EditorAdapter } from './editor/EditorAdapter';
 import { createCodeMirrorAdapter } from './editor/codemirror/CodeMirrorAdapter';
 import { BridgeError, type DocumentBridge, type DraftSummary } from './platform';
+import { isOpenableExternalUrl } from './platform/externalUrl';
 import { applyPreferences } from './preferences/apply';
 import { normalizePreferences, type Preferences } from './preferences/preferences';
 import { useResolvedTheme } from './preferences/useResolvedTheme';
@@ -150,9 +151,18 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
     adapter.setFocusMode(prefsRef.current.focusMode);
     adapter.setTypewriterMode(prefsRef.current.typewriterMode);
     adapter.setListContinuation(prefsRef.current.listContinuation);
+    adapter.setMarkupDisplay(prefsRef.current.markupDisplay);
     const off = adapter.onChange((text) => {
       controller.handleEdit(text);
       setTyping(true);
+    });
+    // ⌘/Ctrl+クリックしたリンク。http / https だけを既定のブラウザで開く（ネイティブ側でも検査する）。
+    const offLink = adapter.onOpenLink((url) => {
+      if (!isOpenableExternalUrl(url)) {
+        notify({ kind: 'info', message: 'このリンクは開けません' });
+        return;
+      }
+      bridge.openExternalUrl(url).catch(() => notify({ kind: 'info', message: 'このリンクは開けません' }));
     });
     if (__E2E__ && window.__mdeE2E) window.__mdeE2E.editor = adapter;
 
@@ -184,10 +194,11 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
       window.removeEventListener('focus', onWindowFocus);
       void subscriptions.then((offs) => offs.forEach((o) => o()));
       off();
+      offLink();
       adapter.destroy();
       adapterRef.current = null;
     };
-  }, [bridge, controller]);
+  }, [bridge, controller, notify]);
 
   // .txt と .text は素のテキストとして表示する（別名保存で拡張子が変わったときも追従する）。描画の前に切り替える。
   const textKind = textKindOf(state.path);
@@ -213,6 +224,7 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
   useEffect(() => adapterRef.current?.setFocusMode(prefs.focusMode), [prefs.focusMode]);
   useEffect(() => adapterRef.current?.setTypewriterMode(prefs.typewriterMode), [prefs.typewriterMode]);
   useEffect(() => adapterRef.current?.setListContinuation(prefs.listContinuation), [prefs.listContinuation]);
+  useEffect(() => adapterRef.current?.setMarkupDisplay(prefs.markupDisplay), [prefs.markupDisplay]);
 
   // 設定を CSS 変数と data-theme に反映する（即時）。
   useEffect(() => applyPreferences(prefs), [prefs]);

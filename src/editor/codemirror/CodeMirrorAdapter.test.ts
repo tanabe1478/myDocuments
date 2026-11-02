@@ -117,10 +117,11 @@ describe('history', () => {
 });
 
 describe('markdown decoration', () => {
-  it('assigns heading size classes per line, and styles emphasis and marks', () => {
+  it('assigns heading size classes per line, and styles emphasis and marks (markup shown always)', () => {
     adapter.mount(host);
+    adapter.setMarkupDisplay('always');
     adapter.setText('# H1\n\n## H2\n\ntext **bold** and *it* and [l](http://x)\n\nSetext\n======');
-    // 記法記号（# など）は非表示にせず、行のテキストに残る。
+    // 記法記号（# など）は、「常に表示」では隠さず、行のテキストに残る。
     const h1Lines = Array.from(host.querySelectorAll('.cm-md-h1')).map((n) => n.textContent);
     expect(h1Lines).toEqual(['# H1', 'Setext', '======']);
     expect(host.querySelector('.cm-md-h2')?.textContent).toBe('## H2');
@@ -128,6 +129,96 @@ describe('markdown decoration', () => {
     // 見出し以外の行には見出しクラスが付かない。
     const body = Array.from(host.querySelectorAll('.cm-line')).find((n) => n.textContent?.startsWith('text '));
     expect(body?.className).not.toContain('cm-md-h');
+  });
+});
+
+/** 描画された行のテキスト（隠した記号は含まれない）。 */
+function renderedLines(): string[] {
+  return Array.from(host.querySelectorAll('.cm-line')).map((n) => n.textContent ?? '');
+}
+
+function moveCursorTo(pos: number): void {
+  viewOf().dispatch({ selection: { anchor: pos } });
+}
+
+describe('live markup (ADR-004)', () => {
+  const DOC = '# H1\n\n## H2\n\n- item\n\ntext **bold** and [l](http://x)\n\n> quote';
+
+  it('hides the markup on lines without the cursor, and shows it on the cursor line', () => {
+    adapter.mount(host);
+    adapter.setText(DOC);
+    // カーソルは先頭（1 行目）。1 行目は記号を見せ、ほかの行は隠す。
+    expect(renderedLines()).toEqual(['# H1', '', 'H2', '', '\u2022 item', '', 'text bold and l', '', 'quote']);
+    // 本文は変わらない。
+    expect(adapter.getText()).toBe(DOC);
+  });
+
+  it('switches only the line that the cursor enters and leaves', () => {
+    adapter.mount(host);
+    adapter.setText(DOC);
+    const doc = viewOf().state.doc;
+    moveCursorTo(doc.line(3).from + 3);
+    expect(renderedLines()).toEqual(['H1', '', '## H2', '', '\u2022 item', '', 'text bold and l', '', 'quote']);
+    moveCursorTo(doc.line(7).from + 5);
+    expect(renderedLines()).toEqual(['H1', '', 'H2', '', '\u2022 item', '', 'text **bold** and [l](http://x)', '', 'quote']);
+    expect(adapter.getText()).toBe(DOC);
+  });
+
+  it('shows the markup on every line that a selection touches', () => {
+    adapter.mount(host);
+    adapter.setText(DOC);
+    const doc = viewOf().state.doc;
+    viewOf().dispatch({ selection: { anchor: doc.line(3).from + 1, head: doc.line(7).from + 2 } });
+    expect(renderedLines()).toEqual(['H1', '', '## H2', '', '- item', '', 'text **bold** and [l](http://x)', '', 'quote']);
+  });
+
+  it('shows everything with markupDisplay always, and follows later changes at once', () => {
+    adapter.mount(host);
+    adapter.setText(DOC);
+    adapter.setMarkupDisplay('always');
+    expect(renderedLines()).toEqual(DOC.split('\n'));
+    adapter.setMarkupDisplay('cursorLine');
+    expect(renderedLines()[2]).toBe('H2');
+  });
+
+  it('keeps the setting when a new document is set', () => {
+    adapter.mount(host);
+    adapter.setMarkupDisplay('always');
+    adapter.setText(DOC);
+    expect(renderedLines()).toEqual(DOC.split('\n'));
+  });
+
+  it('does not hide anything in plain text', () => {
+    adapter.mount(host);
+    adapter.setTextKind('plain');
+    adapter.setText(DOC);
+    expect(renderedLines()).toEqual(DOC.split('\n'));
+  });
+
+  it('draws the task box and keeps the text of the document', () => {
+    adapter.mount(host);
+    adapter.setText('first\n\n- [ ] todo\n- [x] done');
+    expect(host.querySelectorAll('.cm-md-task')).toHaveLength(2);
+    expect(host.querySelectorAll('.cm-md-task-done')).toHaveLength(1);
+    expect(adapter.getText()).toBe('first\n\n- [ ] todo\n- [x] done');
+  });
+
+  it('defers the switch of the lines during a composition, and applies it after', () => {
+    vi.useFakeTimers();
+    adapter.mount(host);
+    adapter.setText('# H1\n\n## H2\n\ntext');
+    const content = host.querySelector('.cm-content') as HTMLElement;
+    const before = renderedLines();
+
+    content.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+    expect(viewOf().compositionStarted).toBe(true);
+    moveCursorTo(viewOf().state.doc.line(3).from + 3);
+    // 変換中は、どの行も切り替えない。
+    expect(renderedLines()).toEqual(before);
+
+    content.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
+    vi.advanceTimersByTime(300);
+    expect(renderedLines()).toEqual(['H1', '', '## H2', '', 'text']);
   });
 });
 

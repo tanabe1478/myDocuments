@@ -129,6 +129,7 @@ export function createTauriBridge(): DocumentBridge {
       const { mime, data } = await call<{ mime: string; data: string }>('read_background_image', { imageId });
       return { mime, bytes: decodeBase64(data) };
     },
+    openExternalUrl: (url: string) => call<void>('open_external_url', { url }),
     async toggleFullscreen() {
       const win = getCurrentWindow();
       const next = !(await win.isFullscreen());

@@ -52,17 +52,25 @@ function closesFence(text: string, fence: Fence): boolean {
   return m !== null && m[1]![0] === fence.char && m[1]!.length >= fence.length;
 }
 
+/**
+ * frontmatter（1 行目の --- から次の --- まで）の最後の行（行番号は 1 始まり。閉じる --- の行）。なければ null。
+ * 閉じる --- がなければ frontmatter ではない。記法の隠し方（liveMarkup.ts）も、この判定に合わせる。
+ */
+export function frontmatterEndLine(lineCount: number, lineText: (line: number) => string): number | null {
+  if (lineCount < 1 || !FRONTMATTER_DELIMITER.test(lineText(1))) return null;
+  for (let m = 2; m <= lineCount; m++) {
+    if (FRONTMATTER_DELIMITER.test(lineText(m))) return m;
+  }
+  return null;
+}
+
 /** 先頭から順にブロックを返す（呼び出し側が必要なところまで読めるよう、遅延評価）。 */
 function* blocks(lineCount: number, lineText: (line: number) => string): Generator<Block> {
   let n = 1;
-  if (lineCount >= 1 && FRONTMATTER_DELIMITER.test(lineText(1))) {
-    for (let m = 2; m <= lineCount; m++) {
-      if (FRONTMATTER_DELIMITER.test(lineText(m))) {
-        yield { from: 1, to: m, blank: false };
-        n = m + 1;
-        break;
-      }
-    }
+  const frontmatterEnd = frontmatterEndLine(lineCount, lineText);
+  if (frontmatterEnd !== null) {
+    yield { from: 1, to: frontmatterEnd, blank: false };
+    n = frontmatterEnd + 1;
   }
   while (n <= lineCount) {
     const text = lineText(n);

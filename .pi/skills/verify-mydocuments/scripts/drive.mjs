@@ -250,10 +250,16 @@ try {
       else if ('type' in step) await page.keyboard.type(step.type, { delay: step.delay ?? 0 });
       else if ('insertText' in step) await page.keyboard.insertText(step.insertText);
       else if ('click' in step) {
-        // button: 'right' で右クリック（ツリーのメニュー）。position は対象の左上からの座標（空き領域の右クリックなど）。
+        // button: 'right' で右クリック（ツリーのメニュー）。position は対象の左上からの座標（空き領域の右クリックなど）。modifiers は押しておく修飾キー。
         await locate(page, step.click)
           .first()
-          .click({ force: step.click.force === true, button: step.click.button ?? 'left', position: step.click.position });
+          .click({
+            force: step.click.force === true,
+            button: step.click.button ?? 'left',
+            position: step.click.position,
+            // modifiers: ['ControlOrMeta'] は、その OS の Mod キー（リンクを開く ⌘/Ctrl+クリック）。
+            modifiers: step.click.modifiers?.map((m) => (m === 'ControlOrMeta' ? primary : m)),
+          });
       }
       else if ('focus' in step) await locate(page, step.focus).first().focus();
       else if ('fill' in step) await locate(page, step.fill).fill(String(step.fill.value));

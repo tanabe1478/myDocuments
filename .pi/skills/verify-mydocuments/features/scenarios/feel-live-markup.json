@@ -1,0 +1,292 @@
+{
+  "seed": {
+    "files": {
+      "/docs/live.md": {
+        "text": "# 記法の表示\n\nカーソルのない行では、**強調**、*斜体*、~~取り消し~~、`code` の記号が隠れます。\n\n## リストとタスク\n\n- 箇条書きの項目\n  - 入れ子の項目\n1. 番号付きの項目\n- [ ] 未完了のタスク\n- [x] 完了したタスク\n\n> 引用の行\n> > 入れ子の引用\n\n[リンク](https://example.com \"題\") と <https://auto.example.com> と https://bare.example.com\n\n```js\n# コードの中は隠さない\n- 記号のまま\n```\n\n終わりの段落"
+      }
+    },
+    "openPath": "/docs/live.md",
+    "preferences": {
+      "theme": "light",
+      "autoHideChrome": false
+    }
+  },
+  "steps": [
+    {
+      "press": "ControlOrMeta+o"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "live.md"
+      }
+    },
+    {
+      "click": ".cm-content"
+    },
+    {
+      "press": "ControlOrMeta+End"
+    },
+    {
+      "expect": {
+        "eval": "[...document.querySelectorAll('.cm-line')].map((l) => l.textContent)",
+        "equals": [
+          "記法の表示",
+          "",
+          "カーソルのない行では、強調、斜体、取り消し、code の記号が隠れます。",
+          "",
+          "リストとタスク",
+          "",
+          "• 箇条書きの項目",
+          "  • 入れ子の項目",
+          "1. 番号付きの項目",
+          " 未完了のタスク",
+          " 完了したタスク",
+          "",
+          "引用の行",
+          "入れ子の引用",
+          "",
+          "リンク と https://auto.example.com と https://bare.example.com",
+          "",
+          "```js",
+          "# コードの中は隠さない",
+          "- 記号のまま",
+          "```",
+          "",
+          "終わりの段落"
+        ],
+        "note": "既定: カーソルのない行は記法が隠れ、箇条書きは •、タスクは箱になる"
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-md-task",
+        "read": "count",
+        "equals": 2
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-md-task-done",
+        "read": "count",
+        "equals": 1
+      }
+    },
+    {
+      "screenshot": "hidden"
+    },
+    {
+      "press": "ControlOrMeta+Home"
+    },
+    {
+      "press": "ArrowDown",
+      "times": 2
+    },
+    {
+      "expect": {
+        "eval": "[...document.querySelectorAll('.cm-line')].map((l) => l.textContent)",
+        "equals": [
+          "記法の表示",
+          "",
+          "カーソルのない行では、**強調**、*斜体*、~~取り消し~~、`code` の記号が隠れます。",
+          "",
+          "リストとタスク",
+          "",
+          "• 箇条書きの項目",
+          "  • 入れ子の項目",
+          "1. 番号付きの項目",
+          " 未完了のタスク",
+          " 完了したタスク",
+          "",
+          "引用の行",
+          "入れ子の引用",
+          "",
+          "リンク と https://auto.example.com と https://bare.example.com",
+          "",
+          "```js",
+          "# コードの中は隠さない",
+          "- 記号のまま",
+          "```",
+          "",
+          "終わりの段落"
+        ],
+        "note": "カーソルのある行だけ記法が表示される"
+      }
+    },
+    {
+      "screenshot": "cursor-line"
+    },
+    {
+      "press": "ArrowDown",
+      "times": 4
+    },
+    {
+      "press": "Shift+ArrowDown",
+      "times": 5
+    },
+    {
+      "expect": {
+        "eval": "[...document.querySelectorAll('.cm-line')].map((l) => l.textContent)",
+        "equals": [
+          "記法の表示",
+          "",
+          "カーソルのない行では、強調、斜体、取り消し、code の記号が隠れます。",
+          "",
+          "リストとタスク",
+          "",
+          "- 箇条書きの項目",
+          "  - 入れ子の項目",
+          "1. 番号付きの項目",
+          "- [ ] 未完了のタスク",
+          "- [x] 完了したタスク",
+          "",
+          "引用の行",
+          "入れ子の引用",
+          "",
+          "リンク と https://auto.example.com と https://bare.example.com",
+          "",
+          "```js",
+          "# コードの中は隠さない",
+          "- 記号のまま",
+          "```",
+          "",
+          "終わりの段落"
+        ],
+        "note": "選択にかかる全行で記法が表示される"
+      }
+    },
+    {
+      "screenshot": "selection"
+    },
+    {
+      "eval": "window.__mdeE2E.editor.getText()"
+    },
+    {
+      "press": "ControlOrMeta+,"
+    },
+    {
+      "expect": {
+        "role": "dialog",
+        "name": "設定",
+        "read": "visible",
+        "equals": true
+      }
+    },
+    {
+      "expect": {
+        "eval": "document.querySelector('input[name=markup-display]:checked').value",
+        "equals": "cursorLine"
+      },
+      "note": "設定「記号の表示」の既定は「カーソルのある行だけ」"
+    },
+    {
+      "eval": "[...document.querySelectorAll('.settings-dialog legend')].find((l) => l.textContent === '記号の表示').scrollIntoView({ block: 'center' })"
+    },
+    {
+      "screenshot": "settings-markup-display"
+    },
+    {
+      "check": {
+        "panel": true,
+        "role": "radio",
+        "name": "常に表示"
+      }
+    },
+    {
+      "expect": {
+        "eval": "[...document.querySelectorAll('.cm-line')].map((l) => l.textContent)",
+        "equals": [
+          "# 記法の表示",
+          "",
+          "カーソルのない行では、**強調**、*斜体*、~~取り消し~~、`code` の記号が隠れます。",
+          "",
+          "## リストとタスク",
+          "",
+          "- 箇条書きの項目",
+          "  - 入れ子の項目",
+          "1. 番号付きの項目",
+          "- [ ] 未完了のタスク",
+          "- [x] 完了したタスク",
+          "",
+          "> 引用の行",
+          "> > 入れ子の引用",
+          "",
+          "[リンク](https://example.com \"題\") と <https://auto.example.com> と https://bare.example.com",
+          "",
+          "```js",
+          "# コードの中は隠さない",
+          "- 記号のまま",
+          "```",
+          "",
+          "終わりの段落"
+        ],
+        "note": "「常に表示」では、すべての行で記号が見える（今までと同じ）"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.savedPreferences.at(-1)?.markupDisplay",
+        "equals": "always",
+        "timeout": 3000
+      }
+    },
+    {
+      "screenshot": "always"
+    },
+    {
+      "check": {
+        "panel": true,
+        "role": "radio",
+        "name": "カーソルのある行だけ"
+      }
+    },
+    {
+      "expect": {
+        "eval": "[...document.querySelectorAll('.cm-line')].map((l) => l.textContent)",
+        "equals": [
+          "記法の表示",
+          "",
+          "カーソルのない行では、強調、斜体、取り消し、code の記号が隠れます。",
+          "",
+          "リストとタスク",
+          "",
+          "- 箇条書きの項目",
+          "  - 入れ子の項目",
+          "1. 番号付きの項目",
+          "- [ ] 未完了のタスク",
+          "- [x] 完了したタスク",
+          "",
+          "引用の行",
+          "入れ子の引用",
+          "",
+          "リンク と https://auto.example.com と https://bare.example.com",
+          "",
+          "```js",
+          "# コードの中は隠さない",
+          "- 記号のまま",
+          "```",
+          "",
+          "終わりの段落"
+        ],
+        "note": "戻すとすぐ隠れる（選択にかかる行は見えたまま）"
+      }
+    },
+    {
+      "observe": "text-unchanged",
+      "files": [
+        "/docs/live.md"
+      ]
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText()",
+        "equals": "# 記法の表示\n\nカーソルのない行では、**強調**、*斜体*、~~取り消し~~、`code` の記号が隠れます。\n\n## リストとタスク\n\n- 箇条書きの項目\n  - 入れ子の項目\n1. 番号付きの項目\n- [ ] 未完了のタスク\n- [x] 完了したタスク\n\n> 引用の行\n> > 入れ子の引用\n\n[リンク](https://example.com \"題\") と <https://auto.example.com> と https://bare.example.com\n\n```js\n# コードの中は隠さない\n- 記号のまま\n```\n\n終わりの段落",
+        "note": "本文は 1 バイトも変わらない"
+      }
+    }
+  ],
+  "viewport": {
+    "width": 1280,
+    "height": 1100
+  }
+}

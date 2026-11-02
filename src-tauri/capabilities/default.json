@@ -29,6 +29,7 @@
     "allow-rename-entry",
     "allow-trash-entry",
     "allow-watch-folders",
+    "allow-open-external-url",
     "allow-close-app",
     "allow-load-preferences",
     "allow-save-preferences",

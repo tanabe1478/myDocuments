@@ -16,6 +16,13 @@ export type SurfaceWidth = 'fill' | 'text';
  */
 export type ListContinuation = 'tight' | 'preserve';
 
+/**
+ * Markdown の記号（見出しの #、リンクの []() など）の見せ方。
+ * cursorLine: カーソルのある行（と選択にかかる行）だけ記号を見せ、ほかの行は記号を隠して整形して見せる。
+ * always: すべての行で記号を薄く表示する（隠さない）。
+ */
+export type MarkupDisplay = 'cursorLine' | 'always';
+
 export type BackgroundKind = 'color' | 'gradient' | 'image';
 
 export interface BackgroundSetting {
@@ -61,6 +68,8 @@ export interface Preferences {
   readonly hideBackground: boolean;
   /** リストで Enter を押したときの継続（空行を入れるか）。 */
   readonly listContinuation: ListContinuation;
+  /** Markdown の記号の見せ方（.txt、.text には効かない）。 */
+  readonly markupDisplay: MarkupDisplay;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -83,6 +92,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   surfaceOpacity: 0.85,
   hideBackground: false,
   listContinuation: 'tight',
+  markupDisplay: 'cursorLine',
 };
 
 export const RANGES = {
@@ -99,6 +109,7 @@ export const RANGES = {
 const THEMES: readonly ThemeSetting[] = ['light', 'dark', 'system'];
 const SURFACE_WIDTHS: readonly SurfaceWidth[] = ['fill', 'text'];
 const LIST_CONTINUATIONS: readonly ListContinuation[] = ['tight', 'preserve'];
+const MARKUP_DISPLAYS: readonly MarkupDisplay[] = ['cursorLine', 'always'];
 const BACKGROUND_KINDS: readonly BackgroundKind[] = ['color', 'gradient', 'image'];
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 const IMAGE_ID = /^[0-9a-f]{64}$/;
@@ -166,5 +177,8 @@ export function normalizePreferences(raw: unknown): Preferences {
     listContinuation: LIST_CONTINUATIONS.includes(r.listContinuation as ListContinuation)
       ? (r.listContinuation as ListContinuation)
       : d.listContinuation,
+    markupDisplay: MARKUP_DISPLAYS.includes(r.markupDisplay as MarkupDisplay)
+      ? (r.markupDisplay as MarkupDisplay)
+      : d.markupDisplay,
   };
 }

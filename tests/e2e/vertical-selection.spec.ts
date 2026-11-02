@@ -133,11 +133,15 @@ const KEYS: KeyPair[] = [
 ];
 const SPACINGS = [0, 0.2, 0.6, 3];
 
+// 記号を見せたまま（always）と、カーソルのない行で隠す（cursorLine。既定）の両方で、同じ動きになる（ADR-004）。
+const DISPLAYS = ['always', 'cursorLine'] as const;
+
 for (const keys of KEYS) {
+  for (const markupDisplay of DISPLAYS) {
   for (const spacing of SPACINGS) {
-    test(`${keys.name} で、先頭から末尾まで 1 行ずつ動く (段落間隔 ${spacing}行)`, async ({ page, platform }) => {
+    test(`${keys.name} で、先頭から末尾まで 1 行ずつ動く (段落間隔 ${spacing}行・記号 ${markupDisplay})`, async ({ page, platform }) => {
       test.skip(!!keys.macOnly && platform !== 'mac', 'Ctrl-n / Ctrl-p の行移動は mac だけ（defaultKeymap の mac 指定）');
-      await open(page, TEXT, { paragraphSpacing: spacing });
+      await open(page, TEXT, { paragraphSpacing: spacing, markupDisplay });
       const lineOf = (head: number) => LINE_START.filter((s) => s <= head).length - 1;
       const problems: string[] = [];
 
@@ -171,5 +175,6 @@ for (const keys of KEYS) {
       }
       expect(problems).toEqual([]);
     });
+  }
   }
 }

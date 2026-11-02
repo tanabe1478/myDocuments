@@ -21,6 +21,7 @@ fn main() {
             "rename_entry",
             "trash_entry",
             "watch_folders",
+            "open_external_url",
             "close_app",
             "load_preferences",
             "save_preferences",

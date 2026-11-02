@@ -221,7 +221,8 @@ for (const focusMode of [false, true]) {
     test.beforeEach(async ({ page }) => {
       // 折り返した行をすべて描画できる高さ（CodeMirror は表示範囲の外の行を描画しない）。
       await page.setViewportSize({ width: 1280, height: 2600 });
-      await launchWith(page, HANG_DOC, { focusMode });
+      // 記号を見せている行の配置の検査（「常に表示」）。記号を隠した行の配置は live-markup.spec.ts。
+      await launchWith(page, HANG_DOC, { focusMode, markupDisplay: 'always' });
       await expect(page.locator('.cm-line')).toHaveCount(10);
     });
 
@@ -281,7 +282,7 @@ for (const focusMode of [false, true]) {
 
 test.describe('ぶら下げインデント (3) と IME', () => {
   test('(3)(9) フォーカスモード ON でも、リストの行で IME の変換ができ、変換中の本文が壊れない', async ({ page }) => {
-    await launchWith(page, `- ${LONG}\n- 次の項目`, { focusMode: true });
+    await launchWith(page, `- ${LONG}\n- 次の項目`, { focusMode: true, markupDisplay: 'always' });
     await page.locator('.cm-content').click();
     // 先頭の項目の、記号の直後。
     await page.keyboard.press('ControlOrMeta+Home');

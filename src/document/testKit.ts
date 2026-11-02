@@ -113,6 +113,7 @@ export function setup(options: SetupOptions = {}) {
     pickImagePath: vi.fn(async () => null),
     importBackgroundImage: vi.fn(async () => 'a'.repeat(64)),
     readBackgroundImage: vi.fn(async () => ({ mime: 'image/png', bytes: new Uint8Array() })),
+    openExternalUrl: vi.fn(async () => {}),
     toggleFullscreen: vi.fn(async () => true),
     notifyReady: vi.fn(async () => {}),
   } satisfies DocumentBridge;

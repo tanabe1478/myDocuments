@@ -1,4 +1,5 @@
 import { EditorView } from '@codemirror/view';
+import { MARKER_WIDGET_EM } from '../liveMarkup';
 
 /**
  * 本文の左右の内側余白。行長（--md-max-width）の外側に取り、余裕があるときは 56px。
@@ -94,6 +95,42 @@ export const editorTheme = EditorView.theme({
     borderRadius: '2px',
     backgroundColor: 'var(--md-color-quote-bar)',
   },
+  // 記号を隠した行の • とチェックボックス（markdownDecorations.ts）。幅は固定の箱（ぶら下げインデントの計算と合わせる）。
+  // 行のぶら下げ（text-indent の負の値）を、箱の中の文字に引き継がない。
+  '.cm-md-marker': {
+    display: 'inline-block',
+    boxSizing: 'border-box',
+    width: `${MARKER_WIDGET_EM}em`,
+    textAlign: 'center',
+    textIndent: '0',
+    letterSpacing: '0',
+    color: 'var(--md-color-text)',
+  },
+  '.cm-md-bullet': { opacity: '0.6' },
+  '.cm-md-task-box': {
+    display: 'inline-block',
+    boxSizing: 'border-box',
+    width: '0.78em',
+    height: '0.78em',
+    verticalAlign: '-0.08em',
+    border: '1.5px solid var(--md-color-quote-bar)',
+    borderRadius: '3px',
+    position: 'relative',
+  },
+  '.cm-md-task-done .cm-md-task-box': { backgroundColor: 'var(--md-color-quote-bar)' },
+  '.cm-md-task-done .cm-md-task-box::after': {
+    content: '""',
+    position: 'absolute',
+    left: '0.2em',
+    top: '0.02em',
+    width: '0.2em',
+    height: '0.4em',
+    borderRight: '2px solid var(--md-color-surface)',
+    borderBottom: '2px solid var(--md-color-surface)',
+    transform: 'rotate(45deg)',
+  },
+  // ⌘/Ctrl を押している間、リンクの上でポインタの形を変える（linkOpen.ts。クリックで開く）。
+  '&.cm-md-link-ready .cm-md-link': { cursor: 'pointer' },
   '.cm-md-h1': { fontSize: '1.75em', lineHeight: '1.4' },
   '.cm-md-h2': { fontSize: '1.45em', lineHeight: '1.45' },
   '.cm-md-h3': { fontSize: '1.25em', lineHeight: '1.5' },

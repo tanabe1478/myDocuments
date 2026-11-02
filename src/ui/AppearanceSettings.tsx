@@ -7,6 +7,7 @@ import {
   RANGES,
   validFontFamily,
   type BackgroundKind,
+  type MarkupDisplay,
   type Preferences,
   type SurfaceWidth,
   type ThemeSetting,
@@ -41,8 +42,13 @@ const SURFACE_WIDTH_OPTIONS: ReadonlyArray<{ value: SurfaceWidth; label: string 
   { value: 'text', label: '本文に合わせる' },
 ];
 
+const MARKUP_DISPLAY_OPTIONS: ReadonlyArray<{ value: MarkupDisplay; label: string }> = [
+  { value: 'cursorLine', label: 'カーソルのある行だけ' },
+  { value: 'always', label: '常に表示' },
+];
+
 /**
- * 設定画面の「外観」の節。文字組み、紙の幅、テーマ、背景、執筆の補助。
+ * 設定画面の「外観」の節。文字組み、紙の幅、記号の表示、テーマ、背景、執筆の補助。
  * 変更はすぐ本文に反映される（設定画面の枠は SettingsDialog.tsx）。
  */
 export function AppearanceSettings(props: AppearanceSettingsProps) {
@@ -120,6 +126,25 @@ export function AppearanceSettings(props: AppearanceSettingsProps) {
           ))}
         </div>
         <p className="hint">「窓いっぱい」では、背景は本文面の透け具合（不透明度）でだけ見えます。背景を見せたいときは「本文に合わせる」にします。</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>記号の表示</legend>
+        <div className="choices">
+          {MARKUP_DISPLAY_OPTIONS.map((o) => (
+            <label key={o.value} className="choice">
+              <input
+                type="radio"
+                name="markup-display"
+                value={o.value}
+                checked={prefs.markupDisplay === o.value}
+                onChange={() => onChange({ markupDisplay: o.value })}
+              />
+              {o.label}
+            </label>
+          ))}
+        </div>
+        <p className="hint">Markdown の # や * などの記号を、どの行で見せるか。「カーソルのある行だけ」では、ほかの行は記号を隠して整形して表示します（文書の中身は変わりません）。</p>
       </fieldset>
 
       <fieldset>

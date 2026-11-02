@@ -37,6 +37,7 @@ describe('normalizePreferences', () => {
       surfaceOpacity: 0.7,
       hideBackground: true,
       listContinuation: 'preserve',
+      markupDisplay: 'always',
     };
     expect(normalizePreferences(valid)).toEqual(valid);
   });
@@ -138,6 +139,8 @@ describe('background and accessibility fields (R3-1)', () => {
       sidebarOpen: DEFAULT_PREFERENCES.sidebarOpen,
       // Run 11 で増えた項目。
       listContinuation: DEFAULT_PREFERENCES.listContinuation,
+      // Run 12 で増えた項目。
+      markupDisplay: DEFAULT_PREFERENCES.markupDisplay,
     });
   });
 
@@ -227,6 +230,32 @@ describe('listContinuation (Run 11)', () => {
       expect(p.listContinuation).toBe('tight');
       expect(p.theme).toBe('dark');
     }
+  });
+});
+
+describe('markupDisplay (Run 12)', () => {
+  it('defaults to cursorLine', () => {
+    expect(DEFAULT_PREFERENCES.markupDisplay).toBe('cursorLine');
+    expect(normalizePreferences({}).markupDisplay).toBe('cursorLine');
+    expect(normalizePreferences(null).markupDisplay).toBe('cursorLine');
+  });
+
+  it('keeps the two valid values', () => {
+    expect(normalizePreferences({ markupDisplay: 'cursorLine' }).markupDisplay).toBe('cursorLine');
+    expect(normalizePreferences({ markupDisplay: 'always' }).markupDisplay).toBe('always');
+  });
+
+  it('resets any other value to the default, only for that field', () => {
+    for (const bad of ['hidden', '', 'Always', 'cursorline', 1, true, null, ['always'], {}]) {
+      const p = normalizePreferences({ markupDisplay: bad, theme: 'dark', listContinuation: 'preserve' });
+      expect(p.markupDisplay).toBe('cursorLine');
+      expect(p.theme).toBe('dark');
+      expect(p.listContinuation).toBe('preserve');
+    }
+  });
+
+  it('is filled in for a saved value that predates the field', () => {
+    expect(normalizePreferences({ theme: 'dark', listContinuation: 'preserve' }).markupDisplay).toBe('cursorLine');
   });
 });
 

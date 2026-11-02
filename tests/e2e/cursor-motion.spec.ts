@@ -88,13 +88,17 @@ const MOTION_CASES: Array<[number, number, number]> = [
   [0.2, 1.9, 18],
 ];
 
+// 記号を見せたまま（always）と、カーソルのない行で隠す（cursorLine。既定）の両方で、同じ動きになる（ADR-004）。
+const DISPLAYS = ['always', 'cursorLine'] as const;
+
+for (const markupDisplay of DISPLAYS)
 for (const [spacing, lineHeight, fontSizePx] of MOTION_CASES) {
-  test.describe(`カーソルの上下移動 (段落間隔 ${spacing}行・行高 ${lineHeight}・${fontSizePx}px)`, () => {
+  test.describe(`カーソルの上下移動 (段落間隔 ${spacing}行・行高 ${lineHeight}・${fontSizePx}px・記号 ${markupDisplay})`, () => {
     test.beforeEach(async ({ page }) => {
       await launch(page, {
         files: { [DOC]: utf8(TEXT) },
         openPath: DOC,
-        preferences: { theme: 'light', paragraphSpacing: spacing, lineHeight, fontSizePx },
+        preferences: { theme: 'light', paragraphSpacing: spacing, lineHeight, fontSizePx, markupDisplay },
       });
       await page.keyboard.press('ControlOrMeta+o');
       await expect(docTitle(page)).toHaveText('motion.md');
@@ -124,11 +128,12 @@ for (const [spacing, lineHeight, fontSizePx] of MOTION_CASES) {
 }
 
 // 折り返した項目の途中でも、ArrowDown は見た目の 1 行ずつ進む（ぶら下げインデントの行を飛ばさない）。
+for (const markupDisplay of DISPLAYS)
 for (const spacing of [0, 0.6, 3]) {
-  test(`折り返したリスト項目と引用を、見た目の 1 行ずつ上下できる (段落間隔 ${spacing}行)`, async ({ page }) => {
+  test(`折り返したリスト項目と引用を、見た目の 1 行ずつ上下できる (段落間隔 ${spacing}行・記号 ${markupDisplay})`, async ({ page }) => {
     const long = 'あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん'.repeat(2);
     const doc = [`- ${long}`, '- 次の項目', '', `> ${long}`, '後の本文'].join('\n');
-    await launch(page, { files: { [DOC]: utf8(doc) }, openPath: DOC, preferences: { theme: 'light', paragraphSpacing: spacing } });
+    await launch(page, { files: { [DOC]: utf8(doc) }, openPath: DOC, preferences: { theme: 'light', paragraphSpacing: spacing, markupDisplay } });
     await page.keyboard.press('ControlOrMeta+o');
     await expect(docTitle(page)).toHaveText('motion.md');
     await page.locator('.cm-content').click();

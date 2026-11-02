@@ -317,6 +317,9 @@ test.describe('Markdown の見た目', () => {
     await launch(page, {
       files: { [DOC]: utf8('# 見出し1\n\n## 見出し2\n\n本文 **強調** と *斜体* と [リンク](https://example.com) と `code`\n') },
       openPath: DOC,
+      // この検査の主題は、記号を見せているときの見た目。既定（カーソルのある行だけ）では隠れるので、「常に表示」で確かめる。
+      // 隠す側の見た目は live-markup.spec.ts。
+      preferences: { markupDisplay: 'always' },
     });
     await page.keyboard.press('ControlOrMeta+o');
     await expect(docTitle(page)).toHaveText('crlf-bom.md');

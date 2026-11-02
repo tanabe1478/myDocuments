@@ -3,14 +3,15 @@ import { search, searchKeymap } from '@codemirror/search';
 import { Compartment, EditorState, type Extension } from '@codemirror/state';
 import { EditorView, drawSelection, keymap } from '@codemirror/view';
 import type { TextKind } from '../../document/fileKinds';
-import type { ListContinuation } from '../../preferences/preferences';
+import type { ListContinuation, MarkupDisplay } from '../../preferences/preferences';
 import type { EditorAdapter, EditorSelection } from '../EditorAdapter';
 import { focusModeExtension } from './focusMode';
 import { historyKeymap } from './historyKeymap';
 import { indentKeymap } from './indentKeymap';
 import { keepCursorVisibleExtension } from './keepCursorVisible';
 import { listContinuationExtension } from './listContinuation';
-import { markdownDecorations, plainTextDecorations } from './markdownDecorations';
+import { linkOpenExtension } from './linkOpen';
+import { markdownDecorations, markupDisplayFacet, plainTextDecorations } from './markdownDecorations';
 import { readingPositionExtension } from './readingPosition';
 import { editorTheme } from './theme';
 import { typewriterModeExtension } from './typewriterMode';
@@ -34,6 +35,9 @@ export class CodeMirrorAdapter implements EditorAdapter {
   private typewriterMode = false;
   private textKind: TextKind = 'markdown';
   private listContinuation: ListContinuation = 'tight';
+  private markupDisplay: MarkupDisplay = 'cursorLine';
+  /** リンクを開く操作（⌘/Ctrl+クリック）の通知先。 */
+  private readonly linkListeners = new Set<(url: string) => void>();
   /** 本文の下側を覆う要素（トースト）の高さ。scrollMargins の下側に使う（レイアウトは変えない）。 */
   private bottomInset = 0;
   // setText は state を作り直すので、モードは Compartment で持ち、作り直しても現在の値で始める。
@@ -41,6 +45,7 @@ export class CodeMirrorAdapter implements EditorAdapter {
   private readonly typewriterCompartment = new Compartment();
   private readonly kindCompartment = new Compartment();
   private readonly listCompartment = new Compartment();
+  private readonly markupCompartment = new Compartment();
 
   mount(el: HTMLElement): void {
     if (this.view) throw new Error('CodeMirrorAdapter is already mounted');
@@ -108,6 +113,17 @@ export class CodeMirrorAdapter implements EditorAdapter {
     this.view?.dispatch({ effects: this.listCompartment.reconfigure(listContinuationExtension(mode)) });
   }
 
+  setMarkupDisplay(mode: MarkupDisplay): void {
+    if (this.markupDisplay === mode) return;
+    this.markupDisplay = mode;
+    this.view?.dispatch({ effects: this.markupCompartment.reconfigure(markupDisplayFacet.of(mode)) });
+  }
+
+  onOpenLink(cb: (url: string) => void): () => void {
+    this.linkListeners.add(cb);
+    return () => this.linkListeners.delete(cb);
+  }
+
   setBottomInset(px: number): void {
     const previous = this.bottomInset;
     this.bottomInset = Math.max(0, px);
@@ -133,6 +149,7 @@ export class CodeMirrorAdapter implements EditorAdapter {
     this.view = null;
     this.changeListeners.clear();
     this.selectionListeners.clear();
+    this.linkListeners.clear();
   }
 
   /** 別の文書として読み込む。state を作り直すので、Undo/Redo の履歴は空になる。 */
@@ -183,6 +200,8 @@ export class CodeMirrorAdapter implements EditorAdapter {
       this.focusCompartment.of(this.focusExtension()),
       this.typewriterCompartment.of(this.typewriterExtension()),
       this.listCompartment.of(listContinuationExtension(this.listContinuation)),
+      this.markupCompartment.of(markupDisplayFacet.of(this.markupDisplay)),
+      linkOpenExtension((url) => this.linkListeners.forEach((cb) => cb(url))),
       search({ top: true }),
       readingPositionExtension(),
       keepCursorVisibleExtension(),

@@ -193,6 +193,11 @@ export interface DocumentBridge {
   importBackgroundImage(path: string): Promise<string>;
   /** 取り込み済みの画像を読む。なければ BridgeError('not-found')。 */
   readBackgroundImage(imageId: string): Promise<BackgroundImageData>;
+  /**
+   * リンクを既定のブラウザで開く。http / https でホストのある URL だけ。それ以外は BridgeError('invalid-input')。
+   * ネイティブ側でも必ず検査する（呼び出し側の検査に頼らない）。
+   */
+  openExternalUrl(url: string): Promise<void>;
   /** 全画面を切り替え、切替後の状態（true なら全画面）を返す。 */
   toggleFullscreen(): Promise<boolean>;
   /** 最初の描画が済んだことをネイティブ側へ知らせる（窓の表示）。 */
