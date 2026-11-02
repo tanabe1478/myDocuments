@@ -11,6 +11,7 @@ use crate::error::{CommandError, ErrorKind};
 use crate::folders::OpenFolders;
 use std::ffi::OsString;
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 
 /// 一度に監視するフォルダの数の上限（inotify などの監視の数に限りがあるため）。超えた分は監視しない。
@@ -93,15 +94,29 @@ fn path_string(path: PathBuf) -> String {
     path.to_string_lossy().into_owned()
 }
 
+/// 作成の失敗を、フロントエンドへ返すエラーにする。
+/// Windows は、同名のフォルダがある場所へ `create_new` でファイルを作ろうとすると、AlreadyExists ではなく
+/// PermissionDenied（ERROR_ACCESS_DENIED）を返す。PermissionDenied のとき、作ろうとした項目が実際にあれば
+/// （リンクは辿らない）AlreadyExists にする。無ければ権限の問題なので PermissionDenied のまま。ほかの種類は変えない。
+/// macOS と Linux は元から AlreadyExists を返すので、この変換は働かない。
+fn creation_error(error: io::Error, target: &Path) -> CommandError {
+    if error.kind() == io::ErrorKind::PermissionDenied && fs::symlink_metadata(target).is_ok() {
+        return CommandError::new(ErrorKind::AlreadyExists, "an item with that name already exists");
+    }
+    error.into()
+}
+
 /// `parent`（登録済みのフォルダの配下）に空のファイルを作る。既にあれば AlreadyExists（上書きしない）。戻り値は新しいパス。
 pub fn create_file(parent: &str, name: &str, folders: &OpenFolders) -> Result<String, CommandError> {
     validate_name(name)?;
     let given = validate_path(parent)?;
     let canonical = resolve_dir(&given, folders)?;
+    let target = canonical.join(name);
     fs::OpenOptions::new()
         .write(true)
         .create_new(true)
-        .open(canonical.join(name))?;
+        .open(&target)
+        .map_err(|e| creation_error(e, &target))?;
     Ok(path_string(given.join(name)))
 }
 
@@ -110,7 +125,8 @@ pub fn create_folder(parent: &str, name: &str, folders: &OpenFolders) -> Result<
     validate_name(name)?;
     let given = validate_path(parent)?;
     let canonical = resolve_dir(&given, folders)?;
-    fs::create_dir(canonical.join(name))?;
+    let target = canonical.join(name);
+    fs::create_dir(&target).map_err(|e| creation_error(e, &target))?;
     Ok(path_string(given.join(name)))
 }
 
@@ -250,11 +266,24 @@ mod tests {
             fs::create_dir_all(&dir).unwrap();
             TempDir(dir)
         }
+        /// `rel` は `/` 区切りで書き、成分ごとに join する（`/` を含む文字列をそのまま join すると、
+        /// Windows では `\` と `/` が混ざったパスになる）。
         fn path(&self, rel: &str) -> PathBuf {
-            self.0.join(rel)
+            rel.split('/').fold(self.0.clone(), |path, component| path.join(component))
         }
         fn str(&self, rel: &str) -> String {
             self.path(rel).to_string_lossy().into_owned()
+        }
+        /// `rel` から `..` を `ups` 回たどり、`rest`（`/` 区切り。空なら足さない）を続けたパス。成分ごとに組み立てる。
+        fn parent_of(&self, rel: &str, ups: usize, rest: &str) -> String {
+            let mut path = self.path(rel);
+            for _ in 0..ups {
+                path.push("..");
+            }
+            for component in rest.split('/').filter(|c| !c.is_empty()) {
+                path.push(component);
+            }
+            path.to_string_lossy().into_owned()
         }
         fn file(&self, rel: &str, content: &str) {
             let p = self.path(rel);
@@ -355,6 +384,48 @@ mod tests {
         assert_eq!(kind(create_folder(&dir.str("root"), "f.md", &folders)), ErrorKind::AlreadyExists);
     }
 
+    // ---- 作成の失敗の変換（Windows は、同名のフォルダがあると PermissionDenied を返す） ----
+
+    fn io_error(kind: io::ErrorKind) -> io::Error {
+        io::Error::from(kind)
+    }
+
+    #[test]
+    fn a_permission_error_for_an_item_that_exists_becomes_already_exists() {
+        let dir = TempDir::new();
+        dir.file("a.md", "x");
+        dir.dir("folder");
+        for rel in ["a.md", "folder"] {
+            let err = creation_error(io_error(io::ErrorKind::PermissionDenied), &dir.path(rel));
+            assert_eq!(err.kind, ErrorKind::AlreadyExists, "{rel}");
+        }
+    }
+
+    #[test]
+    fn a_permission_error_for_an_item_that_does_not_exist_stays_a_permission_error() {
+        let dir = TempDir::new();
+        let err = creation_error(io_error(io::ErrorKind::PermissionDenied), &dir.path("missing.md"));
+        assert_eq!(err.kind, ErrorKind::PermissionDenied);
+        // 親が無くても（確かめる項目がなくても）権限のエラーのまま。
+        let err = creation_error(io_error(io::ErrorKind::PermissionDenied), &dir.path("no/such/dir/x.md"));
+        assert_eq!(err.kind, ErrorKind::PermissionDenied);
+    }
+
+    #[test]
+    fn other_errors_are_not_changed_even_when_the_item_exists() {
+        let dir = TempDir::new();
+        dir.file("a.md", "x");
+        for kind in [
+            io::ErrorKind::NotFound,
+            io::ErrorKind::AlreadyExists,
+            io::ErrorKind::InvalidInput,
+            io::ErrorKind::Other,
+        ] {
+            let expected = CommandError::from(io_error(kind));
+            assert_eq!(creation_error(io_error(kind), &dir.path("a.md")), expected, "{kind:?}");
+        }
+    }
+
     #[test]
     fn create_rejects_invalid_names_and_creates_nothing() {
         let dir = TempDir::new();
@@ -379,7 +450,7 @@ mod tests {
         }
         // `..` で外へ出る。
         dir.dir("root/sub");
-        let escape = format!("{}/../../other", dir.str("root/sub"));
+        let escape = dir.parent_of("root/sub", 2, "other");
         assert_eq!(kind(create_file(&escape, "x.md", &folders)), ErrorKind::NotAllowed);
         assert!(!dir.exists("other/x.md"));
         // 何も開いていない。
@@ -545,11 +616,11 @@ mod tests {
         dir.file("root/sub/y.md", "y");
         let known = KnownPaths::default();
         assert_eq!(kind(rename_entry(&dir.str("other/x.md"), "z.md", &folders, &known)), ErrorKind::NotAllowed);
-        let escape = format!("{}/../../other/x.md", dir.str("root/sub"));
+        let escape = dir.parent_of("root/sub", 2, "other/x.md");
         assert_eq!(kind(rename_entry(&escape, "z.md", &folders, &known)), ErrorKind::NotAllowed);
         // `..` で終わるパス。
         assert_eq!(
-            kind(rename_entry(&format!("{}/..", dir.str("root/sub")), "z", &folders, &known)),
+            kind(rename_entry(&dir.parent_of("root/sub", 1, ""), "z", &folders, &known)),
             ErrorKind::NotAllowed
         );
         assert!(dir.exists("other/x.md") && !dir.exists("other/z.md"));
@@ -598,7 +669,7 @@ mod tests {
         assert_eq!(kind(trash_entry(&dir.str("root/inner"), &folders, &trasher)), ErrorKind::NotAllowed);
         assert_eq!(kind(trash_entry(&dir.str("other/o.md"), &folders, &trasher)), ErrorKind::NotAllowed);
         assert_eq!(
-            kind(trash_entry(&format!("{}/../../other/o.md", dir.str("root/inner")), &folders, &trasher)),
+            kind(trash_entry(&dir.parent_of("root/inner", 2, "other/o.md"), &folders, &trasher)),
             ErrorKind::NotAllowed
         );
         assert_eq!(kind(trash_entry(&dir.str("root/missing.md"), &folders, &trasher)), ErrorKind::NotFound);
@@ -716,6 +787,14 @@ mod tests {
             assert_eq!(kind(trash_entry(&through, &folders, &trasher)), ErrorKind::NotAllowed);
             assert!(calls.borrow().is_empty());
             assert_eq!(dir.read("outside/secret.md"), "s");
+        }
+
+        #[test]
+        fn a_permission_error_for_a_dangling_symlink_becomes_already_exists() {
+            let dir = TempDir::new();
+            symlink(dir.path("nowhere"), dir.path("broken")).unwrap();
+            let err = creation_error(io::Error::from(io::ErrorKind::PermissionDenied), &dir.path("broken"));
+            assert_eq!(err.kind, ErrorKind::AlreadyExists);
         }
 
         #[test]
