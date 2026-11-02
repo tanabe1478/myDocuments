@@ -91,6 +91,8 @@ export type BridgeErrorKind =
   | 'not-utf8'
   | 'not-allowed'
   | 'invalid-input'
+  /** 作成・名前の変更の先に、すでに同じ名前の項目がある（上書きしない）。 */
+  | 'already-exists'
   | 'io';
 
 export class BridgeError extends Error {
@@ -153,6 +155,28 @@ export interface DocumentBridge {
   openFolder(path: string): Promise<void>;
   /** 開いたフォルダ（またはその配下）の中身。それ以外のパスは BridgeError('not-allowed')。 */
   listFolder(path: string): Promise<FolderListing>;
+  /**
+   * 開いたフォルダの配下に、空のファイルを作る。戻り値は新しいパス。名前は 1 つのパス成分だけ。
+   * すでに同じ名前の項目があれば BridgeError('already-exists')（上書きしない）。登録外のフォルダは 'not-allowed'、不正な名前は 'invalid-input'。
+   */
+  createFile(parent: string, name: string): Promise<string>;
+  /** createFile のフォルダ版。 */
+  createFolder(parent: string, name: string): Promise<string>;
+  /**
+   * 項目（ファイル・フォルダ。リンクはリンク自体）の名前を、同じフォルダの中で変える。戻り値は新しいパス。
+   * 既存の別の項目は上書きしない（'already-exists'）。大文字小文字だけの変更は通る。開いたフォルダ自身は 'not-allowed'。
+   * 名前を変えた項目が開いた文書（またはそれを含むフォルダ）なら、新しいパスも保存・監視できるようになる。
+   */
+  renameEntry(path: string, newName: string): Promise<string>;
+  /** 項目（リンクはリンク自体）をゴミ箱へ移す。開いたフォルダ自身は 'not-allowed'。 */
+  trashEntry(path: string): Promise<void>;
+  /**
+   * 見せているフォルダ（ルートと展開中のフォルダ。開いたフォルダの配下）の監視を、渡したものに切り替える（空なら止める）。
+   * それぞれの直下の項目の増減・名前の変更を、onFolderChanged で知らせる（深いフォルダは、渡したときだけ）。
+   */
+  watchFolders(paths: readonly string[]): Promise<void>;
+  /** 監視中のフォルダの項目が増減・名前の変更をされた、という通知を購読する。解除関数を返す。 */
+  onFolderChanged(cb: (path: string) => void): Promise<() => void>;
   /** 窓を閉じる・アプリを終了する操作があったことの通知を購読する。解除関数を返す。 */
   onCloseRequested(cb: () => void): Promise<() => void>;
   /** 終了の確認が済んだ後に、アプリを終了する。 */

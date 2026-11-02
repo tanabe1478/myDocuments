@@ -18,6 +18,8 @@ pub enum ErrorKind {
     /// このセッションで開いた・保存先に選んだことのないパスへの保存要求。
     NotAllowed,
     InvalidInput,
+    /// 作成・名前の変更の先に、すでに同じ名前の項目がある（上書きしない）。
+    AlreadyExists,
     Io,
 }
 
@@ -36,6 +38,7 @@ impl From<io::Error> for CommandError {
             io::ErrorKind::NotFound => ErrorKind::NotFound,
             io::ErrorKind::PermissionDenied => ErrorKind::PermissionDenied,
             io::ErrorKind::InvalidInput => ErrorKind::InvalidInput,
+            io::ErrorKind::AlreadyExists => ErrorKind::AlreadyExists,
             _ => ErrorKind::Io,
         };
         CommandError::new(kind, e.to_string())

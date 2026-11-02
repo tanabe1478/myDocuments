@@ -125,6 +125,26 @@ impl KnownPaths {
     pub fn contains(&self, path: &Path) -> bool {
         self.0.lock().map(|s| s.contains(path)).unwrap_or(false)
     }
+
+    /// `old` の名前を `new` に変えたとき、`old` そのもの、または `old` の配下にある登録済みのパスについて、
+    /// 新しいパスも登録する（名前を変えた文書を、そのまま保存・監視できるように）。古いパスの登録は残す
+    /// （名前の変更が途中で失敗しても、古いパスの文書を扱えるように。登録は「このセッションで開いた・選んだ」の記録）。
+    pub fn register_renamed(&self, old: &Path, new: &Path) {
+        if let Ok(mut set) = self.0.lock() {
+            let moved: Vec<PathBuf> = set
+                .iter()
+                .filter_map(|p| {
+                    let rest = p.strip_prefix(old).ok()?;
+                    Some(if rest.as_os_str().is_empty() {
+                        new.to_path_buf()
+                    } else {
+                        new.join(rest)
+                    })
+                })
+                .collect();
+            set.extend(moved);
+        }
+    }
 }
 
 /// 絶対パスだけを受け付ける。

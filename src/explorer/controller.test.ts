@@ -29,6 +29,12 @@ function setup(tree: Tree, session: SessionInfo = { lastPath: null, lastFolder: 
     saveSession: vi.fn(async (patch: Partial<SessionInfo>) => {
       current = { ...current, ...patch };
     }),
+    createFile: vi.fn(async (parent: string, name: string) => `${parent}/${name}`),
+    createFolder: vi.fn(async (parent: string, name: string) => `${parent}/${name}`),
+    renameEntry: vi.fn(async (path: string, name: string) => `${path.slice(0, path.lastIndexOf('/'))}/${name}`),
+    trashEntry: vi.fn(async (_path: string) => {}),
+    watchFolders: vi.fn(async (_paths: readonly string[]) => {}),
+    onFolderChanged: vi.fn(async (_cb: (path: string) => void) => () => {}),
   };
   const explorer = new ExplorerController({ bridge, notify: (n) => notices.push(n) });
   const rows = () => {
@@ -121,13 +127,53 @@ describe('restoring the last folder', () => {
     expect(t.notices).toEqual([]);
   });
 
-  it('falls back to unselected with a short error when the folder is gone, and forgets it', async () => {
+  it('falls back to unselected with a short error when the folder is gone, but keeps the record so it can be retried (N2)', async () => {
     const t = setup(TREE, { lastPath: '/a.md', lastFolder: '/vanished' });
     await t.explorer.restore();
     expect(t.explorer.getState().root).toBeNull();
     expect(t.notices).toHaveLength(1);
     expect(t.notices[0]?.message).toContain('前回のフォルダを開けませんでした');
-    expect(t.session()).toEqual({ lastPath: '/a.md', lastFolder: null });
+    expect(t.session()).toEqual({ lastPath: '/a.md', lastFolder: '/vanished' });
+    expect(t.bridge.saveSession).not.toHaveBeenCalled();
+    expect(t.explorer.getState().restoreFailure).toEqual({ path: '/vanished', message: 'フォルダが見つかりません。' });
+  });
+
+  it('opens the tree on retry once the folder is available, and clears the failure', async () => {
+    const tree: Tree = { ...TREE };
+    const t = setup(tree, { lastPath: null, lastFolder: '/later' });
+    await t.explorer.restore();
+    expect(t.explorer.getState().restoreFailure?.path).toBe('/later');
+
+    // 開けないままの再試行は、記録を残して、理由を更新する。
+    await t.explorer.retryRestore();
+    expect(t.explorer.getState().root).toBeNull();
+    expect(t.session().lastFolder).toBe('/later');
+    expect(t.notices).toHaveLength(2);
+
+    tree['/later'] = [file('x.md', '/later')];
+    await t.explorer.retryRestore();
+    expect(t.explorer.getState().root).toBe('/later');
+    expect(t.explorer.getState().restoreFailure).toBeNull();
+    expect(t.rows()).toEqual(['x.md']);
+    expect(t.session().lastFolder).toBe('/later');
+  });
+
+  it('overwrites the record when another folder is opened after a failed restore', async () => {
+    const t = setup(TREE, { lastPath: null, lastFolder: '/vanished' });
+    await t.explorer.restore();
+    await t.explorer.chooseFolder(); // /r
+    expect(t.explorer.getState().root).toBe('/r');
+    expect(t.explorer.getState().restoreFailure).toBeNull();
+    expect(t.session().lastFolder).toBe('/r');
+  });
+
+  it('keeps the failure when choosing a folder that cannot be opened', async () => {
+    const t = setup(TREE, { lastPath: null, lastFolder: '/vanished' });
+    await t.explorer.restore();
+    t.bridge.pickFolderPath.mockResolvedValueOnce('/nowhere');
+    await t.explorer.chooseFolder();
+    expect(t.explorer.getState().restoreFailure?.path).toBe('/vanished');
+    expect(t.session().lastFolder).toBe('/vanished');
   });
 
   it('falls back to unselected when the folder opens but cannot be read', async () => {

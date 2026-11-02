@@ -436,14 +436,16 @@ test.describe('復元 (f)', () => {
     await expect(toast(page)).toHaveCount(0);
   });
 
-  test('前回のフォルダが無いときは、未選択の表示に戻り、トーストで短く知らせる。起動は妨げない', async ({ page }) => {
+  test('前回のフォルダが無いときは、未選択の表示に戻り、トーストで短く知らせる。起動は妨げず、記録は消さない（N2）', async ({ page }) => {
     await launch(page, { ...SEED, session: { lastPath: null, lastFolder: '/vanished' } });
     await expect(page.getByTestId('sidebar-empty')).toBeVisible();
     await expect(page.getByTestId('open-folder')).toBeVisible();
     await expect(tree(page)).toHaveCount(0);
     await expect(toast(page)).toContainText('前回のフォルダを開けませんでした');
     await expect(page.locator('.cm-content')).toBeVisible();
-    await expect.poll(async () => (await bridgeState(page)).session).toMatchObject({ lastFolder: null });
+    // 記録は残してある（書き換えてもいない）。再試行は explorer-edit.spec.ts。
+    await expect(page.getByTestId('retry-folder')).toBeVisible();
+    expect((await bridgeState(page)).session).toMatchObject({ lastFolder: '/vanished' });
   });
 
   test('前回のフォルダが読めないときも、未選択の表示に戻る', async ({ page }) => {

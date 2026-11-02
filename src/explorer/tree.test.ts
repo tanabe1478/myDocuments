@@ -4,6 +4,7 @@ import {
   buildTree,
   flattenRows,
   navigate,
+  neighborAfterRemoval,
   sortEntries,
   type DirState,
   type TreeKey,
@@ -201,5 +202,29 @@ describe('navigate', () => {
     expect(press(rows, '/r/linked', 'Enter')).toEqual({ focusId: '/r/linked', action: null });
     const note = rows.find((r) => r.kind === 'note')!;
     expect(press(rows, note.id, 'Enter')).toEqual({ focusId: note.id, action: null });
+  });
+});
+
+describe('neighborAfterRemoval', () => {
+  const entry = (name: string, kind: 'file' | 'dir', parent = '/r') => ({ name, path: `${parent}/${name}`, kind }) as const;
+  const dirs = new Map<string, DirState>([
+    ['/r', { status: 'loaded', entries: [entry('docs', 'dir'), entry('a.md', 'file'), entry('b.md', 'file'), entry('c.md', 'file')], more: 0 }],
+    ['/r/docs', { status: 'loaded', entries: [entry('only.md', 'file', '/r/docs')], more: 0 }],
+  ]);
+  const rows = flattenRows(buildTree('/r', dirs, new Set(['/r/docs'])));
+
+  it('moves to the next item in the same folder, else the previous one', () => {
+    expect(neighborAfterRemoval(rows, '/r/a.md')).toBe('/r/b.md');
+    expect(neighborAfterRemoval(rows, '/r/c.md')).toBe('/r/b.md');
+    expect(neighborAfterRemoval(rows, '/r/docs')).toBe('/r/a.md');
+  });
+
+  it('moves to the parent folder when it was the only item, and to null at the top level', () => {
+    expect(neighborAfterRemoval(rows, '/r/docs/only.md')).toBe('/r/docs');
+    const single = flattenRows(
+      buildTree('/r', new Map<string, DirState>([['/r', { status: 'loaded', entries: [entry('a.md', 'file')], more: 0 }]]), new Set()),
+    );
+    expect(neighborAfterRemoval(single, '/r/a.md')).toBeNull();
+    expect(neighborAfterRemoval(rows, '/r/unknown')).toBeNull();
   });
 });

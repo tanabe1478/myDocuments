@@ -13,7 +13,7 @@ import {
 import { draftTitle } from './document/recovery';
 import { textKindOf } from './document/fileKinds';
 import { UNTITLED, documentTitle, isDirty } from './document/state';
-import { ExplorerController } from './explorer/controller';
+import { ExplorerController, type TrashTarget } from './explorer/controller';
 import type { EditorAdapter } from './editor/EditorAdapter';
 import { createCodeMirrorAdapter } from './editor/codemirror/CodeMirrorAdapter';
 import { BridgeError, type DocumentBridge, type DraftSummary } from './platform';
@@ -24,6 +24,7 @@ import { charsPerLine, columnWidth } from './editor/layout';
 import { ConflictBar, isConflictBarVisible } from './ui/ConflictBar';
 import { ConfirmDiscardDialog } from './ui/ConfirmDiscardDialog';
 import { ConfirmRecreateDialog } from './ui/ConfirmRecreateDialog';
+import { ConfirmTrashDialog } from './ui/ConfirmTrashDialog';
 import { DiffDialog } from './ui/DiffDialog';
 import { RecoveryDialog } from './ui/RecoveryDialog';
 import { SettingsDialog } from './ui/SettingsDialog';
@@ -46,6 +47,11 @@ interface PendingRecreate {
   resolve(recreate: boolean): void;
 }
 
+interface PendingTrash {
+  target: TrashTarget;
+  resolve(confirmed: boolean): void;
+}
+
 interface PendingRecovery {
   draft: DraftSummary;
   others: number;
@@ -62,6 +68,7 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
   const [recreate, setRecreate] = useState<PendingRecreate | null>(null);
   const [recovery, setRecovery] = useState<PendingRecovery | null>(null);
+  const [trash, setTrash] = useState<PendingTrash | null>(null);
   const [diffOpen, setDiffOpen] = useState(false);
   const [notice, setNotice] = useState<ToastNotice | null>(null);
   const [prefs, setPrefs] = useState<Preferences>(initialPreferences);
@@ -98,7 +105,31 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
     [],
   );
 
-  const explorer = useMemo(() => new ExplorerController({ bridge, notify }), [bridge, notify]);
+  // エクスプローラーから文書を開く。開けたら、本文へフォーカスを移す（すぐ書ける）。
+  const openFromExplorer = useCallback(
+    async (path: string) => {
+      const opened = await controller.openPath(path);
+      if (opened) adapterRef.current?.focus();
+      return opened;
+    },
+    [controller],
+  );
+
+  const explorer = useMemo(
+    () =>
+      new ExplorerController({
+        bridge,
+        notify,
+        confirmTrash: (target) => new Promise<boolean>((resolve) => setTrash({ target, resolve })),
+        documents: {
+          isDocumentInside: controller.isDocumentInside,
+          rename: controller.renameEntry,
+          checkExternal: controller.checkExternal,
+          open: openFromExplorer,
+        },
+      }),
+    [bridge, notify, controller, openFromExplorer],
+  );
   const explorerState = useSyncExternalStore(explorer.subscribe, explorer.getState);
 
   const state = useSyncExternalStore(controller.subscribe, controller.getState);
@@ -163,6 +194,20 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
 
   // 前回のフォルダを復元する（開けなければ未選択のまま、トーストで知らせる）。
   useEffect(() => void explorer.restore(), [explorer]);
+
+  // フォルダの項目の増減の通知（監視中のフォルダ）を、ツリーへ反映する。
+  useEffect(() => {
+    let off: (() => void) | null = null;
+    let cancelled = false;
+    void explorer.attach().then((unsubscribe) => {
+      if (cancelled) unsubscribe();
+      else off = unsubscribe;
+    });
+    return () => {
+      cancelled = true;
+      off?.();
+    };
+  }, [explorer]);
 
   useEffect(() => adapterRef.current?.setFocusMode(prefs.focusMode), [prefs.focusMode]);
   useEffect(() => adapterRef.current?.setTypewriterMode(prefs.typewriterMode), [prefs.typewriterMode]);
@@ -290,14 +335,6 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
     [reveal],
   );
 
-  /** エクスプローラーから文書を開く。開けたら、本文へフォーカスを移す（すぐ書ける）。 */
-  const openFromExplorer = useCallback(
-    async (path: string) => {
-      if (await controller.openPath(path)) adapterRef.current?.focus();
-    },
-    [controller],
-  );
-
   const runCommand = useCallback(async (command: () => Promise<unknown>) => {
     await command();
     adapterRef.current?.focus();
@@ -360,6 +397,11 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
   const choose = (choice: DiscardChoice) => {
     confirm?.resolve(choice);
     setConfirm(null);
+  };
+
+  const chooseTrash = (confirmed: boolean) => {
+    trash?.resolve(confirmed);
+    setTrash(null);
   };
 
   const chooseRecreate = (ok: boolean) => {
@@ -471,6 +513,7 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
       {diskTextForDiff !== null && <DiffDialog mine={state.text} disk={diskTextForDiff} onClose={closeDiff} />}
       {confirm && <ConfirmDiscardDialog documentName={confirm.documentName} onChoose={choose} />}
       {recreate && <ConfirmRecreateDialog documentName={recreate.documentName} onChoose={chooseRecreate} />}
+      {trash && <ConfirmTrashDialog target={trash.target} onChoose={chooseTrash} />}
       {recovery && (
         <RecoveryDialog
           documentName={draftTitle(recovery.draft, UNTITLED)}

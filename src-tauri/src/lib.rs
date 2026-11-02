@@ -1,6 +1,7 @@
 mod backgrounds;
 mod documents;
 mod drafts;
+mod entries;
 mod error;
 mod folders;
 mod preferences;
@@ -16,10 +17,12 @@ use session::Session;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Listener, Manager, RunEvent, State, WindowEvent};
-use watcher::DocumentWatcher;
+use watcher::{DocumentWatcher, FolderWatcher};
 
 /// 外部変更の通知（payload は { path }）。
 const EVENT_DOCUMENT_CHANGED: &str = "document-changed";
+/// 監視中のフォルダの項目が増減・名前の変更をされたことの通知（payload は { path }）。
+const EVENT_FOLDER_CHANGED: &str = "folder-changed";
 /// 窓を閉じる・終了する操作があったことの通知。UI が確認してから `close_app` を呼ぶ。
 const EVENT_CLOSE_REQUESTED: &str = "close-requested";
 
@@ -191,6 +194,70 @@ async fn list_folder(
     folders::list(&path, &folders)
 }
 
+/// 開いたフォルダの配下に、空のファイルを作る。既にあれば AlreadyExists（上書きしない）。戻り値は新しいパス。
+#[tauri::command]
+async fn create_file(
+    parent: String,
+    name: String,
+    folders: State<'_, OpenFolders>,
+) -> Result<String, CommandError> {
+    entries::create_file(&parent, &name, &folders)
+}
+
+/// 開いたフォルダの配下に、フォルダを作る。既にあれば AlreadyExists。戻り値は新しいパス。
+#[tauri::command]
+async fn create_folder(
+    parent: String,
+    name: String,
+    folders: State<'_, OpenFolders>,
+) -> Result<String, CommandError> {
+    entries::create_folder(&parent, &name, &folders)
+}
+
+/// 項目の名前を変える。既存の別の項目は上書きしない。戻り値は新しいパス。
+/// 開いた文書（または、それを含むフォルダ）なら、新しいパスも保存・監視できるように登録する。
+#[tauri::command]
+async fn rename_entry(
+    path: String,
+    new_name: String,
+    folders: State<'_, OpenFolders>,
+    known: State<'_, KnownPaths>,
+) -> Result<String, CommandError> {
+    entries::rename_entry(&path, &new_name, &folders, &known)
+}
+
+/// 項目をゴミ箱へ移す。開いたフォルダ自身は移さない。
+#[tauri::command]
+async fn trash_entry(path: String, folders: State<'_, OpenFolders>) -> Result<(), CommandError> {
+    entries::trash_entry(&path, &folders, &entries::system_trash)
+}
+
+/// エクスプローラーが見せているフォルダ（ルートと展開中のフォルダ）の監視を、渡したフォルダに切り替える。
+/// 項目の増減・名前の変更があったフォルダを、`folder-changed`（payload は { path }）で知らせる。
+#[tauri::command]
+async fn watch_folders(
+    app: AppHandle,
+    paths: Vec<String>,
+    folders: State<'_, OpenFolders>,
+    watcher: State<'_, FolderWatcher>,
+) -> Result<(), CommandError> {
+    let dirs = entries::resolve_watch_dirs(&paths, &folders)?;
+    watcher
+        .watch(dirs, move |changed| {
+            let _ = app.emit(
+                EVENT_FOLDER_CHANGED,
+                serde_json::json!({ "path": changed.to_string_lossy() }),
+            );
+        })
+        .map_err(|e| {
+            let kind = match &e.kind {
+                notify::ErrorKind::PathNotFound => ErrorKind::NotFound,
+                _ => ErrorKind::Io,
+            };
+            CommandError::new(kind, e.to_string())
+        })
+}
+
 /// UI が終了の確認を済ませた後に呼ぶ。アプリを終了する。
 #[tauri::command]
 async fn close_app(app: AppHandle, guard: State<'_, CloseGuard>) -> Result<(), CommandError> {
@@ -238,6 +305,7 @@ pub fn run() {
         .manage(KnownPaths::default())
         .manage(OpenFolders::default())
         .manage(DocumentWatcher::default())
+        .manage(FolderWatcher::default())
         .manage(CloseGuard::default())
         .invoke_handler(tauri::generate_handler![
             open_document,
@@ -253,6 +321,11 @@ pub fn run() {
             save_session,
             open_folder,
             list_folder,
+            create_file,
+            create_folder,
+            rename_entry,
+            trash_entry,
+            watch_folders,
             close_app,
             load_preferences,
             save_preferences,

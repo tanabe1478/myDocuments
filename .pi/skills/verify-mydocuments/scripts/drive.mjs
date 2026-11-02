@@ -249,7 +249,12 @@ try {
       if ('press' in step) for (let i = 0; i < (step.times ?? 1); i++) await press(step.press);
       else if ('type' in step) await page.keyboard.type(step.type, { delay: step.delay ?? 0 });
       else if ('insertText' in step) await page.keyboard.insertText(step.insertText);
-      else if ('click' in step) await locate(page, step.click).first().click({ force: step.click.force === true });
+      else if ('click' in step) {
+        // button: 'right' で右クリック（ツリーのメニュー）。position は対象の左上からの座標（空き領域の右クリックなど）。
+        await locate(page, step.click)
+          .first()
+          .click({ force: step.click.force === true, button: step.click.button ?? 'left', position: step.click.position });
+      }
       else if ('focus' in step) await locate(page, step.focus).first().focus();
       else if ('fill' in step) await locate(page, step.fill).fill(String(step.fill.value));
       else if ('check' in step) await locate(page, step.check).check();
@@ -266,6 +271,12 @@ try {
       } else if ('externalWrite' in step) {
         const w = step.externalWrite;
         await page.evaluate(([p, bytes, notify]) => window.__mdeE2E.externalWrite(p, bytes, { notify }), [w.path, w.text === null ? null : encodeFile({ text: w.text }), w.notify ?? true]);
+      } else if ('externalMkdir' in step) {
+        const m = step.externalMkdir;
+        await page.evaluate(([p, notify]) => window.__mdeE2E.externalMkdir(p, { notify }), [m.path, m.notify ?? true]);
+      } else if ('externalRemove' in step) {
+        const r = step.externalRemove;
+        await page.evaluate(([p, notify]) => window.__mdeE2E.externalRemove(p, { notify }), [r.path, r.notify ?? true]);
       } else if ('focusWindow' in step) await page.evaluate(() => window.dispatchEvent(new Event('focus')));
       else if ('requestClose' in step) await page.evaluate(() => window.__mdeE2E.requestClose());
       else if ('setPaths' in step) await page.evaluate((p) => Object.assign(window.__mdeE2E, p), Object.fromEntries(Object.entries(step.setPaths).map(([k, v]) => [k === 'image' ? 'imagePath' : `${k}Path`, v])));

@@ -103,9 +103,23 @@
     {
       "expect": {
         "eval": "window.__mdeE2E.session.lastFolder",
-        "equals": null,
+        "equals": "/work/vanished",
         "timeout": 4000,
-        "note": "消えたフォルダの記録は消す"
+        "note": "前回のフォルダの記録は消さない（再試行できる）"
+      }
+    },
+    {
+      "expect": {
+        "testId": "retry-folder",
+        "read": "visible",
+        "equals": true,
+        "note": "再試行ボタンが出る"
+      }
+    },
+    {
+      "expect": {
+        "testId": "restore-failure",
+        "contains": "前回のフォルダ「vanished」を開けませんでした"
       }
     },
     {

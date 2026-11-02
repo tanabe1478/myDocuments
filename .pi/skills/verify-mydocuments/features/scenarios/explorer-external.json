@@ -1,0 +1,168 @@
+{
+  "seed": {
+    "files": {
+      "/work/notes/a.md": {
+        "text": "# 見出しA\n\n本文A\n"
+      },
+      "/work/notes/b.txt": {
+        "text": "素のテキスト\n"
+      },
+      "/work/notes/c.md": {
+        "text": "C\n"
+      },
+      "/work/notes/docs/guide.md": {
+        "text": "# ガイド\n"
+      },
+      "/work/notes/docs/memo.md": {
+        "text": "メモ\n"
+      }
+    },
+    "folderPath": "/work/notes",
+    "emptyFolders": [
+      "/work/notes/empty"
+    ],
+    "preferences": {
+      "theme": "light",
+      "autoHideChrome": false,
+      "sidebarOpen": true
+    }
+  },
+  "steps": [
+    {
+      "click": {
+        "testId": "open-folder"
+      }
+    },
+    {
+      "click": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='docs'] > .tree-row"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='guide.md']",
+        "read": "visible",
+        "equals": true
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.watchedFolders",
+        "equals": [
+          "/work/notes",
+          "/work/notes/docs"
+        ],
+        "timeout": 4000,
+        "note": "監視するのはルートと展開中のフォルダ"
+      }
+    },
+    {
+      "externalWrite": {
+        "path": "/work/notes/external.md",
+        "text": "外から\n"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='external.md']",
+        "read": "visible",
+        "equals": true,
+        "note": "外部で足したファイルが、操作なしでツリーに出る"
+      }
+    },
+    {
+      "externalWrite": {
+        "path": "/work/notes/docs/inside.md",
+        "text": "中\n"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='inside.md']",
+        "read": "visible",
+        "equals": true,
+        "note": "展開中のフォルダの変更も反映される"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='docs']",
+        "read": "attr:aria-expanded",
+        "equals": "true",
+        "note": "展開状態は保たれる"
+      }
+    },
+    {
+      "externalWrite": {
+        "path": "/work/notes/c.md",
+        "text": null
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='c.md']",
+        "read": "count",
+        "equals": 0,
+        "note": "外部で消したファイルがツリーから消える"
+      }
+    },
+    {
+      "externalMkdir": {
+        "path": "/work/notes/newdir"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='newdir']",
+        "read": "visible",
+        "equals": true
+      }
+    },
+    {
+      "externalRemove": {
+        "path": "/work/notes/newdir"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='newdir']",
+        "read": "count",
+        "equals": 0
+      }
+    },
+    {
+      "screenshot": "01-external-changes"
+    },
+    {
+      "externalRemove": {
+        "path": "/work/notes/docs"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='docs']",
+        "read": "count",
+        "equals": 0,
+        "note": "展開中のフォルダが外部で消えたら、ツリーから消える"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.watchedFolders",
+        "equals": [
+          "/work/notes"
+        ],
+        "timeout": 4000,
+        "note": "監視も外れる"
+      }
+    },
+    {
+      "expect": {
+        "testId": "toast",
+        "read": "count",
+        "equals": 0,
+        "note": "通知の読み直しは、トーストを出さない"
+      }
+    }
+  ]
+}

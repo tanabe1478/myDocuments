@@ -192,3 +192,15 @@ export function navigate(rows: readonly TreeRow[], activeId: string | null, key:
       return stay(current.openable ? 'open' : null);
   }
 }
+
+/**
+ * 項目を取り除いた（ゴミ箱へ移した）後に選ぶ行。同じフォルダの中の次の項目、なければ前の項目、
+ * それもなければ親のフォルダ（最上位なら null）。補足の行は選ばない。
+ */
+export function neighborAfterRemoval(rows: readonly TreeRow[], id: string): string | null {
+  const row = rows.find((r) => r.id === id);
+  if (!row) return null;
+  const siblings = rows.filter((r) => r.parentId === row.parentId && r.kind !== 'note');
+  const index = siblings.findIndex((r) => r.id === id);
+  return siblings[index + 1]?.id ?? siblings[index - 1]?.id ?? row.parentId;
+}

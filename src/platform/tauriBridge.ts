@@ -28,6 +28,7 @@ const KINDS: readonly BridgeErrorKind[] = [
   'not-utf8',
   'not-allowed',
   'invalid-input',
+  'already-exists',
   'io',
 ];
 
@@ -109,6 +110,12 @@ export function createTauriBridge(): DocumentBridge {
     },
     openFolder: (path: string) => call<void>('open_folder', { path }),
     listFolder: (path: string) => call<FolderListing>('list_folder', { path }),
+    createFile: (parent: string, name: string) => call<string>('create_file', { parent, name }),
+    createFolder: (parent: string, name: string) => call<string>('create_folder', { parent, name }),
+    renameEntry: (path: string, newName: string) => call<string>('rename_entry', { path, newName }),
+    trashEntry: (path: string) => call<void>('trash_entry', { path }),
+    watchFolders: (paths) => call<void>('watch_folders', { paths: [...paths] }),
+    onFolderChanged: (cb) => listen<{ path: string }>('folder-changed', (e) => cb(e.payload.path)),
     onCloseRequested: (cb) => listen('close-requested', () => cb()),
     closeApp: () => call<void>('close_app'),
     loadPreferences: () => call<unknown>('load_preferences'),

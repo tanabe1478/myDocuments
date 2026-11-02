@@ -11,6 +11,7 @@ import {
   type DiskObservation,
   type ExternalState,
 } from './external';
+import { isSameOrInside, relocatePath } from '../explorer/names';
 import { planStartup, restoreFromDraft, type OriginalOnDisk } from './recovery';
 import {
   documentTitle,
@@ -73,6 +74,8 @@ export function describeError(e: unknown): string {
         return 'このファイルには保存できません。「別名で保存」を使ってください。';
       case 'invalid-input':
         return '指定されたパスは使えません。';
+      case 'already-exists':
+        return '同じ名前の項目がすでにあります。';
       case 'io':
         return `ファイルの読み書きに失敗しました（${e.message}）。`;
     }
@@ -150,6 +153,12 @@ export class DocumentController {
 
   /** 開いている文書のパスが変わったら、監視を付け替え、前回の文書として覚える。 */
   private followPath(path: string | null): void {
+    this.watch(path);
+    // 無題の文書に切り替えたら、前回の文書の記録を消す（消さないと、次回の起動で前の文書が開き直される）。
+    void this.deps.bridge.saveSession({ lastPath: path }).catch(() => {});
+  }
+
+  private watch(path: string | null): void {
     this.deps.bridge.watchDocument(path).then(
       () => {
         this.watchFailed = false;
@@ -163,8 +172,6 @@ export class DocumentController {
         });
       },
     );
-    // 無題の文書に切り替えたら、前回の文書の記録を消す（消さないと、次回の起動で前の文書が開き直される）。
-    void this.deps.bridge.saveSession({ lastPath: path }).catch(() => {});
   }
 
   /** 編集エンジンからの本文の変化。 */
@@ -216,6 +223,51 @@ export class DocumentController {
       return false;
     }
   }
+
+  // ---- エクスプローラーでの名前の変更 ----
+
+  /**
+   * エクスプローラーでの名前の変更（ファイルまたはフォルダ）。perform が実際に名前を変え、新しいパスを返す。
+   * 開いている文書が、その項目そのもの、またはそれを含むフォルダなら、文書を新しいパスへ移す。
+   * 名前を変える前に文書の監視を外し、変えた後に新しいパスで監視し直す（古いパスの「消えた」通知で、削除扱いにしないため）。
+   * 本文、未保存の変更、undo 履歴、カーソル、外部変更の状態はそのまま。名前の変更が失敗したら、古いパスのまま監視を戻し、例外を投げる。
+   * ほかの操作の実行中は、何もせず null（呼び出し側が、あとでやり直すよう伝える）。
+   */
+  renameEntry = (oldPath: string, perform: () => Promise<string>): Promise<string | null> =>
+    this.exclusive<string | null>(async () => {
+      const docPath = this.state.path;
+      if (docPath === null || !isSameOrInside(docPath, oldPath)) return perform();
+      await this.deps.bridge.watchDocument(null).catch(() => {});
+      let newPath: string;
+      try {
+        newPath = await perform();
+      } catch (e) {
+        this.watch(docPath);
+        throw e;
+      }
+      const moved = relocatePath(docPath, oldPath, newPath);
+      if (moved === null) this.watch(docPath);
+      else this.relocate(docPath, moved);
+      return newPath;
+    }, null);
+
+  /**
+   * 開いている文書を、新しいパスへ移す（名前の変更に追従する）。パス、監視、前回の文書の記録、草稿のパスが新しいパスになる。
+   * 未保存の変更があれば、草稿をすぐ新しいパスで書き直す（古いパスのまま強制終了しても、正しい保存先で復旧できるように）。
+   * 移した後、新しいパスのディスクの状態を一度確かめる。
+   */
+  relocate = (from: string, to: string): void => {
+    if (this.state.path !== from || from === to) return;
+    this.setState({ ...this.state, path: to });
+    if (isDirty(this.state)) this.keeper.flush();
+    this.recheck = true;
+  };
+
+  /** 開いている文書が、path そのもの、または path のフォルダの中にあるか。 */
+  isDocumentInside = (path: string): boolean => {
+    const doc = this.state.path;
+    return doc !== null && isSameOrInside(doc, path);
+  };
 
   // ---- 起動時の復旧 ----
 

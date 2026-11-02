@@ -1,0 +1,105 @@
+{
+  "seed": {
+    "files": {},
+    "folderPath": null,
+    "emptyFolders": [],
+    "preferences": {
+      "theme": "light",
+      "autoHideChrome": false,
+      "sidebarOpen": true
+    },
+    "session": {
+      "lastPath": null,
+      "lastFolder": "/gone/notes"
+    }
+  },
+  "steps": [
+    {
+      "expect": {
+        "testId": "restore-failure",
+        "contains": "前回のフォルダ「notes」を開けませんでした",
+        "note": "前回のフォルダを開けなかった旨を、サイドバーの空の状態に出す"
+      }
+    },
+    {
+      "expect": {
+        "testId": "retry-folder",
+        "read": "visible",
+        "equals": true
+      }
+    },
+    {
+      "expect": {
+        "testId": "open-folder",
+        "read": "visible",
+        "equals": true,
+        "note": "「フォルダを開く」も残る"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.session.lastFolder",
+        "equals": "/gone/notes",
+        "note": "記録は消さない"
+      }
+    },
+    {
+      "screenshot": "01-restore-failed"
+    },
+    {
+      "click": {
+        "testId": "retry-folder"
+      }
+    },
+    {
+      "expect": {
+        "testId": "restore-failure",
+        "read": "visible",
+        "equals": true,
+        "note": "まだ開けない間は、再試行しても理由が出る"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.session.lastFolder",
+        "equals": "/gone/notes"
+      }
+    },
+    {
+      "externalWrite": {
+        "path": "/gone/notes/back.md",
+        "text": "戻った\n"
+      }
+    },
+    {
+      "click": {
+        "testId": "retry-folder"
+      }
+    },
+    {
+      "expect": {
+        "testId": "file-tree",
+        "read": "visible",
+        "equals": true,
+        "note": "開けるようになった後の再試行で、ツリーが出る"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='back.md']",
+        "read": "visible",
+        "equals": true
+      }
+    },
+    {
+      "expect": {
+        "testId": "restore-failure",
+        "read": "count",
+        "equals": 0
+      }
+    },
+    {
+      "screenshot": "02-retry-opened"
+    }
+  ]
+}

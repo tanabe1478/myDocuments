@@ -1,0 +1,243 @@
+{
+  "seed": {
+    "files": {
+      "/work/notes/a.md": {
+        "text": "# 見出しA\n\n本文A\n"
+      },
+      "/work/notes/b.txt": {
+        "text": "素のテキスト\n"
+      },
+      "/work/notes/c.md": {
+        "text": "C\n"
+      },
+      "/work/notes/docs/guide.md": {
+        "text": "# ガイド\n"
+      },
+      "/work/notes/docs/memo.md": {
+        "text": "メモ\n"
+      }
+    },
+    "folderPath": "/work/notes",
+    "emptyFolders": [
+      "/work/notes/empty"
+    ],
+    "preferences": {
+      "theme": "light",
+      "autoHideChrome": false,
+      "sidebarOpen": true
+    }
+  },
+  "steps": [
+    {
+      "click": {
+        "testId": "open-folder"
+      }
+    },
+    {
+      "expect": {
+        "testId": "file-tree",
+        "read": "visible",
+        "equals": true
+      }
+    },
+    {
+      "click": {
+        "testId": "new-file"
+      }
+    },
+    {
+      "expect": {
+        "testId": "tree-name-input",
+        "read": "focused",
+        "equals": true,
+        "note": "新しいファイルの入力欄がツリーの先頭に出て、フォーカスがある"
+      }
+    },
+    {
+      "fill": {
+        "testId": "tree-name-input",
+        "value": "a/b"
+      }
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "expect": {
+        "testId": "tree-name-input",
+        "read": "attr:aria-invalid",
+        "equals": "true",
+        "note": "区切り文字を含む名前は拒否され、入力欄が残る"
+      }
+    },
+    {
+      "expect": {
+        "testId": "tree-name-error",
+        "contains": "使えません",
+        "note": "拒否の理由が入力欄の近くに出る"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.files.size",
+        "equals": 5,
+        "note": "何も作られていない"
+      }
+    },
+    {
+      "screenshot": "01-invalid-name"
+    },
+    {
+      "fill": {
+        "testId": "tree-name-input",
+        "value": "idea"
+      }
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "idea.md",
+        "note": "拡張子がなければ .md が付き、作ったファイルが開く"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.files.has('/work/notes/idea.md')",
+        "equals": true,
+        "note": "ファイルが作られた"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='idea.md']",
+        "read": "attr:aria-current",
+        "equals": "true"
+      }
+    },
+    {
+      "screenshot": "02-created-and-opened"
+    },
+    {
+      "click": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='docs'] > .tree-row",
+        "button": "right"
+      }
+    },
+    {
+      "expect": {
+        "testId": "tree-context-menu",
+        "read": "visible",
+        "equals": true,
+        "note": "右クリックメニュー（項目）が出る"
+      }
+    },
+    {
+      "expect": {
+        "role": "menuitem",
+        "name": "ゴミ箱に移動",
+        "read": "visible",
+        "equals": true,
+        "note": "項目のメニューには 4 つの項目がある"
+      }
+    },
+    {
+      "screenshot": "03-context-menu"
+    },
+    {
+      "click": {
+        "role": "menuitem",
+        "name": "新しいフォルダ",
+        "exact": true
+      }
+    },
+    {
+      "fill": {
+        "testId": "tree-name-input",
+        "value": "ideas"
+      }
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='ideas']",
+        "read": "attr:aria-expanded",
+        "equals": "true",
+        "note": "作ったフォルダは展開して選択する"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='ideas']",
+        "read": "attr:data-selected",
+        "equals": "true"
+      }
+    },
+    {
+      "click": {
+        "testId": "explorer-tree-area",
+        "button": "right",
+        "position": {
+          "x": 120,
+          "y": 520
+        }
+      }
+    },
+    {
+      "expect": {
+        "role": "menuitem",
+        "name": "名前を変更",
+        "read": "count",
+        "equals": 0,
+        "note": "空き領域のメニューに「名前を変更」はない"
+      }
+    },
+    {
+      "press": "Escape"
+    },
+    {
+      "expect": {
+        "testId": "tree-context-menu",
+        "read": "count",
+        "equals": 0,
+        "note": "Esc で閉じる"
+      }
+    },
+    {
+      "focus": {
+        "testId": "new-file"
+      }
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "expect": {
+        "testId": "tree-name-input",
+        "read": "visible",
+        "equals": true
+      }
+    },
+    {
+      "press": "Escape"
+    },
+    {
+      "expect": {
+        "testId": "tree-name-input",
+        "read": "count",
+        "equals": 0,
+        "note": "Esc で取り消すと何も作られない"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.files.has('/work/notes/Esc.md')",
+        "equals": false
+      }
+    }
+  ]
+}

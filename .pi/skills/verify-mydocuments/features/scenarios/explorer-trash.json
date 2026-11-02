@@ -1,0 +1,203 @@
+{
+  "seed": {
+    "files": {
+      "/work/notes/a.md": {
+        "text": "# 見出しA\n\n本文A\n"
+      },
+      "/work/notes/b.txt": {
+        "text": "素のテキスト\n"
+      },
+      "/work/notes/c.md": {
+        "text": "C\n"
+      },
+      "/work/notes/docs/guide.md": {
+        "text": "# ガイド\n"
+      },
+      "/work/notes/docs/memo.md": {
+        "text": "メモ\n"
+      }
+    },
+    "folderPath": "/work/notes",
+    "emptyFolders": [
+      "/work/notes/empty"
+    ],
+    "preferences": {
+      "theme": "light",
+      "autoHideChrome": false,
+      "sidebarOpen": true
+    }
+  },
+  "steps": [
+    {
+      "click": {
+        "testId": "open-folder"
+      }
+    },
+    {
+      "focus": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='b.txt']"
+      }
+    },
+    {
+      "press": "Delete"
+    },
+    {
+      "expect": {
+        "testId": "confirm-trash",
+        "read": "visible",
+        "equals": true,
+        "note": "毎回確認が出る"
+      }
+    },
+    {
+      "expect": {
+        "testId": "confirm-trash",
+        "read": "attr:role",
+        "equals": "alertdialog"
+      }
+    },
+    {
+      "expect": {
+        "testId": "confirm-trash",
+        "contains": "\"b.txt\" をゴミ箱に移動しますか？"
+      }
+    },
+    {
+      "expect": {
+        "testId": "trash-cancel",
+        "read": "focused",
+        "equals": true,
+        "note": "既定のフォーカスはキャンセル"
+      }
+    },
+    {
+      "screenshot": "01-confirm-trash"
+    },
+    {
+      "press": "Escape"
+    },
+    {
+      "expect": {
+        "testId": "confirm-trash",
+        "read": "count",
+        "equals": 0,
+        "note": "Esc で取り消すと何も起きない"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.trashed",
+        "equals": []
+      }
+    },
+    {
+      "press": "Delete"
+    },
+    {
+      "click": {
+        "testId": "trash-ok"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='b.txt']",
+        "read": "count",
+        "equals": 0,
+        "note": "確定するとツリーから消える"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.trashed",
+        "equals": [
+          "/work/notes/b.txt"
+        ]
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='c.md']",
+        "read": "attr:data-selected",
+        "equals": "true",
+        "note": "選択は隣の項目へ移る"
+      }
+    },
+    {
+      "click": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='docs'] > .tree-row"
+      }
+    },
+    {
+      "click": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='guide.md'] > .tree-row"
+      }
+    },
+    {
+      "click": {
+        "css": ".cm-content"
+      }
+    },
+    {
+      "press": "ControlOrMeta+End"
+    },
+    {
+      "type": "未保存の行"
+    },
+    {
+      "click": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='docs'] > .tree-row",
+        "button": "right"
+      }
+    },
+    {
+      "click": {
+        "role": "menuitem",
+        "name": "ゴミ箱に移動",
+        "exact": true
+      }
+    },
+    {
+      "expect": {
+        "testId": "confirm-trash",
+        "contains": "フォルダ \"docs\" とその中身をゴミ箱に移動しますか？"
+      }
+    },
+    {
+      "click": {
+        "testId": "trash-ok"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='docs']",
+        "read": "count",
+        "equals": 0
+      }
+    },
+    {
+      "expect": {
+        "testId": "conflict-bar",
+        "read": "visible",
+        "equals": true,
+        "note": "未保存の変更があれば競合バーが出る（監視の通知は待たない）"
+      }
+    },
+    {
+      "expect": {
+        "testId": "unsaved-mark",
+        "read": "visible",
+        "equals": true
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText()",
+        "contains": "未保存の行",
+        "note": "本文は残る"
+      }
+    },
+    {
+      "screenshot": "02-trashed-open-document"
+    }
+  ]
+}

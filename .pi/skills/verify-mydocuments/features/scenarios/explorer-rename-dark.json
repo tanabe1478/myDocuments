@@ -1,0 +1,252 @@
+{
+  "seed": {
+    "files": {
+      "/work/notes/a.md": {
+        "text": "# 見出しA\n\n本文A\n"
+      },
+      "/work/notes/b.txt": {
+        "text": "素のテキスト\n"
+      },
+      "/work/notes/c.md": {
+        "text": "C\n"
+      },
+      "/work/notes/docs/guide.md": {
+        "text": "# ガイド\n"
+      },
+      "/work/notes/docs/memo.md": {
+        "text": "メモ\n"
+      }
+    },
+    "folderPath": "/work/notes",
+    "emptyFolders": [
+      "/work/notes/empty"
+    ],
+    "preferences": {
+      "theme": "dark",
+      "autoHideChrome": false,
+      "sidebarOpen": true
+    }
+  },
+  "steps": [
+    {
+      "click": {
+        "testId": "open-folder"
+      }
+    },
+    {
+      "click": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='a.md'] > .tree-row"
+      }
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "a.md"
+      }
+    },
+    {
+      "click": {
+        "css": ".cm-content"
+      }
+    },
+    {
+      "press": "ControlOrMeta+End"
+    },
+    {
+      "type": "追記した行"
+    },
+    {
+      "expect": {
+        "testId": "unsaved-mark",
+        "read": "visible",
+        "equals": true,
+        "note": "未保存の変更がある"
+      }
+    },
+    {
+      "focus": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='a.md']"
+      }
+    },
+    {
+      "press": "F2"
+    },
+    {
+      "expect": {
+        "testId": "tree-name-input",
+        "read": "focused",
+        "equals": true,
+        "note": "名前の変更の入力欄が出る（拡張子の前まで選択）"
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const i = document.querySelector('[data-testid=tree-name-input]'); return [i.selectionStart, i.selectionEnd]; })()",
+        "equals": [
+          0,
+          1
+        ]
+      }
+    },
+    {
+      "screenshot": "01-rename-input-dark"
+    },
+    {
+      "fill": {
+        "testId": "tree-name-input",
+        "value": "renamed.md"
+      }
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "renamed.md",
+        "note": "上部バーの名前が新しいパスになる"
+      }
+    },
+    {
+      "expect": {
+        "testId": "unsaved-mark",
+        "read": "visible",
+        "equals": true,
+        "note": "未保存の状態が残る"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText()",
+        "contains": "追記した行",
+        "note": "本文が残る"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.watched",
+        "equals": "/work/notes/renamed.md",
+        "note": "監視が新しいパスへ移る"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.session.lastPath",
+        "equals": "/work/notes/renamed.md",
+        "note": "前回の文書の記録が新しいパスになる"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.readDrafts().map((d) => d.path)",
+        "equals": [
+          "/work/notes/renamed.md"
+        ],
+        "timeout": 4000,
+        "note": "草稿のパスが新しいパスになる"
+      }
+    },
+    {
+      "expect": {
+        "testId": "conflict-bar",
+        "read": "count",
+        "equals": 0,
+        "note": "削除扱いにならない"
+      }
+    },
+    {
+      "screenshot": "02-after-rename-dark"
+    },
+    {
+      "click": {
+        "css": ".cm-content"
+      }
+    },
+    {
+      "press": "ControlOrMeta+s"
+    },
+    {
+      "expect": {
+        "testId": "unsaved-mark",
+        "read": "count",
+        "equals": 0
+      }
+    },
+    {
+      "observe": "saved-at-new-path",
+      "files": [
+        "/work/notes/renamed.md",
+        "/work/notes/a.md"
+      ]
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.files.has('/work/notes/a.md')",
+        "equals": false,
+        "note": "古いパスには書かれない"
+      }
+    },
+    {
+      "click": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='docs'] > .tree-row"
+      }
+    },
+    {
+      "click": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='guide.md'] > .tree-row"
+      }
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "guide.md"
+      }
+    },
+    {
+      "click": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='docs'] > .tree-row",
+        "button": "right"
+      }
+    },
+    {
+      "click": {
+        "role": "menuitem",
+        "name": "名前を変更",
+        "exact": true
+      }
+    },
+    {
+      "fill": {
+        "testId": "tree-name-input",
+        "value": "manuscripts"
+      }
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "guide.md"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.watched",
+        "equals": "/work/notes/manuscripts/guide.md",
+        "note": "フォルダの名前変更でも監視が追従する"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][aria-label='guide.md']",
+        "read": "attr:aria-current",
+        "equals": "true",
+        "note": "展開状態が引き継がれ、文書が強調される"
+      }
+    },
+    {
+      "screenshot": "03-after-folder-rename-dark"
+    }
+  ]
+}

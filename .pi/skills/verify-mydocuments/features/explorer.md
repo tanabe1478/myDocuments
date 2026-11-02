@@ -8,8 +8,13 @@
 - EXP-4: 5000 件を超えるフォルダは、先頭の 5000 件と、末尾の「ほか N 件」の行（クリック不可）。ちょうど 5000 件なら切り捨てない。
 - EXP-5: 文書を開く。クリックでも、キーボードの Enter と Space でも開く。「開く」と同じ流れで、未保存の変更があれば確認が出る（キャンセルで元のまま）。開けたら本文にフォーカスが移る。開いている文書のファイルは aria-current が true で強調される。同じファイルをもう一度押しても何もしない。
 - EXP-6: キーボード。上下で移動、右で展開（展開済みなら最初の子へ）、左で折りたたみ（折りたたみ済みなら親へ）、Home と End。roving tabindex で、Tab で入る項目は 1 つだけ。
-- EXP-7: 復元。開いたフォルダは session に保存され、再読み込み（実アプリでは次回の起動）で復元される。展開状態は復元しない。復元先がない、または読めないときは、未選択の表示に戻り、トーストで短く知らせる（起動は妨げない）。
+- EXP-7: 復元。開いたフォルダは session に保存され、再読み込み（実アプリでは次回の起動）で復元される。展開状態は復元しない。復元先がない、または読めないときは、未選択の表示に戻り、トーストで短く知らせる（起動は妨げない）。session の記録は消さない（N2）。空の状態に「前回のフォルダ「名前」を開けませんでした（理由）」（restore-failure）、「再試行」（retry-folder）、「フォルダを開く」が出る。開けるようになった後の再試行でツリーが出る。別のフォルダを開けば、その記録で上書きする。
 - EXP-8: .txt と .text は、Markdown の装飾（見出し、記号の薄色、ぶら下げインデントなど）なしの素のテキストで表示される。.md では付く。別名保存で拡張子が変わると表示も切り替わる。保存の BOM と改行は変わらない。フォーカスモードの段落は、.txt では空行だけで分ける。
+- EXP-9: 作成。見出し部の「新しいファイル」（new-file）と「新しいフォルダ」（new-folder）、ツリーの項目と空き領域の右クリックメニュー（tree-context-menu。role menu、項目は menuitem）。作成先は、選択中のフォルダ、ファイルが選択中ならその親、何も選んでいなければルート（閉じていれば展開する）。名前はツリーの中の入力欄（tree-name-input）。Enter で確定、Esc で取り消し、フォーカスが外れたら有効な名前なら確定・空なら取り消し。IME の変換中の Enter では確定しない。ファイルは拡張子がなければ .md が付き、作ったファイルが開く。フォルダは展開して選択する。
+- EXP-10: 名前の検査。拒否するのは、空・空白だけ、/ や \ を含む、. と ..、ドットで始まる、同じフォルダの同名（大文字小文字だけの違いはファイルシステムの判断）、< > : " | ? * と制御文字、末尾のドットと空白。拒否したら入力欄を残し、理由（tree-name-error）を入力欄の直下に出す（aria-invalid、aria-describedby）。何も作られない。
+- EXP-11: 名前の変更。F2 か右クリックの「名前を変更」。入力欄の選択は拡張子の前まで。自分自身の名前と大文字小文字だけの変更は通る。開いている文書（またはそれを含むフォルダ）の名前を変えると、文書は新しいパスへ移る（上部バーの名前、監視、前回の文書、草稿のパス）。本文と未保存の状態は残り、保存は新しいパスに書かれ、削除扱いにならない。失敗したら文書は古いパスのまま。展開状態と選択は新しいパスへ引き継ぐ。
+- EXP-12: ゴミ箱への移動。Delete（macOS は ⌘⌫ も）か右クリックの「ゴミ箱に移動」。毎回、確認（confirm-trash。role alertdialog。既定のフォーカスはキャンセル、Esc で取り消し）。確定するとツリーから消え、選択は隣へ移る。開いている文書（またはそれを含むフォルダ）を移すと、監視の通知を待たずに外部変更の確認が走り、未保存の変更がなければ「削除された」の表示、あれば競合バー。
+- EXP-13: 外部の変更の自動反映。ルートと展開中のフォルダは監視され、外部で項目が増減・名前の変更をされると、操作なしでツリーに反映される。展開状態と選択は保たれ、消えたフォルダは展開をやめる。通知の読み直しはトーストを出さない。
 
 ## How to get to it (user POV)
 
@@ -17,6 +22,9 @@
 - サイドバーの「フォルダを開く」（open-folder）、開いた後は「別のフォルダを開く」（change-folder）。ネイティブのフォルダ選択ダイアログは、メモリ bridge では seed の folderPath が戻り値の代わり。
 - ツリーの項目（role treeitem。名前はファイル名、フォルダへのリンクは「名前（リンク）」）。行のクリック、フォーカスしてからの矢印・Home・End・Enter・Space。
 - 再読み込みボタン（refresh-folder）。
+- 作成: new-file、new-folder（ボタン。キーボードは focus して Enter か Space）。項目の右クリック、空き領域の右クリック、項目にフォーカスして Shift+F10 かメニューキー。メニュー内は上下・Home・End・Enter・Esc。
+- 名前の変更: 項目にフォーカスして F2、右クリックの「名前を変更」。ゴミ箱: 項目にフォーカスして Delete（macOS は ⌘⌫）、右クリックの「ゴミ箱に移動」。
+- 前回のフォルダを開けなかったときの「再試行」（retry-folder）。
 - 起動時の自動処理: 前回のフォルダ（session.lastFolder）の復元。サイドバーが閉じていても読み込まれ、開くとすぐ見える。
 
 ## Driving it with Playwright（メモリ bridge）
@@ -29,9 +37,14 @@ Preconditions: Launch 済みで Doctor が全 PASS。フォルダ構造は seed 
 | explorer-open.json | a.md、b.txt をクリック。img.png と notes.json を押す。b.txt を編集して a.md を押し、確認をキャンセル、もう一度押して「保存しない」 | 開いたファイルが aria-current。a.md には .cm-md-h1 があり、b.txt にはない（見出し風の行と本文の行が同じ大きさと太さ）。開けないファイルを押しても doc-title は変わらず、bridge の open は 2 回のまま。未保存のときは alertdialog が出て、キャンセルで b.txt と未保存マークが残り、「保存しない」で a.md が開く。画像は 01-md-open.png、02-txt-open.png、03-disabled-item.png、04-discard-confirm.png |
 | explorer-keyboard.json | Archive にフォーカスして、下、右、右、左、左、End、Home、下 4 回、Enter。img.png で Enter | 各キーの結果の位置（focused）と aria-expanded が期待どおり。Tab で入る項目は 1 つ。a.md が Enter で開き、本文にフォーカス。img.png は Enter でも開かない。画像は 01-keyboard-focus.png |
 | explorer-restore.json | seed の session.lastFolder から起動し、docs を展開して reload | 起動時にフォルダ名が notes で、docs は折りたたまれている。reload 後も復元され、トーストは出ない |
-| explorer-restore-missing.json | 存在しないフォルダが session.lastFolder の状態で起動 | 未選択の表示（sidebar-empty、open-folder）に戻り、トーストに「前回のフォルダを開けませんでした」。本文は使え、session.lastFolder は消える。画像は 01-missing.png |
+| explorer-restore-missing.json | 存在しないフォルダが session.lastFolder の状態で起動 | 未選択の表示（sidebar-empty、open-folder）に戻り、トーストに「前回のフォルダを開けませんでした」。restore-failure と retry-folder が出る。本文は使え、session.lastFolder は消えずに残る。画像は 01-missing.png |
 | explorer-many.json | 5003 件のフォルダを展開 | 「ほか 3 件」の行（aria-disabled）。項目は 5002 行（フォルダ、readme.md、先頭 5000 件）。item-05000.md はあり、item-05001.md はない。画像は 01-more-row.png |
 | explorer-dark.json | ダークで、前回の文書（b.txt）とフォルダが復元された状態で起動し、docs を展開、a.md をクリック | 文書とフォルダが両方復元される。b.txt が強調され、灰色の項目が読める。画像は 01-dark-tree.png、02-dark-md.png |
+| explorer-create.json（-dark あり） | 新しいファイルのボタン、区切り文字を含む名前、「idea」、項目の右クリックから新しいフォルダ、空き領域のメニュー、Esc、ボタンを Enter | 入力欄がフォーカスされ、不正な名前は aria-invalid と理由が出て何も作られない。idea.md が作られて開く。メニューは項目で 4 つ、空き領域で 2 つ。作ったフォルダは展開・選択。画像は 01-invalid-name.png、02-created-and-opened.png、03-context-menu.png（ダークは -dark 付き） |
+| explorer-rename.json（-dark あり） | a.md を開いて追記、F2 で renamed.md、保存。docs を開いた guide.md を右クリックで docs の名前変更 | 選択が [0, 1]。上部バーが renamed.md、未保存マーク・本文・監視・lastPath・草稿のパスが新しいパス。保存は新しいパスだけに書かれる。フォルダの名前変更でも guide.md が追従。画像は 01-rename-input.png、02-after-rename.png、03-after-folder-rename.png |
+| explorer-trash.json（-dark あり） | b.txt で Delete、Esc、Delete して確定。未保存の guide.md を含む docs を右クリックで移す | 確認は alertdialog でフォーカスはキャンセル。Esc では何も起きない。確定で消え、選択は c.md。docs を移すと競合バーが出て本文が残る。画像は 01-confirm-trash.png、02-trashed-open-document.png |
+| explorer-external.json | docs を展開し、外部でファイル・フォルダを足す・消す、docs ごと消す | 操作なしでツリーに反映され、展開は保たれる。watchedFolders がルートと展開中のフォルダ。docs が消えると展開と監視も外れる。トーストなし。画像は 01-external-changes.png |
+| explorer-restore-retry.json（-dark あり） | 存在しない前回のフォルダで起動し、再試行、フォルダができた後に再試行 | restore-failure に「前回のフォルダ「notes」を開けませんでした」、retry-folder と open-folder。記録は残る。再試行でツリーが出る。画像は 01-restore-failed.png、02-retry-opened.png |
 
 ```
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/explorer-tree.json
@@ -41,9 +54,18 @@ node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenari
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/explorer-restore-missing.json
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/explorer-many.json
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/explorer-dark.json
+node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/explorer-create.json
+node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/explorer-create-dark.json
+node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/explorer-rename.json
+node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/explorer-rename-dark.json
+node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/explorer-trash.json
+node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/explorer-trash-dark.json
+node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/explorer-external.json
+node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/explorer-restore-retry.json
+node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/explorer-restore-retry-dark.json
 ```
 
-Tauri の窓（secondary）。run ディレクトリの中に見本のフォルダを作り、`tauri.mjs start --folder <見本フォルダ> --prefs <sidebarOpen: true の設定>` で起動して `tauri.mjs shot` で撮る。実際のファイルシステムからツリーが復元されることの確認で、キー入力とクリックは送らない。
+Tauri の窓（secondary）。作成・名前の変更・ゴミ箱は窓へのキー入力・クリックが要るので撮らない（窓はボタンとツリーの描画だけ）。run ディレクトリの中に見本のフォルダを作り、`tauri.mjs start --folder <見本フォルダ> --prefs <sidebarOpen: true の設定>` で起動して `tauri.mjs shot` で撮る。実際のファイルシステムからツリーが復元されることの確認で、キー入力とクリックは送らない。
 
 ## Gotchas
 
@@ -55,3 +77,9 @@ Tauri の窓（secondary）。run ディレクトリの中に見本のフォル�
 - ツリーの項目は li で、展開中は子の行を内側に含む。li の textContent や aria の名前に子の名前が混ざらないよう、li には aria-label（ファイル名）が付いている。名前で指すときは exact にする。
 - 「ほか N 件」と「読み込み中…」「空のフォルダ」は treeitem（aria-disabled）で、testId は tree-note。ファイルの testId は tree-item。
 - ネイティブ側の並べ替え（5000 件の切り捨ての基準）と画面の並べ替え（Intl.Collator）の細かい順序は違うことがある。メモリ bridge は画面側と同じ Collator を使うので、この差は再現しない。
+- 作成・名前の変更・ゴミ箱・外部の変更の結果は、メモリ bridge の仮想ファイルシステム（window.__mdeE2E.files、trashed、renames、watchedFolders）で確かめる。本物のゴミ箱、本物のファイルの監視、シンボリックリンクと登録外のパスの拒否は、この Skill では確かめない（src-tauri の cargo test が正本。本物のゴミ箱は CI だけ IME_TEST_REAL_TRASH=1 で動く）。
+- メモリ bridge の同名の判定は、大文字小文字を区別しないファイルシステム（macOS、Windows）の振る舞い。区別する FS での扱いは Rust 側の判断。
+- ツリーの右クリックは click に button: right。空き領域は testId explorer-tree-area に position を付ける（項目が少ないとき、下のほうの y を指す）。キー入力で F2、Delete は、項目に focus してから press する（入力欄の中のキーはツリーに届かない）。
+- 外部の変更の通知は、監視しているフォルダ（watchedFolders）のときだけ届く。展開していないフォルダへの externalWrite は、通知なし。
+- 名前の変更の直後は、開いている文書のディスクの確認が一度走る。直後の保存の操作は、その確認が終わるまで受け付けない（expect の timeout で待つ）。
+- 前回のフォルダの再試行は、memory bridge では files にそのフォルダの下のファイルを externalWrite で置くと「開けるようになった」状態になる。

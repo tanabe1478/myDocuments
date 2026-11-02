@@ -97,6 +97,12 @@ export function setup(options: SetupOptions = {}) {
     pickFolderPath: vi.fn(async (): Promise<string | null> => null),
     openFolder: vi.fn(async (_path: string) => {}),
     listFolder: vi.fn(async (_path: string): Promise<FolderListing> => ({ entries: [], total: 0 })),
+    createFile: vi.fn(async (parent: string, name: string) => `${parent}/${name}`),
+    createFolder: vi.fn(async (parent: string, name: string) => `${parent}/${name}`),
+    renameEntry: vi.fn(async (path: string, newName: string) => `${path.slice(0, path.lastIndexOf('/'))}/${newName}`),
+    trashEntry: vi.fn(async (_path: string) => {}),
+    watchFolders: vi.fn(async (_paths: readonly string[]) => {}),
+    onFolderChanged: vi.fn(async (_cb: (path: string) => void) => () => {}),
     saveSession: vi.fn(async (patch: Partial<SessionInfo>) => {
       session = { ...session, ...patch };
     }),

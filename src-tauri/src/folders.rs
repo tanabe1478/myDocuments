@@ -27,6 +27,14 @@ impl OpenFolders {
         }
     }
 
+    /// canonicalize 済みのパスが、登録済みのフォルダ（ルート）そのものか。
+    pub fn is_root(&self, canonical: &Path) -> bool {
+        self.0
+            .lock()
+            .map(|list| list.iter().any(|root| root == canonical))
+            .unwrap_or(false)
+    }
+
     /// canonicalize 済みのパスが、登録済みのフォルダ自身か、その配下か。
     /// `Path::starts_with` は成分ごとの比較なので、`/a/foo` は `/a/foobar` を許さない。
     pub fn allows(&self, canonical: &Path) -> bool {

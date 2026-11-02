@@ -1,27 +1,85 @@
-import { useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, type KeyboardEvent } from 'react';
+import type { InlineEdit } from '../explorer/controller';
 import { TREE_KEYS, flattenRows, navigate, type TreeAction, type TreeKey, type TreeNode, type TreeRow } from '../explorer/tree';
+import { NameInput } from './NameInput';
+import { isMacPlatform } from './shortcuts';
 
 interface Props {
   nodes: readonly TreeNode[];
   /** 開いている文書のパス（ツリー上で強調する）。 */
   currentPath: string | null;
+  /** 選択（キーボードの位置）している項目。Tab で入る項目でもある。 */
+  selectedId: string | null;
+  edit: InlineEdit | null;
+  /** ルートのフォルダのパス（ルート直下に作るときの入力欄の位置）。 */
+  rootPath: string;
+  onSelect(id: string): void;
   onToggle(path: string): void;
   onExpand(path: string): void;
   onCollapse(path: string): void;
   onOpenFile(path: string): void;
+  onRename(path: string): void;
+  onTrash(path: string): void;
+  /** キーボード（Shift+F10、メニューキー）で、項目のメニューを開く。座標は項目の行の位置。 */
+  onMenuKey(path: string, x: number, y: number): void;
+  onEditCommit(value: string): void;
+  onEditCancel(): void;
+  onEditBlur(value: string): void;
+  onEditChange(): void;
 }
 
 /**
  * フォルダのツリー（WAI-ARIA の tree パターン）。role=tree / treeitem / group、aria-level、aria-expanded、
  * roving tabindex（Tab で入る項目は 1 つだけ。中は矢印キー）。操作の判断は explorer/tree.ts の navigate。
  * 開けないファイルとフォルダへのリンクは aria-disabled で、クリックや Enter では何も起きない。
+ * F2 で名前の変更、Delete（macOS は ⌘⌫ も）でゴミ箱へ。作成と名前の変更の入力欄は、ツリーの中に出す。
  */
-export function FileTree({ nodes, currentPath, onToggle, onExpand, onCollapse, onOpenFile }: Props) {
+export function FileTree({
+  nodes,
+  currentPath,
+  selectedId,
+  edit,
+  rootPath,
+  onSelect,
+  onToggle,
+  onExpand,
+  onCollapse,
+  onOpenFile,
+  onRename,
+  onTrash,
+  onMenuKey,
+  onEditCommit,
+  onEditCancel,
+  onEditBlur,
+  onEditChange,
+}: Props) {
   const rows = flattenRows(nodes);
-  const [activeId, setActiveId] = useState<string | null>(null);
   const items = useRef(new Map<string, HTMLElement>());
   // Tab で入る項目。記録した項目がなくなった（折りたたんだ、再読み込みで消えた）ときは先頭。
-  const tabId = rows.some((r) => r.id === activeId) ? activeId : (rows[0]?.id ?? null);
+  const tabId = rows.some((r) => r.id === selectedId) ? selectedId : (rows[0]?.id ?? null);
+
+  // 入力欄が閉じた後、フォーカスがどこにも残っていなければ、選択している項目へ戻す（取り消し、確定の後）。
+  // 確定の直後は、新しい項目がまだ一覧にないことがあるので、現れるまで（次の描画で）待つ。
+  const restoreFocus = useRef(false);
+  useEffect(() => {
+    if (edit) {
+      restoreFocus.current = true;
+      return;
+    }
+    if (!restoreFocus.current) return;
+    const active = document.activeElement;
+    if (active && active !== document.body) {
+      restoreFocus.current = false;
+      return;
+    }
+    // 何も選んでいなければ、戻さない（先頭の項目へ移すと、それが選択になり、作成先が変わってしまう）。
+    if (selectedId === null) {
+      restoreFocus.current = false;
+    } else if (items.current.has(selectedId)) {
+      restoreFocus.current = false;
+      items.current.get(selectedId)?.focus();
+    }
+  });
 
   const run = (row: TreeRow, action: TreeAction) => {
     const path = row.entry?.path;
@@ -33,26 +91,86 @@ export function FileTree({ nodes, currentPath, onToggle, onExpand, onCollapse, o
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLUListElement>) => {
-    if (e.nativeEvent.isComposing || e.ctrlKey || e.metaKey || e.altKey || !TREE_KEYS.includes(e.key)) return;
+    if (e.nativeEvent.isComposing) return;
     // 項目そのものにフォーカスがあるときだけ扱う（中の入力欄などのキーは奪わない）。
     const target = e.target instanceof HTMLElement ? e.target : null;
     const id = target?.dataset.rowId;
     if (id === undefined) return;
+    const row = rows.find((r) => r.id === id);
+    const noModifier = !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey;
+
+    // 項目の操作。補足の行（entry がない）には効かせない。
+    if (row?.entry) {
+      if (e.key === 'F2' && noModifier) {
+        e.preventDefault();
+        onRename(row.id);
+        return;
+      }
+      const macTrash = isMacPlatform() && e.key === 'Backspace' && e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+      if ((e.key === 'Delete' && noModifier) || macTrash) {
+        e.preventDefault();
+        onTrash(row.id);
+        return;
+      }
+    }
+    if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey)) {
+      e.preventDefault();
+      const rect = target?.querySelector('.tree-row')?.getBoundingClientRect();
+      onMenuKey(id, (rect?.left ?? 0) + 24, (rect?.bottom ?? 0) - 4);
+      return;
+    }
+
+    if (e.ctrlKey || e.metaKey || e.altKey || !TREE_KEYS.includes(e.key)) return;
     const result = navigate(rows, id, e.key as TreeKey);
     if (!result) return;
     e.preventDefault();
     if (result.focusId !== id) {
-      setActiveId(result.focusId);
+      onSelect(result.focusId);
       items.current.get(result.focusId)?.focus();
     }
-    const row = rows.find((r) => r.id === result.focusId);
-    if (row && result.action) run(row, result.action);
+    const next = rows.find((r) => r.id === result.focusId);
+    if (next && result.action) run(next, result.action);
+  };
+
+  const input = (label: string, level: number, mode: InlineEdit['mode'], current: InlineEdit) => (
+    <NameInput
+      initial={current.initial}
+      selection={current.selection}
+      error={current.error}
+      busy={current.busy}
+      ariaLabel={label}
+      onCommit={onEditCommit}
+      onCancel={onEditCancel}
+      onBlurValue={onEditBlur}
+      onChange={onEditChange}
+      key={`${mode}:${current.parentPath}:${current.targetPath ?? ''}:${level}`}
+    />
+  );
+
+  /** 作成の入力欄の行（作成先のフォルダの最初の子として出す）。 */
+  const createRow = (level: number) => {
+    if (!edit || edit.mode === 'rename') return null;
+    return (
+      <li key="tree-create-row" role="none" className="tree-edit-row" data-testid="tree-edit-row">
+        <div className="tree-row" style={{ paddingLeft: `${6 + (level - 1) * 14}px` }}>
+          <span className="tree-twisty" aria-hidden="true" />
+          <span className="tree-icon" aria-hidden="true">
+            {edit.mode === 'create-folder' ? <FolderIcon /> : <FileIcon />}
+          </span>
+          <div className="tree-name-field">
+            {input(edit.mode === 'create-folder' ? '新しいフォルダの名前' : '新しいファイルの名前', level, edit.mode, edit)}
+          </div>
+        </div>
+      </li>
+    );
   };
 
   const render = (node: TreeNode) => {
     const { row } = node;
     const current = row.entry !== undefined && row.kind === 'file' && row.entry.path === currentPath;
     const disabled = !row.expandable && !row.openable;
+    const renaming = edit?.mode === 'rename' && row.entry !== undefined && edit.targetPath === row.entry.path;
+    const createHere = edit !== null && edit.mode !== 'rename' && row.entry !== undefined && edit.parentPath === row.entry.path;
     const hint =
       row.kind === 'symlinkDir'
         ? `${row.label}（フォルダへのリンク。開きません）`
@@ -60,7 +178,7 @@ export function FileTree({ nodes, currentPath, onToggle, onExpand, onCollapse, o
           ? `${row.label}（開けない形式です）`
           : row.label;
     const click = () => {
-      setActiveId(row.id);
+      onSelect(row.id);
       items.current.get(row.id)?.focus();
       if (row.expandable && row.entry) onToggle(row.entry.path);
       else if (row.openable && row.entry) onOpenFile(row.entry.path);
@@ -78,6 +196,7 @@ export function FileTree({ nodes, currentPath, onToggle, onExpand, onCollapse, o
         data-row-id={row.id}
         data-kind={row.kind}
         data-path={row.entry?.path}
+        data-selected={row.id === selectedId ? 'true' : undefined}
         tabIndex={row.id === tabId ? 0 : -1}
         aria-level={row.level}
         aria-label={row.kind === 'symlinkDir' ? `${row.label}（リンク）` : row.label}
@@ -87,9 +206,9 @@ export function FileTree({ nodes, currentPath, onToggle, onExpand, onCollapse, o
       >
         <div
           className="tree-row"
-          title={row.kind === 'note' ? undefined : hint}
+          title={row.kind === 'note' || renaming ? undefined : hint}
           style={{ paddingLeft: `${6 + (row.level - 1) * 14}px` }}
-          onClick={row.kind === 'note' ? undefined : click}
+          onClick={row.kind === 'note' || renaming ? undefined : click}
         >
           <span className="tree-twisty" aria-hidden="true">
             {row.expandable ? <Chevron expanded={row.expanded} /> : null}
@@ -99,15 +218,20 @@ export function FileTree({ nodes, currentPath, onToggle, onExpand, onCollapse, o
               {row.kind === 'dir' || row.kind === 'symlinkDir' ? <FolderIcon /> : <FileIcon />}
             </span>
           )}
-          <span className="tree-name">{row.label}</span>
-          {row.kind === 'symlinkDir' && (
+          {renaming && edit ? (
+            <div className="tree-name-field">{input(`「${row.label}」の新しい名前`, row.level, edit.mode, edit)}</div>
+          ) : (
+            <span className="tree-name">{row.label}</span>
+          )}
+          {row.kind === 'symlinkDir' && !renaming && (
             <span className="tree-badge" aria-hidden="true">
               ↪
             </span>
           )}
         </div>
-        {node.children.length > 0 && (
+        {(node.children.length > 0 || createHere) && (
           <ul role="group" className="tree-group">
+            {createHere && createRow(row.level + 1)}
             {node.children.map(render)}
           </ul>
         )}
@@ -116,7 +240,19 @@ export function FileTree({ nodes, currentPath, onToggle, onExpand, onCollapse, o
   };
 
   return (
-    <ul role="tree" aria-label="フォルダのツリー" className="file-tree" data-testid="file-tree" onKeyDown={onKeyDown}>
+    <ul
+      role="tree"
+      aria-label="フォルダのツリー"
+      className="file-tree"
+      data-testid="file-tree"
+      onKeyDown={onKeyDown}
+      // フォーカスのある項目が、選択（作成先、F2、Delete の対象）。
+      onFocus={(e) => {
+        const id = e.target instanceof HTMLElement ? e.target.dataset.rowId : undefined;
+        if (id !== undefined) onSelect(id);
+      }}
+    >
+      {edit !== null && edit.mode !== 'rename' && edit.parentPath === rootPath && createRow(1)}
       {nodes.map(render)}
     </ul>
   );

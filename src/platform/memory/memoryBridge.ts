@@ -1,6 +1,7 @@
 // e2e 専用のメモリ実装。VITE_E2E=1 のビルドにだけ含まれる（src/platform/index.ts の __E2E__）。
 import type { EditorAdapter } from '../../editor/EditorAdapter';
 import { basename } from '../../document/state';
+import { checkName } from '../../explorer/names';
 import {
   BridgeError,
   FOLDER_LISTING_LIMIT,
@@ -88,6 +89,12 @@ export interface E2EState {
   listed: string[];
   /** 監視している文書のパス（watchDocument の最後の引数）。 */
   watched: string | null;
+  /** 監視しているフォルダ（watchFolders の最後の引数のうち、存在するもの）。 */
+  watchedFolders: string[];
+  /** ゴミ箱へ移した項目（移した順）。本物のゴミ箱の代わり。中身は戻せない。 */
+  trashed: string[];
+  /** 名前を変えた項目（変えた順）。 */
+  renames: Array<{ from: string; to: string }>;
   /** closeApp が呼ばれたか（アプリが終了したことの代わり）。 */
   closed: boolean;
   /** 全画面かどうか（toggleFullscreen が切り替える）。 */
@@ -111,6 +118,12 @@ export interface E2EState {
   externalWrite(path: string, bytes: number[] | null, options?: { notify?: boolean }): void;
   /** 監視の通知だけを送る（ファイルは変えない）。 */
   emitDocumentChanged(path: string): void;
+  /** 外部のプロセスによるフォルダの作成（空のフォルダ）。notify が true なら、監視しているフォルダの通知も届く。 */
+  externalMkdir(path: string, options?: { notify?: boolean }): void;
+  /** 外部のプロセスによる、ファイルまたはフォルダ（中身ごと）の削除。 */
+  externalRemove(path: string, options?: { notify?: boolean }): void;
+  /** フォルダの変更の通知だけを送る（監視しているフォルダのときだけ届く）。 */
+  emitFolderChanged(path: string): void;
   /** 窓を閉じる操作（閉じるボタン、Cmd+Q）を模す。 */
   requestClose(): void;
   readDrafts(): Draft[];
@@ -144,6 +157,11 @@ function normalizePath(path: string): string {
 
 const isUnder = (path: string, root: string) => root === '/' || path === root || path.startsWith(`${root}/`);
 
+function parentDir(path: string): string {
+  const cut = path.lastIndexOf('/');
+  return cut <= 0 ? '/' : path.slice(0, cut);
+}
+
 function bulkName(index: number): string {
   return `item-${String(index + 1).padStart(5, '0')}.md`;
 }
@@ -160,6 +178,7 @@ export function createMemoryBridge(): DocumentBridge {
   const known = new Set<string>();
   const changeListeners = new Set<(path: string) => void>();
   const closeListeners = new Set<() => void>();
+  const folderListeners = new Set<(path: string) => void>();
   const state: E2EState = {
     files: new Map(Object.entries(seed.files ?? {}).map(([p, b]) => [p, Uint8Array.from(b)])),
     calls: {
@@ -183,6 +202,9 @@ export function createMemoryBridge(): DocumentBridge {
     openedFolder: null,
     listed: [],
     watched: null,
+    watchedFolders: [],
+    trashed: [],
+    renames: [],
     closed: false,
     fullscreen: false,
     images: new Map(),
@@ -199,12 +221,30 @@ export function createMemoryBridge(): DocumentBridge {
       return f ? Array.from(f) : null;
     },
     externalWrite: (path, bytes, options) => {
+      const existed = state.files.has(path);
       if (bytes === null) state.files.delete(path);
       else state.files.set(path, Uint8Array.from(bytes));
-      if (options?.notify ?? true) state.emitDocumentChanged(path);
+      const notify = options?.notify ?? true;
+      if (notify) state.emitDocumentChanged(path);
+      // 一覧が変わるのは、項目が増えた・減ったとき（既存のファイルの書き換えでは変わらない）。
+      if (notify && existed !== (bytes !== null)) state.emitFolderChanged(parentDir(path));
     },
     emitDocumentChanged: (path) => {
       if (state.watched === path) changeListeners.forEach((l) => l(path));
+    },
+    externalMkdir: (path, options) => {
+      const folder = normalizePath(path);
+      if (!isFolder(folder)) emptyFolders.push(folder);
+      if (options?.notify ?? true) state.emitFolderChanged(parentDir(folder));
+    },
+    externalRemove: (path, options) => {
+      const target = normalizePath(path);
+      removeTree(target);
+      if (options?.notify ?? true) state.emitFolderChanged(parentDir(target));
+    },
+    emitFolderChanged: (path) => {
+      const folder = normalizePath(path);
+      if (state.watchedFolders.includes(folder)) folderListeners.forEach((l) => l(folder));
     },
     requestClose: () => closeListeners.forEach((l) => l()),
     readDrafts: () => Array.from(state.drafts.values(), (d) => structuredClone(d)),
@@ -249,6 +289,58 @@ export function createMemoryBridge(): DocumentBridge {
     }
     return Array.from(found, ([name, kind]) => ({ name, path: `${prefix}${name}`, kind }));
   }
+
+  /** 項目（ファイル、またはフォルダを中身ごと）をなくす。 */
+  function removeTree(target: string): void {
+    state.files.delete(target);
+    for (const key of Array.from(state.files.keys())) if (key.startsWith(`${target}/`)) state.files.delete(key);
+    for (let i = emptyFolders.length - 1; i >= 0; i--) if (isUnder(emptyFolders[i]!, target)) emptyFolders.splice(i, 1);
+  }
+
+  /** 親フォルダが空になって消えないよう、空のフォルダとして残す（実際のファイルシステムでは、フォルダは中身がなくても残る）。 */
+  function keepFolder(folder: string): void {
+    if (!isFolder(folder)) emptyFolders.push(folder);
+  }
+
+  const childPath = (dir: string, name: string) => (dir === '/' ? `/${name}` : `${dir}/${name}`);
+
+  /** 項目が存在するか（ファイルまたはフォルダ）。 */
+  const exists = (path: string) => state.files.has(path) || isFolder(path) || symlinkFolders.includes(path);
+
+  /** 操作の対象にできる、開いたフォルダの配下のフォルダ。crates の entries.rs の resolve_dir と同じ規則。 */
+  function requireFolder(path: string): string {
+    if (!path.startsWith('/')) throw new BridgeError('invalid-input', 'the path must be absolute');
+    const folder = normalizePath(path);
+    if (state.openedFolder === null || !isUnder(folder, state.openedFolder) || symlinkFolders.includes(folder)) {
+      throw new BridgeError('not-allowed', 'the folder was not opened in this session');
+    }
+    if (state.files.has(folder)) throw new BridgeError('invalid-input', 'the path is not a folder');
+    if (!isFolder(folder)) throw new BridgeError('not-found', 'no such folder');
+    return folder;
+  }
+
+  function requireName(name: string): void {
+    const check = checkName(name, []);
+    if (!check.ok) throw new BridgeError('invalid-input', check.message);
+  }
+
+  /** 大文字小文字を区別しない FS（macOS、Windows）のつもりで、同じ名前の項目があるか。 */
+  const nameTaken = (dir: string, name: string) =>
+    childrenOf(dir).some((e) => e.name.toLowerCase() === name.toLowerCase());
+
+  /** 既存の項目を指すパスの親フォルダと、パス。 */
+  function requireItem(path: string): { parent: string; item: string } {
+    if (!path.startsWith('/')) throw new BridgeError('invalid-input', 'the path must be absolute');
+    const item = normalizePath(path);
+    if (item === '/') throw new BridgeError('not-allowed', 'the path does not name an item inside an opened folder');
+    const parent = requireFolder(parentDir(item));
+    if (!exists(item)) throw new BridgeError('not-found', 'no such item');
+    if (item === state.openedFolder) throw new BridgeError('not-allowed', 'an opened folder itself cannot be changed');
+    return { parent, item };
+  }
+
+  /** 自分の操作の後にも、監視しているフォルダの通知は届く（本物の監視と同じ）。 */
+  const notifyFolderSoon = (dir: string) => void setTimeout(() => state.emitFolderChanged(dir), 0);
 
   /** 実際にバイト列を書き換える。内容が同一なら書かない（unchanged）。 */
   function commit(kind: 'save' | 'saveAs', path: string, bytes: Uint8Array): SaveOutcome {
@@ -385,6 +477,68 @@ export function createMemoryBridge(): DocumentBridge {
           return dirs || folderCollator.compare(a.name, b.name) || (a.name < b.name ? -1 : 1);
         });
       return { entries: visible.slice(0, FOLDER_LISTING_LIMIT), total: visible.length };
+    },
+    async createFile(parent, name) {
+      const dir = requireFolder(parent);
+      requireName(name);
+      if (nameTaken(dir, name)) throw new BridgeError('already-exists', 'an item with that name already exists');
+      state.files.set(childPath(dir, name), new Uint8Array());
+      notifyFolderSoon(dir);
+      return childPath(dir, name);
+    },
+    async createFolder(parent, name) {
+      const dir = requireFolder(parent);
+      requireName(name);
+      if (nameTaken(dir, name)) throw new BridgeError('already-exists', 'an item with that name already exists');
+      emptyFolders.push(childPath(dir, name));
+      notifyFolderSoon(dir);
+      return childPath(dir, name);
+    },
+    async renameEntry(path, newName) {
+      requireName(newName);
+      const { parent, item } = requireItem(path);
+      if (basename(item) === newName) return item;
+      const target = childPath(parent, newName);
+      const caseOnly = basename(item).toLowerCase() === newName.toLowerCase();
+      if (nameTaken(parent, newName) && !caseOnly) {
+        throw new BridgeError('already-exists', 'an item with that name already exists');
+      }
+      for (const key of Array.from(state.files.keys())) {
+        if (key === item || key.startsWith(`${item}/`)) {
+          state.files.set(`${target}${key.slice(item.length)}`, state.files.get(key)!);
+          state.files.delete(key);
+        }
+      }
+      for (let i = 0; i < emptyFolders.length; i++) {
+        if (isUnder(emptyFolders[i]!, item)) emptyFolders[i] = `${target}${emptyFolders[i]!.slice(item.length)}`;
+      }
+      // 名前を変えた文書（またはフォルダの中の文書）も、保存・監視できる。
+      for (const k of Array.from(known)) if (isUnder(k, item)) known.add(`${target}${k.slice(item.length)}`);
+      state.renames.push({ from: item, to: target });
+      notifyFolderSoon(parent);
+      return target;
+    },
+    async trashEntry(path) {
+      const { parent, item } = requireItem(path);
+      removeTree(item);
+      keepFolder(parent);
+      state.trashed.push(item);
+      notifyFolderSoon(parent);
+    },
+    async watchFolders(paths) {
+      const folders = paths.map((p) => {
+        if (!p.startsWith('/')) throw new BridgeError('invalid-input', 'the path must be absolute');
+        const folder = normalizePath(p);
+        if (state.openedFolder === null || !isUnder(folder, state.openedFolder)) {
+          throw new BridgeError('not-allowed', 'the folder was not opened in this session');
+        }
+        return folder;
+      });
+      state.watchedFolders = folders.filter((f) => isFolder(f));
+    },
+    async onFolderChanged(cb) {
+      folderListeners.add(cb);
+      return () => folderListeners.delete(cb);
     },
     async onCloseRequested(cb) {
       closeListeners.add(cb);
