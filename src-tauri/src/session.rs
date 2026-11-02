@@ -100,10 +100,12 @@ mod tests {
     #[test]
     fn a_session_file_from_before_last_folder_still_loads() {
         let dir = TempDir::new();
+        let last_path = if cfg!(windows) { "C:\\notes\\a.md" } else { "/notes/a.md" };
         fs::create_dir_all(&dir.0).unwrap();
-        fs::write(dir.0.join(FILE_NAME), br#"{ "lastPath": "/notes/a.md" }"#).unwrap();
+        let old = serde_json::json!({ "lastPath": last_path });
+        fs::write(dir.0.join(FILE_NAME), serde_json::to_vec(&old).unwrap()).unwrap();
         let s = load_from(&dir.0).unwrap();
-        assert_eq!(s.last_path.as_deref(), Some("/notes/a.md"));
+        assert_eq!(s.last_path.as_deref(), Some(last_path));
         assert_eq!(s.last_folder, None);
         // 読んだものを書き戻しても、lastFolder は null のまま。
         save_to(&dir.0, &s).unwrap();
