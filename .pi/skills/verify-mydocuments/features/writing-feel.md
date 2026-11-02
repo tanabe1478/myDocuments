@@ -12,6 +12,7 @@
 - FEEL-8: リストの項目で Enter を押すと、次の項目を続ける（記号、番号付きは次の番号、タスクは `- [ ] `、入れ子はインデントを保つ。引用の中のリストも）。項目の間に空行のあるリスト（loose list）でも、既定（設定画面「編集」の「リストの継続」が「空行を入れない」）では空行を入れない。「リストの形に合わせる」にすると、次の項目の前にも空行を入れる。変更は文書を開き直さずに効き、保存され、再読み込み後も保たれる。空の項目での Enter はリストを終える（入れ子は 1 段戻す）。項目の途中での Enter は後半を次の項目にする。.txt では続けない。空行のないリスト（tight list）の空の 2 項目目での Enter も、既定では空行を入れず、空の項目の記号を取り除いてリストを終える（「リストの形に合わせる」では、これまでどおり空行を入れてリストを loose にする）。
 - FEEL-9: 記号の表示。既定（設定画面「外観」の「記号の表示」が「カーソルのある行だけ」）では、カーソルのない行の記法が隠れる（見出しの #、箇条書きは • に置き換え、タスクはチェックボックスの形、リンクの []() と自動リンクの <>、強調・取り消し線・インラインコードの記号、引用の >）。カーソルのある行と選択にかかる行は記号が見える。コードフェンス、frontmatter、参照リンク、画像、番号付きの番号は今のまま。文書のテキストは変わらない。「常に表示」にするとすぐ今までと同じ見た目になり、保存され、再読み込み後も保たれる。.txt には効かない。
 - FEEL-10: リンクを開く。⌘+クリック（macOS）、Ctrl+クリック（Windows と Linux）で、リンクの文字・URL・自動リンク・裸の URL を既定のブラウザで開く。開けるのは http と https だけで、それ以外は開かず、トースト「このリンクは開けません」。普通のクリックはカーソルを置くだけ。修飾キーを押している間、リンクの上でポインタの形が変わる。カーソルは動かない。
+- FEEL-11: タスクの切り替え。記号を隠した行のチェックボックスを、修飾キーなしの左クリックすると、文書の `[ ]` と `[x]`（`[X]` を含む）の 1 文字だけが切り替わる。カーソル・選択・スクロール位置は動かず、その行は隠したまま。Undo 1 回で戻り、Redo でやり直せる。入れ子、引用の中、`*` と `+` のタスクも同じ。ポインタは pointer、role は checkbox で aria-checked が状態に合う。本文のクリック、カーソル行の `[ ]`、設定「常に表示」、修飾キー付き、右・中クリック、IME の変換中は切り替えない。すばやく 2 回クリックすると元に戻り、語は選択されない。キーボードでの切り替えはない。
 
 ## How to get to it (user POV)
 
@@ -21,6 +22,7 @@
 - Tab、Shift+Tab、Esc、ArrowUp、ArrowDown、Shift+ArrowUp、Shift+ArrowDown、Mod+Home、Mod+End。
 - 記号の表示は設定画面（Mod+, か設定ボタン）の「外観」の節の「記号の表示」（ラジオ「カーソルのある行だけ」「常に表示」）。隠す・見せるは、カーソルや選択を動かすだけで切り替わる。
 - リンクを開く操作は、本文のリンクの上での Mod+クリック（macOS は ⌘、Windows と Linux は Ctrl）。drive の click の modifiers: ["ControlOrMeta"] がその OS の Mod キーになる。
+- チェックボックスの切り替えは、記号を隠した行のチェックボックス（.cm-md-task）のクリック。drive の click に css で `.cm-line:nth-child(n) .cm-md-task` を指定する。切り替えの Undo は ControlOrMeta+z。
 - 折り返しは窓の幅と本文の最大幅で決まる。ぶら下げインデントはリスト等の行を書くだけで働く。
 
 ## Driving it with Playwright（メモリ bridge）
@@ -34,6 +36,8 @@ Preconditions: Launch 済みで Doctor が全 PASS。カーソルや選択は、
 | feel-hanging-indent.json | 設定「常に表示」で、長文のリスト・番号付き・引用・タスクを開く | 9 種類の記号の行で、折り返した行の左端が 1 行目の本文の左端と ±2px 以内。記号なしの段落は字下げなし |
 | feel-hanging-indent-hidden.json | 既定（カーソルのある行だけ）で同じ文書を開き、カーソルを末尾の段落に置く（記号を隠した状態） | 9 種類の行で、折り返した行の左端が、1 行目の本文（• やチェックボックス、番号の後ろ）と ±2px 以内。引用だけの行は字下げしない（本文が行の左端から始まる）。箇条書きは • に置き換わる。画像は hanging-indent-hidden.png |
 | feel-live-markup.json、feel-live-markup-dark.json | 見出し・強調・リスト・タスク・引用・リンク・フェンスを含む文書を、ライトとダークで開く。末尾へ移動、先頭から 2 行下へ、さらに 4 行下から Shift+ArrowDown ×5。Mod+, で「記号の表示」を「常に表示」にして、「カーソルのある行だけ」へ戻す | 既定では、カーソルのない行の記法が隠れ、• とチェックボックス 2 つ（うち 1 つが完了）が出る。カーソルを動かした行だけ記法が見え、選択にかかる行は全部見える。「常に表示」では全行の記号が見え、保存された設定の markupDisplay が always。戻すとすぐ隠れ、文書のテキストは変わらない。画像は hidden.png、cursor-line.png、selection.png、settings-markup-display.png、always.png |
+| feel-task-toggle.json、feel-task-toggle-dark.json | タスク（入れ子と引用の中を含む）のある文書を、ライトとダークで開き、末尾へ移動。1 つ目のチェックボックスをクリック。ライトは、続けて保存、別の 3 つをクリック、Undo、同じチェックボックスの 2 回クリック、本文のクリック | 4 つのチェックボックス（うち 1 つが完了）。ポインタは pointer、role は checkbox、aria-checked は false。クリックで文書の `[ ]` が `[x]` になり（その 1 文字だけ）、選択の通知は 0 回、行の表示は隠したまま。保存した本文は切り替え後のもの。完了は未完了に、入れ子と引用の中も切り替わり、Undo 1 回で最後の切り替えだけが戻る。2 回クリックで元に戻る。本文のクリックは切り替えず、カーソルを置いてその行の記号が見える。画像は before-click.png、after-click.png（ダークは feel-task-toggle-dark の同名）、body-click.png（ライトのみ） |
+| feel-task-toggle-typewriter.json | タイプライターモード ON、viewport 1280x700 で、60 段落の後にタスクのある文書を開き、カーソルは先頭のまま末尾へスクロールして、1 つ目と 2 つ目のチェックボックスをクリック | 切り替わり、scrollTop は 2 回のクリックの前後で変わらない（タイプライターモードがカーソル行へ戻さない）。チェックボックスは画面に残る。画像は before-click.png、after-click.png |
 | feel-link-open.json | インラインリンク・自動リンク・裸の URL・相対パス・javascript: のリンクを、Mod+クリック。最後に普通のクリック | window.__mdeE2E.openedUrls に http/https の 3 つだけが入る。カーソルは動かない。相対パスはトースト「このリンクは開けません」。普通のクリックは開かず、その行の記法が見える。メモリ bridge は URL を記録するだけで、ブラウザは開かない。画像は relative-link-toast.png、plain-click.png |
 | feel-tab-indent.json | リスト、番号付き、引用、複数行選択、通常の段落で Tab と Shift+Tab、Esc と Tab | 本文が「- a」「  - b」と変わり、番号付きは「   2. b」、引用は「> > q」。通常の段落は不変でフォーカスも本文のまま。Esc → Tab で char-count、Esc → Shift+Tab で settings-button にフォーカス |
 | feel-vertical-motion-default.json、feel-vertical-motion-spacing0.json、feel-vertical-motion-spacing3.json | 30 行の文書（見出し、空行、リスト、引用、フェンス）を、段落間隔 0.6、0、3 で、先頭から ArrowDown ×29、末尾から ArrowUp ×29 | 行の間の隙間が 0.5px 未満。1 押下ごとにカーソルの行がちょうど 1 変わる |
@@ -48,6 +52,9 @@ node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenari
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/feel-hanging-indent-hidden.json
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/feel-live-markup.json
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/feel-live-markup-dark.json
+node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/feel-task-toggle.json
+node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/feel-task-toggle-dark.json
+node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/feel-task-toggle-typewriter.json
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/feel-link-open.json --platform windows
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/feel-tab-indent.json
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/feel-vertical-motion-default.json
@@ -76,4 +83,6 @@ node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenari
 - 隠した行をクリックすると、その行が見える状態に切り替わり、文字が記号の幅だけ動く。続けてダブルクリックすると、2 回目は動いた後の文字に当たる。座標で位置を決めるシナリオは、切り替え後の位置を測り直す（ADR-004 の限界）。
 - ⌘/Ctrl+クリックは、macOS 上の Chromium で、platform を windows や linux に偽装した場合の Ctrl+クリックが、右クリック扱いで語を選んでしまう（アプリの動作ではなくホストの挙動）。この組み合わせでは「カーソルは動かない」の検査が外れる。カーソルが動かないことの確認は、tests/e2e の合成イベントの検査と、ホストと同じ OS のシナリオで行う。feel-link-open.json は、--platform を省略すればホストの OS で動く。
 - リンクを開く操作の検証は、メモリ bridge が URL を記録する（openedUrls）ところまで。実際に既定のブラウザが開くこと、ネイティブ側の検査は、src-tauri の cargo test（検査だけ。ブラウザは開かない）。この Skill では、実際のリンクを開かない。
+- チェックボックスのクリックは、クリックした行が切り替え後も隠れたままで、選択も動かない。次のクリックの位置は変わらないので、座標を測り直さなくてよい（記号を見せる行のクリックとの違い）。本文のクリックでは、その行が見える状態に変わる。
+- 切り替えない操作（修飾キー付き、IME の変換中）の検査は、合成イベントとの組み合わせが必要で、tests/e2e/live-markup.spec.ts (k) が持つ。この Skill のシナリオは、本文のクリックまで。複数カーソルはアプリが有効にしていないので、UI からは確かめられない（単体テストだけ）。
 - 実 IME で記号を隠した行の前後を変換する検証は、この Skill のシナリオに含めない（tests/e2e/live-markup.spec.ts が CDP で模擬する）。

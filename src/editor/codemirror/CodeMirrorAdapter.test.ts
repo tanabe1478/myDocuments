@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
-import { redo, undo } from '@codemirror/commands';
+import { history, redo, undo } from '@codemirror/commands';
+import { EditorSelection, EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EditorAdapter } from '../EditorAdapter';
 import { createCodeMirrorAdapter } from './CodeMirrorAdapter';
+import { markdownDecorations } from './markdownDecorations';
+import { taskToggleExtension } from './taskToggle';
 
 // jsdom には、CodeMirror が測定に使う矩形取得 API がない。
 beforeAll(() => {
@@ -489,6 +492,158 @@ describe('text kind (.txt and .text are shown as plain text)', () => {
     expect(dimmed()).toEqual([false, true, true, true]);
     adapter.setTextKind('plain');
     expect(dimmed()).toEqual([false, false, true, true]);
+  });
+});
+
+describe('task toggle (click on the checkbox of a hidden line)', () => {
+  const TASKS = 'first\n\n- [ ] todo\n- [x] done\n\n> - [X] quoted\n\nlast';
+
+  function mousedown(el: Element, init: MouseEventInit = {}): MouseEvent {
+    const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, ...init });
+    el.dispatchEvent(event);
+    return event;
+  }
+
+  function boxes(): HTMLElement[] {
+    return Array.from(host.querySelectorAll<HTMLElement>('.cm-md-task'));
+  }
+
+  function setup(text = TASKS): void {
+    adapter.mount(host);
+    adapter.setText(text);
+  }
+
+  it('toggles the clicked task and nothing else, without touching the selection', () => {
+    setup();
+    const view = viewOf();
+    view.dispatch({ selection: { anchor: 2, head: 4 } });
+    const event = mousedown(boxes()[0]!);
+    expect(event.defaultPrevented).toBe(true);
+    expect(adapter.getText()).toBe('first\n\n- [x] todo\n- [x] done\n\n> - [X] quoted\n\nlast');
+    expect(view.state.selection.main.anchor).toBe(2);
+    expect(view.state.selection.main.head).toBe(4);
+    expect(boxes()[0]!.classList.contains('cm-md-task-done')).toBe(true);
+    expect(boxes()[0]!.getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('toggles [x] and [X] to [ ]', () => {
+    setup();
+    mousedown(boxes()[1]!);
+    expect(adapter.getText()).toContain('- [ ] done');
+    mousedown(boxes()[2]!);
+    expect(adapter.getText()).toContain('> - [ ] quoted');
+  });
+
+  // アプリは複数カーソルを有効にしていない（UI からは作れない）。有効にした素の EditorView で、選択に触れないことを確かめる。
+  it('keeps multiple cursors when the editor allows them', () => {
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        doc: TASKS,
+        extensions: [
+          EditorState.allowMultipleSelections.of(true),
+          markdownDecorations(),
+          taskToggleExtension(),
+          history(),
+        ],
+      }),
+    });
+    view.dispatch({
+      selection: EditorSelection.create([EditorSelection.cursor(1), EditorSelection.range(TASKS.length - 3, TASKS.length)]),
+    });
+    mousedown(host.querySelector('.cm-md-task')!);
+    expect(view.state.doc.toString()).toContain('- [x] todo');
+    expect(view.state.selection.ranges.map((r) => [r.anchor, r.head])).toEqual([
+      [1, 1],
+      [TASKS.length - 3, TASKS.length],
+    ]);
+    view.destroy();
+  });
+
+  it('undoes in one step and redoes', () => {
+    setup();
+    const view = viewOf();
+    mousedown(boxes()[0]!);
+    mousedown(boxes()[1]!);
+    expect(adapter.getText()).toContain('- [x] todo\n- [ ] done');
+    undo(view);
+    expect(adapter.getText()).toContain('- [x] todo\n- [x] done');
+    undo(view);
+    expect(adapter.getText()).toBe(TASKS);
+    redo(view);
+    expect(adapter.getText()).toContain('- [x] todo\n- [x] done');
+  });
+
+  it('is not merged with the typing that follows', () => {
+    setup();
+    const view = viewOf();
+    mousedown(boxes()[0]!);
+    const end = view.state.doc.length;
+    view.dispatch({ changes: { from: end, insert: '!' }, selection: { anchor: end + 1 }, userEvent: 'input.type' });
+    undo(view);
+    expect(adapter.getText()).toBe(TASKS.replace('- [ ] todo', '- [x] todo'));
+    undo(view);
+    expect(adapter.getText()).toBe(TASKS);
+  });
+
+  it('goes through the change listeners like typing', () => {
+    setup();
+    const seen: string[] = [];
+    adapter.onChange((t) => seen.push(t));
+    mousedown(boxes()[0]!);
+    expect(seen).toEqual(['first\n\n- [x] todo\n- [x] done\n\n> - [X] quoted\n\nlast']);
+  });
+
+  it('toggles twice back to the original', () => {
+    setup();
+    mousedown(boxes()[0]!);
+    mousedown(boxes()[0]!);
+    expect(adapter.getText()).toBe(TASKS);
+  });
+
+  it('does not toggle with a modifier key, or with another button', () => {
+    setup();
+    for (const init of [{ shiftKey: true }, { metaKey: true }, { ctrlKey: true }, { altKey: true }, { button: 1 }, { button: 2 }]) {
+      mousedown(boxes()[0]!, init);
+      expect(adapter.getText()).toBe(TASKS);
+    }
+  });
+
+  it('does not toggle while composing', () => {
+    setup();
+    const content = host.querySelector('.cm-content') as HTMLElement;
+    content.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+    expect(viewOf().compositionStarted).toBe(true);
+    const target = boxes()[0]!;
+    mousedown(target);
+    expect(adapter.getText()).toBe(TASKS);
+  });
+
+  it('does not toggle when the markup is always shown', () => {
+    setup();
+    adapter.setMarkupDisplay('always');
+    expect(boxes()).toHaveLength(0);
+    const line = host.querySelectorAll('.cm-line')[2]!;
+    mousedown(line);
+    expect(adapter.getText()).toBe(TASKS);
+  });
+
+  it('does not toggle on the cursor line, or from the text next to the box', () => {
+    setup();
+    const view = viewOf();
+    view.dispatch({ selection: { anchor: view.state.doc.line(3).from + 3 } });
+    expect(boxes().map((b) => b.classList.contains('cm-md-task-done'))).toEqual([true, true]);
+    const lines = Array.from(host.querySelectorAll('.cm-line'));
+    mousedown(lines[2]!);
+    mousedown(lines[3]!);
+    expect(adapter.getText()).toBe(TASKS);
+  });
+
+  it('draws the box as a checkbox that follows the state', () => {
+    setup();
+    const [todo, done] = boxes();
+    expect([todo!.getAttribute('role'), todo!.getAttribute('aria-checked')]).toEqual(['checkbox', 'false']);
+    expect([done!.getAttribute('role'), done!.getAttribute('aria-checked')]).toEqual(['checkbox', 'true']);
   });
 });
 

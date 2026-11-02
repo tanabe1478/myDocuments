@@ -1,0 +1,92 @@
+{
+  "seed": {
+    "files": {
+      "/docs/long-tasks.md": {
+        "text": "段落 0\n\n段落 1\n\n段落 2\n\n段落 3\n\n段落 4\n\n段落 5\n\n段落 6\n\n段落 7\n\n段落 8\n\n段落 9\n\n段落 10\n\n段落 11\n\n段落 12\n\n段落 13\n\n段落 14\n\n段落 15\n\n段落 16\n\n段落 17\n\n段落 18\n\n段落 19\n\n段落 20\n\n段落 21\n\n段落 22\n\n段落 23\n\n段落 24\n\n段落 25\n\n段落 26\n\n段落 27\n\n段落 28\n\n段落 29\n\n段落 30\n\n段落 31\n\n段落 32\n\n段落 33\n\n段落 34\n\n段落 35\n\n段落 36\n\n段落 37\n\n段落 38\n\n段落 39\n\n段落 40\n\n段落 41\n\n段落 42\n\n段落 43\n\n段落 44\n\n段落 45\n\n段落 46\n\n段落 47\n\n段落 48\n\n段落 49\n\n段落 50\n\n段落 51\n\n段落 52\n\n段落 53\n\n段落 54\n\n段落 55\n\n段落 56\n\n段落 57\n\n段落 58\n\n段落 59\n\n- [ ] 一\n- [x] 二\n\n終わり"
+      }
+    },
+    "openPath": "/docs/long-tasks.md",
+    "preferences": {
+      "theme": "light",
+      "autoHideChrome": false,
+      "typewriterMode": true
+    }
+  },
+  "viewport": {
+    "width": 1280,
+    "height": 700
+  },
+  "steps": [
+    {
+      "press": "ControlOrMeta+o"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "long-tasks.md"
+      }
+    },
+    {
+      "click": ".cm-content"
+    },
+    {
+      "press": "ControlOrMeta+Home"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = document.querySelector('.cm-scroller'); s.scrollTop = s.scrollHeight; return document.querySelectorAll('.cm-md-task').length; })()",
+        "equals": 2,
+        "timeout": 10000,
+        "note": "カーソルは先頭のまま、末尾へスクロールしてタスクを表示する（タイプライターモード ON）"
+      }
+    },
+    {
+      "eval": "window.__top = document.querySelector('.cm-scroller').scrollTop; true"
+    },
+    {
+      "screenshot": "before-click"
+    },
+    {
+      "click": ".cm-md-task"
+    },
+    {
+      "wait": 400
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText()",
+        "equals": "段落 0\n\n段落 1\n\n段落 2\n\n段落 3\n\n段落 4\n\n段落 5\n\n段落 6\n\n段落 7\n\n段落 8\n\n段落 9\n\n段落 10\n\n段落 11\n\n段落 12\n\n段落 13\n\n段落 14\n\n段落 15\n\n段落 16\n\n段落 17\n\n段落 18\n\n段落 19\n\n段落 20\n\n段落 21\n\n段落 22\n\n段落 23\n\n段落 24\n\n段落 25\n\n段落 26\n\n段落 27\n\n段落 28\n\n段落 29\n\n段落 30\n\n段落 31\n\n段落 32\n\n段落 33\n\n段落 34\n\n段落 35\n\n段落 36\n\n段落 37\n\n段落 38\n\n段落 39\n\n段落 40\n\n段落 41\n\n段落 42\n\n段落 43\n\n段落 44\n\n段落 45\n\n段落 46\n\n段落 47\n\n段落 48\n\n段落 49\n\n段落 50\n\n段落 51\n\n段落 52\n\n段落 53\n\n段落 54\n\n段落 55\n\n段落 56\n\n段落 57\n\n段落 58\n\n段落 59\n\n- [x] 一\n- [x] 二\n\n終わり"
+      }
+    },
+    {
+      "expect": {
+        "eval": "document.querySelector('.cm-scroller').scrollTop === window.__top",
+        "equals": true,
+        "note": "クリックしても、タイプライターモードがカーソル行（先頭）へ戻さず、スクロール位置は変わらない"
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-md-task",
+        "read": "count",
+        "equals": 2,
+        "note": "クリックしたタスクが画面に残り、続けて別のタスクも切り替えられる"
+      }
+    },
+    {
+      "screenshot": "after-click"
+    },
+    {
+      "click": ".cm-md-task >> nth=1"
+    },
+    {
+      "wait": 400
+    },
+    {
+      "expect": {
+        "eval": "document.querySelector('.cm-scroller').scrollTop === window.__top",
+        "equals": true
+      }
+    }
+  ]
+}

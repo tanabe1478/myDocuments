@@ -13,6 +13,7 @@ import { listContinuationExtension } from './listContinuation';
 import { linkOpenExtension } from './linkOpen';
 import { markdownDecorations, markupDisplayFacet, plainTextDecorations } from './markdownDecorations';
 import { readingPositionExtension } from './readingPosition';
+import { taskToggleExtension } from './taskToggle';
 import { editorTheme } from './theme';
 import { typewriterModeExtension } from './typewriterMode';
 import { verticalMotionExtension } from './verticalMotion';
@@ -202,6 +203,7 @@ export class CodeMirrorAdapter implements EditorAdapter {
       this.listCompartment.of(listContinuationExtension(this.listContinuation)),
       this.markupCompartment.of(markupDisplayFacet.of(this.markupDisplay)),
       linkOpenExtension((url) => this.linkListeners.forEach((cb) => cb(url))),
+      taskToggleExtension(),
       search({ top: true }),
       readingPositionExtension(),
       keepCursorVisibleExtension(),

@@ -1,6 +1,7 @@
 import type { Extension } from '@codemirror/state';
 import { EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view';
 import { typewriterPadding, typewriterScrollTop } from '../typewriter';
+import { TOGGLE_TASK_EVENT } from './taskToggle';
 
 const PAD_VAR = '--md-typewriter-pad';
 /** 描画範囲外の行へ飛んだとき、近くまで動かしてから測り直す回数の上限。 */
@@ -36,6 +37,8 @@ class TypewriterPlugin {
     if (!update.selectionSet && !update.docChanged) return;
     // ポインタでの選択は動かさない（クリックした行が、ポインタの下から動くのを避ける）。
     if (update.transactions.some((tr) => tr.isUserEvent('select.pointer'))) return;
+    // チェックボックスのクリックでの切り替えも、カーソルを動かさないので、スクロールしない（taskToggle.ts）。
+    if (update.transactions.some((tr) => tr.isUserEvent(TOGGLE_TASK_EVENT))) return;
     this.remeasures = 0;
     this.schedule();
   }

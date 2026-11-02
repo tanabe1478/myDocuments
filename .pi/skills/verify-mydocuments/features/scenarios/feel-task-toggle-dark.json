@@ -1,0 +1,117 @@
+{
+  "seed": {
+    "files": {
+      "/docs/tasks.md": {
+        "text": "# タスクの切り替え\n\n- [ ] 買い物\n- [x] 掃除\n  - [ ] 窓\n> - [ ] 引用の中\n\n終わりの段落"
+      }
+    },
+    "openPath": "/docs/tasks.md",
+    "preferences": {
+      "theme": "dark",
+      "autoHideChrome": false
+    }
+  },
+  "steps": [
+    {
+      "press": "ControlOrMeta+o"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "tasks.md"
+      }
+    },
+    {
+      "click": ".cm-content"
+    },
+    {
+      "press": "ControlOrMeta+End"
+    },
+    {
+      "eval": "window.__sel = { count: 0, head: 0 }; window.__mdeE2E.editor.onSelectionChange((s) => (window.__sel = { count: window.__sel.count + 1, head: s.head })); true"
+    },
+    {
+      "expect": {
+        "css": ".cm-md-task",
+        "read": "count",
+        "equals": 4,
+        "note": "カーソルのない行に、チェックボックスが 4 つ（入れ子と引用の中を含む）"
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-md-task-done",
+        "read": "count",
+        "equals": 1
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-md-task",
+        "read": "css:cursor",
+        "equals": "pointer",
+        "note": "チェックボックスの上のポインタは pointer"
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-md-task",
+        "read": "attr:role",
+        "equals": "checkbox"
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-md-task",
+        "read": "attr:aria-checked",
+        "equals": "false"
+      }
+    },
+    {
+      "screenshot": "before-click"
+    },
+    {
+      "click": ".cm-line:nth-child(3) .cm-md-task"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText()",
+        "equals": "# タスクの切り替え\n\n- [x] 買い物\n- [x] 掃除\n  - [ ] 窓\n> - [ ] 引用の中\n\n終わりの段落",
+        "note": "1 つ目のチェックボックスのクリックで、[ ] が [x] になる（その 1 文字だけ）"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__sel.count",
+        "equals": 0,
+        "note": "カーソルと選択は動かない"
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-md-task-done",
+        "read": "count",
+        "equals": 2
+      }
+    },
+    {
+      "expect": {
+        "eval": "[...document.querySelectorAll('.cm-line')].map((l) => l.textContent)",
+        "equals": [
+          "タスクの切り替え",
+          "",
+          " 買い物",
+          " 掃除",
+          "   窓",
+          " 引用の中",
+          "",
+          "終わりの段落"
+        ],
+        "note": "その行は記号を隠したまま。形だけが変わる"
+      }
+    },
+    {
+      "screenshot": "after-click"
+    }
+  ]
+}

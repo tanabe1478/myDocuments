@@ -107,6 +107,8 @@ export const editorTheme = EditorView.theme({
     color: 'var(--md-color-text)',
   },
   '.cm-md-bullet': { opacity: '0.6' },
+  // クリックで切り替わる（taskToggle.ts）。ウィジェットは、記号を隠した行にしか出ない。
+  '.cm-md-task': { cursor: 'pointer' },
   '.cm-md-task-box': {
     display: 'inline-block',
     boxSizing: 'border-box',

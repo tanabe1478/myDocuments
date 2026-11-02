@@ -1,5 +1,5 @@
 import { expect, type CDPSession, type Page } from '@playwright/test';
-import { docTitle, fileBytes, launch, test, toast, unsavedMark, utf8, type Platform } from './helpers';
+import { docTitle, fileBytes, launch, redoKeys, test, toast, unsavedMark, utf8, type Platform } from './helpers';
 
 // Run 12（ADR-004）: カーソルのない行では Markdown の記法を隠して表示し、カーソルのある行（と選択にかかる行）では見せる。
 // 設定画面の「記号の表示」で「常に表示」に戻せる。⌘/Ctrl+クリックで http/https のリンクを既定のブラウザで開く。
@@ -168,9 +168,9 @@ test.describe('記法の表示 (a)', () => {
     await page.keyboard.press('ControlOrMeta+End');
     await page.locator('.cm-line').nth(10).click();
     expect(await renderedLines(page)).toEqual(expectedLines([10]));
-    // チェックボックスのクリックは、切り替えではなくカーソルを置く。本文は変わらない。
+    // チェックボックスの右の本文のクリックは、切り替えではなくカーソルを置く（Run 13: チェックボックス自体の切り替えは (k)）。本文は変わらない。
     await page.keyboard.press('ControlOrMeta+End');
-    await page.locator('.cm-md-task').first().click();
+    await page.locator('.cm-line').nth(4).click({ position: { x: 150, y: 8 } });
     expect(await docText(page)).toBe(TEXT_A);
     expect((await renderedLines(page))[4]).toBe('- [ ] 未完了');
     await expect(unsavedMark(page)).toHaveCount(0);
@@ -990,3 +990,307 @@ test.describe('タイプライターモード・フォーカスモード (j)', (
     expect(gap.bottom).toBeGreaterThanOrEqual(gap.height * 0.25);
   });
 });
+
+// ---- (k) チェックボックスのクリックでの切り替え（Run 13） ----
+
+/** 文書の変更を、文字ごとの差の数で数える（同じ長さのときだけ）。 */
+function diffPositions(before: string, after: string): number[] {
+  expect(after.length).toBe(before.length);
+  const out: number[] = [];
+  for (let i = 0; i < before.length; i++) if (before[i] !== after[i]) out.push(i);
+  return out;
+}
+
+/** 選択の通知の回数と、最後の値。 */
+async function trackSelectionEvents(page: Page): Promise<() => Promise<{ count: number; anchor: number; head: number }>> {
+  await page.evaluate(() => {
+    const w = window as unknown as { __selEvents: { count: number; anchor: number; head: number } };
+    w.__selEvents = { count: 0, anchor: 0, head: 0 };
+    window.__mdeE2E!.editor!.onSelectionChange((s) => {
+      w.__selEvents = { count: w.__selEvents.count + 1, anchor: s.anchor, head: s.head };
+    });
+  });
+  return () =>
+    page.evaluate(() => (window as unknown as { __selEvents: { count: number; anchor: number; head: number } }).__selEvents);
+}
+
+const boxes = (page: Page) => page.locator('.cm-md-task');
+
+/** 描画と測定が落ち着くまで、2 フレーム待つ。 */
+const settleFrames = (page: Page) =>
+  page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+
+/** チェックボックスの位置に、mousedown の合成イベント（修飾キー付き）を送る。 */
+const syntheticMousedown = (page: Page, init: { metaKey?: boolean; ctrlKey?: boolean; altKey?: boolean; shiftKey?: boolean }) =>
+  page.evaluate((i) => {
+    const el = document.querySelector('.cm-md-task')!;
+    const r = el.getBoundingClientRect();
+    el.dispatchEvent(
+      new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, ...i }),
+    );
+  }, init);
+
+test.describe('チェックボックスのクリックでの切り替え (k)', () => {
+  test('(k) 隠した行のチェックボックスのクリックで、完了と未完了が切り替わり、保存したバイト列の差はその 1 文字だけ', async ({ page }) => {
+    await openDoc(page, TEXT_A);
+    await page.keyboard.press('ControlOrMeta+End');
+    const hidden = expectedLines([22]);
+    expect(await renderedLines(page)).toEqual(hidden);
+
+    // 未完了 → 完了
+    await boxes(page).nth(0).click();
+    const afterFirst = TEXT_A.replace('- [ ] 未完了', '- [x] 未完了');
+    expect(await docText(page)).toBe(afterFirst);
+    expect(diffPositions(TEXT_A, afterFirst)).toHaveLength(1);
+    await expect(unsavedMark(page)).toHaveCount(1);
+    await expect(page.locator('.cm-md-task-done')).toHaveCount(2);
+    // その行は隠したまま、形だけが変わる。
+    expect(await renderedLines(page)).toEqual(hidden);
+    await page.keyboard.press('ControlOrMeta+s');
+    await expect(unsavedMark(page)).toHaveCount(0);
+    const saved = await fileBytes(page, DOC);
+    expect(saved).toEqual(utf8(afterFirst));
+    const original = utf8(TEXT_A);
+    expect(saved!.length).toBe(original.length);
+    expect(saved!.flatMap((b, i) => (b !== original[i] ? [i] : []))).toHaveLength(1);
+
+    // 完了 → 未完了（2 つ目の、もともと完了のもの。続けてもう 1 つ目を戻す）
+    await boxes(page).nth(1).click();
+    expect(await docText(page)).toBe(afterFirst.replace('- [x] 完了', '- [ ] 完了'));
+    await boxes(page).nth(0).click();
+    expect(await docText(page)).toBe(TEXT_A.replace('- [x] 完了', '- [ ] 完了'));
+    await boxes(page).nth(1).click();
+    expect(await docText(page)).toBe(TEXT_A);
+    await page.keyboard.press('ControlOrMeta+s');
+    expect(await fileBytes(page, DOC)).toEqual(original);
+  });
+
+  test('(k) [X]（大文字）も未完了になる。対象は、入れ子・引用の中・* と + のタスク', async ({ page }) => {
+    const text = ['前', '- [ ] a', '  - [x] b', '    - [X] c', '> - [ ] d', '> > * [x] e', '* [ ] f', '+ [X] g', '1. [ ] 番号付き', '終わり'].join('\n');
+    await openDoc(page, text);
+    await page.keyboard.press('ControlOrMeta+End');
+    // 番号付きのタスクは、ウィジェットを出さない。
+    await expect(boxes(page)).toHaveCount(7);
+    let expected = text;
+    const toggles: Array<[number, string, string]> = [
+      [0, '- [ ] a', '- [x] a'],
+      [1, '  - [x] b', '  - [ ] b'],
+      [2, '    - [X] c', '    - [ ] c'],
+      [3, '> - [ ] d', '> - [x] d'],
+      [4, '> > * [x] e', '> > * [ ] e'],
+      [5, '* [ ] f', '* [x] f'],
+      [6, '+ [X] g', '+ [ ] g'],
+    ];
+    for (const [i, from, to] of toggles) {
+      await boxes(page).nth(i).click();
+      expected = expected.replace(from, to);
+      expect(await docText(page), `${i + 1} 個目`).toBe(expected);
+    }
+    expect(await docText(page)).toBe(
+      ['前', '- [x] a', '  - [ ] b', '    - [ ] c', '> - [x] d', '> > * [ ] e', '* [x] f', '+ [ ] g', '1. [ ] 番号付き', '終わり'].join('\n'),
+    );
+  });
+
+  const MODES: Array<{ name: string; preferences: Record<string, unknown> }> = [
+    { name: '通常', preferences: {} },
+    { name: 'タイプライターモード', preferences: { typewriterMode: true } },
+    { name: 'フォーカスモード', preferences: { focusMode: true } },
+    { name: 'タイプライターとフォーカス', preferences: { typewriterMode: true, focusMode: true } },
+  ];
+  for (const mode of MODES) {
+  test(`(k) 選択・スクロール位置・行の表示は変わらない。Undo 1 回で戻り、Redo でやり直せる（${mode.name}）`, async ({ page, platform }) => {
+    await page.setViewportSize({ width: 1280, height: 700 });
+    const filler = Array.from({ length: 60 }, (_, i) => `段落 ${i}`).join('\n\n');
+    const text = `${filler}\n\n- [ ] 一\n- [x] 二\n\n終わり`;
+    await openDoc(page, text, mode.preferences);
+    await page.keyboard.press('ControlOrMeta+Home');
+    const events = await trackSelectionEvents(page);
+    await page.keyboard.press('Shift+ArrowDown');
+    await page.keyboard.press('Shift+ArrowDown');
+    const sel = await events();
+    expect(sel.count).toBeGreaterThan(0);
+    // 選択はそのままに、タスクが見える位置まで（末尾へ）スクロールする。
+    // CodeMirror は描画していない行の高さを推定で持つので、末尾に着くまでスクロールし直す。
+    await expect
+      .poll(
+        async () => {
+          await page.locator('.cm-scroller').evaluate((el) => {
+            el.scrollTop = el.scrollHeight;
+          });
+          return boxes(page).count();
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(2);
+    const scrollBefore = await page.locator('.cm-scroller').evaluate((el) => el.scrollTop);
+    const linesBefore = await renderedLines(page);
+    const tasksBefore = await page.locator('.cm-md-task').count();
+
+    await boxes(page).nth(0).click();
+    expect(await docText(page)).toBe(text.replace('- [ ] 一', '- [x] 一'));
+    expect(await events()).toEqual(sel);
+    // タイプライターモードの中央合わせは、測定の後（次のフレーム）に動くので、2 フレーム待ってから確かめる。
+    await settleFrames(page);
+    expect(await page.locator('.cm-scroller').evaluate((el) => el.scrollTop)).toBe(scrollBefore);
+    expect(await renderedLines(page)).toEqual(linesBefore);
+    expect(await page.locator('.cm-md-task').count()).toBe(tasksBefore);
+
+    // Undo 1 回で戻る。Redo でやり直す。
+    await page.keyboard.press('ControlOrMeta+z');
+    expect(await docText(page)).toBe(text);
+    await page.keyboard.press(redoKeys(platform)[0]!);
+    expect(await docText(page)).toBe(text.replace('- [ ] 一', '- [x] 一'));
+    await page.keyboard.press('ControlOrMeta+z');
+    expect(await docText(page)).toBe(text);
+  });
+  }
+
+  test('(k) 続けて 2 回切り替えると、Undo 2 回で戻る。切り替えの直後の入力と 1 つの Undo にまとめない', async ({ page }) => {
+    await openDoc(page, TEXT_A);
+    await page.keyboard.press('ControlOrMeta+End');
+    await boxes(page).nth(0).click();
+    await boxes(page).nth(1).click();
+    const both = TEXT_A.replace('- [ ] 未完了', '- [x] 未完了').replace('- [x] 完了', '- [ ] 完了');
+    expect(await docText(page)).toBe(both);
+    await page.keyboard.type('!');
+    expect(await docText(page)).toBe(`${both}!`);
+    await page.keyboard.press('ControlOrMeta+z');
+    expect(await docText(page)).toBe(both);
+    await page.keyboard.press('ControlOrMeta+z');
+    expect(await docText(page)).toBe(TEXT_A.replace('- [ ] 未完了', '- [x] 未完了'));
+    await page.keyboard.press('ControlOrMeta+z');
+    expect(await docText(page)).toBe(TEXT_A);
+  });
+
+  test('(k) すばやく 2 回クリックすると元に戻り、語は選択されない', async ({ page }) => {
+    await openDoc(page, TEXT_A);
+    await page.keyboard.press('ControlOrMeta+End');
+    const events = await trackSelectionEvents(page);
+    await boxes(page).nth(0).dblclick();
+    expect(await docText(page)).toBe(TEXT_A);
+    expect(await page.evaluate(() => window.getSelection()?.toString() ?? '')).toBe('');
+    expect((await events()).count).toBe(0);
+    expect(await renderedLines(page)).toEqual(expectedLines([22]));
+    // triple click でも、カーソルも選択も動かない（奇数回なので、切り替わった状態）。
+    await boxes(page).nth(0).click({ clickCount: 3 });
+    expect(await docText(page)).toBe(TEXT_A.replace('- [ ] 未完了', '- [x] 未完了'));
+    expect((await events()).count).toBe(0);
+  });
+
+  test('(k) 切り替えない操作: 本文のクリック、カーソル行の [ ]、Shift・右・中クリック', async ({ page }) => {
+    await openDoc(page, TEXT_A);
+    await page.keyboard.press('ControlOrMeta+End');
+    const events = await trackSelectionEvents(page);
+
+    // 本文（チェックボックスの右）のクリック: カーソルを置く。その行は記号が見える。
+    await page.locator('.cm-line').nth(4).click({ position: { x: 150, y: 8 } });
+    expect(await docText(page)).toBe(TEXT_A);
+    expect((await events()).count).toBeGreaterThan(0);
+    expect((await renderedLines(page))[4]).toBe('- [ ] 未完了');
+    await expect(unsavedMark(page)).toHaveCount(0);
+
+    // カーソル行の [ ]（記号が文字で見えている）をクリックしても、切り替えない。
+    const box = (await page.locator('.cm-line').nth(4).boundingBox())!;
+    await page.mouse.click(box.x + 20, box.y + box.height / 2);
+    await page.mouse.click(box.x + 28, box.y + box.height / 2);
+    expect(await docText(page)).toBe(TEXT_A);
+    await expect(unsavedMark(page)).toHaveCount(0);
+
+    // 別の行へ移ってから、Shift+クリック（選択の拡張）、右クリック、中クリック。
+    await page.keyboard.press('ControlOrMeta+End');
+    await boxes(page).nth(0).click({ modifiers: ['Shift'] });
+    expect(await docText(page)).toBe(TEXT_A);
+    // Shift+クリックは、選択を伸ばす（カーソルが動く）。選択のかかる行は記号が見える。
+    expect((await renderedLines(page))[4]).toBe('- [ ] 未完了');
+
+    await page.keyboard.press('ControlOrMeta+End');
+    await expect(boxes(page)).toHaveCount(2);
+    await boxes(page).nth(0).click({ button: 'right' });
+    expect(await docText(page)).toBe(TEXT_A);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('ControlOrMeta+End');
+    await expect(boxes(page)).toHaveCount(2);
+    await boxes(page).nth(0).click({ button: 'middle' });
+    expect(await docText(page)).toBe(TEXT_A);
+    await expect(unsavedMark(page)).toHaveCount(0);
+  });
+
+  test('(k) 修飾キー付き（⌘・Ctrl・Alt・Shift の合成イベント）は切り替えず、リンクも開かない', async ({ page }) => {
+    await openDoc(page, TEXT_A);
+    await page.keyboard.press('ControlOrMeta+End');
+    for (const init of [{ metaKey: true }, { ctrlKey: true }, { altKey: true }, { shiftKey: true }]) {
+      // 修飾キー付きのクリックは、今までどおりカーソルを置く（その行の記号が見える）。次のために末尾へ戻す。
+      await page.keyboard.press('ControlOrMeta+End');
+      await expectBoxesVisible(page);
+      await syntheticMousedown(page, init);
+      expect(await docText(page), JSON.stringify(init)).toBe(TEXT_A);
+    }
+    expect(await opened(page)).toEqual([]);
+    await expect(unsavedMark(page)).toHaveCount(0);
+  });
+
+  test('(k) 設定が「常に表示」のときは、切り替えない（チェックボックスのウィジェットがない）', async ({ page }) => {
+    await openDoc(page, TEXT_A, { markupDisplay: 'always' });
+    await page.keyboard.press('ControlOrMeta+End');
+    await expect(boxes(page)).toHaveCount(0);
+    const box = (await page.locator('.cm-line').nth(4).boundingBox())!;
+    await page.mouse.click(box.x + 8, box.y + box.height / 2);
+    await page.mouse.click(box.x + 24, box.y + box.height / 2);
+    expect(await docText(page)).toBe(TEXT_A);
+    await expect(unsavedMark(page)).toHaveCount(0);
+  });
+
+  test('(k) ポインタは pointer。role は checkbox で、aria-checked が状態に合う', async ({ page }) => {
+    await openDoc(page, TEXT_A);
+    await page.keyboard.press('ControlOrMeta+End');
+    await expect(page.getByRole('checkbox')).toHaveCount(2);
+    await expect(boxes(page).nth(0)).toHaveCSS('cursor', 'pointer');
+    await expect(boxes(page).nth(0)).toHaveAttribute('aria-checked', 'false');
+    await expect(boxes(page).nth(1)).toHaveAttribute('aria-checked', 'true');
+    await boxes(page).nth(0).click();
+    await expect(boxes(page).nth(0)).toHaveAttribute('aria-checked', 'true');
+    await boxes(page).nth(1).click();
+    await expect(boxes(page).nth(1)).toHaveAttribute('aria-checked', 'false');
+    await expect(page.locator('.cm-md-task-done')).toHaveCount(1);
+    // 本文は pointer にしない。
+    await expect(page.locator('.cm-line').nth(2)).not.toHaveCSS('cursor', 'pointer');
+  });
+
+  test('(k) フォーカスが本文から外れていても切り替わる。選択は動かず、フォーカスが戻って Undo が効く', async ({ page }) => {
+    await openDoc(page, TEXT_A);
+    await page.keyboard.press('ControlOrMeta+End');
+    const events = await trackSelectionEvents(page);
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await expect(page.locator('.cm-content')).not.toBeFocused();
+    await boxes(page).nth(0).click();
+    expect(await docText(page)).toBe(TEXT_A.replace('- [ ] 未完了', '- [x] 未完了'));
+    expect((await events()).count).toBe(0);
+    await expect(page.locator('.cm-content')).toBeFocused();
+    await page.keyboard.press('ControlOrMeta+z');
+    expect(await docText(page)).toBe(TEXT_A);
+    expect(await renderedLines(page)).toEqual(expectedLines([22]));
+  });
+
+  test('(k) IME の変換中は切り替えない', async ({ page }) => {
+    await openDoc(page, '前の行\n- [ ] 項目\n後の行');
+    await page.keyboard.press('ControlOrMeta+Home');
+    const client = await page.context().newCDPSession(page);
+    await client.send('Input.imeSetComposition', { text: 'あ', selectionStart: 1, selectionEnd: 1 });
+    await expect(boxes(page)).toHaveCount(1);
+    await syntheticMousedown(page, {});
+    expect(await docText(page)).toContain('- [ ] 項目');
+    expect(await docText(page)).not.toContain('[x]');
+    await client.send('Input.insertText', { text: 'あ' });
+    await expect.poll(() => docText(page)).toBe('あ前の行\n- [ ] 項目\n後の行');
+    // 変換が終われば、切り替えられる。
+    await page.keyboard.press('ControlOrMeta+End');
+    await expect(boxes(page)).toHaveCount(1);
+    await boxes(page).nth(0).click();
+    expect(await docText(page)).toBe('あ前の行\n- [x] 項目\n後の行');
+  });
+});
+
+async function expectBoxesVisible(page: Page): Promise<void> {
+  // 合成イベントの前に、チェックボックスが（カーソルのない行に）あることを確かめる。
+  await expect(boxes(page)).toHaveCount(2);
+}

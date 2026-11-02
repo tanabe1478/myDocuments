@@ -136,15 +136,18 @@ class MarkerWidget extends WidgetType {
       return el;
     }
     el.className = `cm-md-marker cm-md-task${this.done ? ' cm-md-task-done' : ''}`;
-    el.setAttribute('role', 'img');
-    el.setAttribute('aria-label', this.done ? '完了' : '未完了');
+    // クリックで切り替える（taskToggle.ts）。キーボードでの切り替えはない。
+    el.setAttribute('role', 'checkbox');
+    el.setAttribute('aria-checked', this.done ? 'true' : 'false');
+    el.setAttribute('aria-label', 'タスクの完了');
     const box = document.createElement('span');
     box.className = 'cm-md-task-box';
     el.appendChild(box);
     return el;
   }
 
-  // クリックは、今までどおり本文のカーソルの位置決めに使う（チェックの切り替えはしない）。
+  // イベントは CodeMirror に渡す（false）。タスクの mousedown は taskToggle.ts が先に受けて切り替える。
+  // 本文のクリックと同じく、切り替えない操作（修飾キー付きなど）はカーソルの位置決めになる。
   ignoreEvent(): boolean {
     return false;
   }
