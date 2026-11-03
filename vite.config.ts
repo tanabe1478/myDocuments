@@ -12,5 +12,13 @@ export default defineConfig({
   test: {
     include: ['src/**/*.test.{ts,tsx}'],
     environment: 'node',
+    // 測るだけ（しきい値なし）。除外の理由は docs/coverage-baseline.md。
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: ['src/**/*.test.{ts,tsx}', 'src/**/*.d.ts', 'src/main.tsx', 'src/document/testKit.ts'],
+      reporter: ['text', 'json-summary'],
+      reportsDirectory: 'coverage',
+    },
   },
 });
