@@ -1,5 +1,6 @@
 import type { Extension } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
+import { ownsCaretScroll } from '../../plugin-api';
 
 /** カーソルを置いておく、表示領域の上下の余白（表示領域の高さに対する割合）。 */
 export const CARET_MARGIN_RATIO = 0.3;
@@ -9,11 +10,11 @@ export const CARET_MARGIN_RATIO = 0.3;
  * 文末で書き足しても、カーソルが画面の下端に張り付かない。CodeMirror のスクロールの仕組み
  * （scrollMargins）を使うので、スクロールは一度の即時の移動で、Reduced Motion に関係なく動きは付かない。
  * 表示だけの変更で、本文の DOM には触れない。
- * タイプライターモードのときは、typewriterMode.ts が中央に保つので、ここでは余白を足さない。
+ * カーソルのスクロールを受け持つ部品（ownsCaretScroll を宣言した部品）があるときは、その部品が位置を保つので、ここでは余白を足さない。
  */
 export function readingPositionExtension(): Extension {
   return EditorView.scrollMargins.of((view) => {
-    if (view.dom.classList.contains('cm-typewriter')) return null;
+    if (view.state.facet(ownsCaretScroll)) return null;
     const margin = Math.round(view.scrollDOM.clientHeight * CARET_MARGIN_RATIO);
     return { top: margin, bottom: margin };
   });

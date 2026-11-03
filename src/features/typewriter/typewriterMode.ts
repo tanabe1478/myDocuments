@@ -1,7 +1,8 @@
 import type { Extension } from '@codemirror/state';
 import { EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view';
-import { typewriterPadding, typewriterScrollTop } from '../typewriter';
-import { TOGGLE_TASK_EVENT } from './taskToggle';
+import { ownsCaretScroll, skipCaretFollow } from '../../plugin-api';
+import { typewriterTheme } from './theme';
+import { typewriterPadding, typewriterScrollTop } from './typewriter';
 
 const PAD_VAR = '--md-typewriter-pad';
 /** 描画範囲外の行へ飛んだとき、近くまで動かしてから測り直す回数の上限。 */
@@ -37,8 +38,8 @@ class TypewriterPlugin {
     if (!update.selectionSet && !update.docChanged) return;
     // ポインタでの選択は動かさない（クリックした行が、ポインタの下から動くのを避ける）。
     if (update.transactions.some((tr) => tr.isUserEvent('select.pointer'))) return;
-    // チェックボックスのクリックでの切り替えも、カーソルを動かさないので、スクロールしない（taskToggle.ts）。
-    if (update.transactions.some((tr) => tr.isUserEvent(TOGGLE_TASK_EVENT))) return;
+    // カーソルを動かさない変更（チェックボックスのクリックでの切り替えなど）は、共通の印（skipCaretFollow）が付く。スクロールしない。
+    if (update.transactions.some((tr) => tr.annotation(skipCaretFollow))) return;
     this.remeasures = 0;
     this.schedule();
   }
@@ -92,5 +93,11 @@ class TypewriterPlugin {
 
 /** タイプライターモード（UI-07）: カーソル行を、表示領域の縦中央に保つ。 */
 export function typewriterModeExtension(): Extension {
-  return [ViewPlugin.fromClass(TypewriterPlugin), EditorView.editorAttributes.of({ class: 'cm-typewriter' })];
+  return [
+    ViewPlugin.fromClass(TypewriterPlugin),
+    EditorView.editorAttributes.of({ class: 'cm-typewriter' }),
+    // カーソルのスクロールはこの部品が受け持つ。ホストの既定の補助（視線の位置の余白など）は止まる。
+    ownsCaretScroll.of(true),
+    typewriterTheme,
+  ];
 }

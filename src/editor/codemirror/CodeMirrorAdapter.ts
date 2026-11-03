@@ -1,8 +1,9 @@
 import { defaultKeymap, history } from '@codemirror/commands';
 import { search, searchKeymap } from '@codemirror/search';
-import { Compartment, EditorState, type Extension } from '@codemirror/state';
+import { Compartment, EditorState, type Extension, type StateEffect } from '@codemirror/state';
 import { EditorView, drawSelection, keymap } from '@codemirror/view';
 import type { TextKind } from '../../document/fileKinds';
+import type { RegisteredEditorExtension } from '../../plugin-api';
 import type { ListContinuation, MarkupDisplay } from '../../preferences/preferences';
 import type { EditorAdapter, EditorSelection } from '../EditorAdapter';
 import { focusModeExtension } from './focusMode';
@@ -15,13 +16,19 @@ import { markdownDecorations, markupDisplayFacet, plainTextDecorations } from '.
 import { readingPositionExtension } from './readingPosition';
 import { taskToggleExtension } from './taskToggle';
 import { editorTheme } from './theme';
-import { typewriterModeExtension } from './typewriterMode';
 import { verticalMotionExtension } from './verticalMotion';
 
 /** 変換中だった場合に、終了後、保留した setText を試し直す間隔。 */
 const PENDING_RETRY_MS = 50;
 /** 覆う要素（トースト）の上端から、カーソル行を離す余白（px）。 */
 const BOTTOM_INSET_GAP_PX = 12;
+
+/** 部品が登録した、設定から作る拡張 1 つ分。Compartment で持ち、設定が変わったら差し替える。 */
+interface PluginSlot {
+  readonly registration: RegisteredEditorExtension;
+  readonly compartment: Compartment;
+  value: unknown;
+}
 
 export class CodeMirrorAdapter implements EditorAdapter {
   private view: EditorView | null = null;
@@ -33,7 +40,6 @@ export class CodeMirrorAdapter implements EditorAdapter {
   private readonly changeListeners = new Set<(text: string) => void>();
   private readonly selectionListeners = new Set<(selection: EditorSelection) => void>();
   private focusMode = false;
-  private typewriterMode = false;
   private textKind: TextKind = 'markdown';
   private listContinuation: ListContinuation = 'tight';
   private markupDisplay: MarkupDisplay = 'cursorLine';
@@ -43,10 +49,20 @@ export class CodeMirrorAdapter implements EditorAdapter {
   private bottomInset = 0;
   // setText は state を作り直すので、モードは Compartment で持ち、作り直しても現在の値で始める。
   private readonly focusCompartment = new Compartment();
-  private readonly typewriterCompartment = new Compartment();
   private readonly kindCompartment = new Compartment();
   private readonly listCompartment = new Compartment();
   private readonly markupCompartment = new Compartment();
+
+  /** 部品の拡張。部品の一覧（PluginRegistry）の順。 */
+  private readonly pluginSlots: readonly PluginSlot[];
+
+  constructor(pluginExtensions: readonly RegisteredEditorExtension[] = []) {
+    this.pluginSlots = pluginExtensions.map((registration) => ({
+      registration,
+      compartment: new Compartment(),
+      value: registration.defaultValue,
+    }));
+  }
 
   mount(el: HTMLElement): void {
     if (this.view) throw new Error('CodeMirrorAdapter is already mounted');
@@ -90,10 +106,14 @@ export class CodeMirrorAdapter implements EditorAdapter {
     this.view?.dispatch({ effects: this.focusCompartment.reconfigure(this.focusExtension()) });
   }
 
-  setTypewriterMode(on: boolean): void {
-    if (this.typewriterMode === on) return;
-    this.typewriterMode = on;
-    this.view?.dispatch({ effects: this.typewriterCompartment.reconfigure(this.typewriterExtension()) });
+  setPluginSetting(key: string, value: unknown): void {
+    const effects: StateEffect<unknown>[] = [];
+    for (const slot of this.pluginSlots) {
+      if (slot.registration.settingKey !== key || Object.is(slot.value, value)) continue;
+      slot.value = value;
+      effects.push(slot.compartment.reconfigure(this.pluginExtension(slot)));
+    }
+    if (effects.length > 0) this.view?.dispatch({ effects });
   }
 
   setTextKind(kind: TextKind): void {
@@ -181,8 +201,8 @@ export class CodeMirrorAdapter implements EditorAdapter {
     return this.textKind === 'plain' ? plainTextDecorations() : markdownDecorations();
   }
 
-  private typewriterExtension(): Extension {
-    return this.typewriterMode ? typewriterModeExtension() : [];
+  private pluginExtension(slot: PluginSlot): Extension {
+    return slot.registration.create(slot.value);
   }
 
   private createState(doc: string): EditorState {
@@ -199,7 +219,7 @@ export class CodeMirrorAdapter implements EditorAdapter {
       EditorView.lineWrapping,
       this.kindCompartment.of(this.kindExtension()),
       this.focusCompartment.of(this.focusExtension()),
-      this.typewriterCompartment.of(this.typewriterExtension()),
+      ...this.pluginSlots.map((slot) => slot.compartment.of(this.pluginExtension(slot))),
       this.listCompartment.of(listContinuationExtension(this.listContinuation)),
       this.markupCompartment.of(markupDisplayFacet.of(this.markupDisplay)),
       linkOpenExtension((url) => this.linkListeners.forEach((cb) => cb(url))),
@@ -234,6 +254,6 @@ export class CodeMirrorAdapter implements EditorAdapter {
   }
 }
 
-export function createCodeMirrorAdapter(): EditorAdapter {
-  return new CodeMirrorAdapter();
+export function createCodeMirrorAdapter(pluginExtensions: readonly RegisteredEditorExtension[] = []): EditorAdapter {
+  return new CodeMirrorAdapter(pluginExtensions);
 }

@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { history, redo, undo } from '@codemirror/commands';
+import { ensureSyntaxTree } from '@codemirror/language';
 import { EditorSelection, EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EditorAdapter } from '../EditorAdapter';
+import { PLUGIN_API_VERSION, createPluginRegistry } from '../../plugin-api';
 import { createCodeMirrorAdapter } from './CodeMirrorAdapter';
 import { markdownDecorations } from './markdownDecorations';
 import { taskToggleExtension } from './taskToggle';
@@ -25,6 +27,17 @@ function viewOf(): EditorView {
   const view = dom && EditorView.findFromDOM(dom as HTMLElement);
   if (!view) throw new Error('no EditorView');
   return view;
+}
+
+/**
+ * 構文解析を最後まで済ませる。state の作成時（mount・setText）の解析は短い時間で打ち切られ、負荷が高いと木が未完成のまま、
+ * 木に頼る描画（記号を隠す・タスクの枠・見出し）とコマンド（Enter・チェックボックスのクリック）が何もしない。
+ * ensureSyntaxTree は解析を進めるが、state が持つ木は古いままなので、空の transaction で持ち替える
+ * （木が変わると、描画も更新される）。文書の種類が plain のときは言語がなく、何も起きない。
+ */
+function settleSyntax(view: EditorView): void {
+  ensureSyntaxTree(view.state, view.state.doc.length, 10_000);
+  view.dispatch({});
 }
 
 /** ユーザーの入力に相当する変更。 */
@@ -124,6 +137,7 @@ describe('markdown decoration', () => {
     adapter.mount(host);
     adapter.setMarkupDisplay('always');
     adapter.setText('# H1\n\n## H2\n\ntext **bold** and *it* and [l](http://x)\n\nSetext\n======');
+    settleSyntax(viewOf());
     // 記法記号（# など）は、「常に表示」では隠さず、行のテキストに残る。
     const h1Lines = Array.from(host.querySelectorAll('.cm-md-h1')).map((n) => n.textContent);
     expect(h1Lines).toEqual(['# H1', 'Setext', '======']);
@@ -150,6 +164,7 @@ describe('live markup (ADR-004)', () => {
   it('hides the markup on lines without the cursor, and shows it on the cursor line', () => {
     adapter.mount(host);
     adapter.setText(DOC);
+    settleSyntax(viewOf());
     // カーソルは先頭（1 行目）。1 行目は記号を見せ、ほかの行は隠す。
     expect(renderedLines()).toEqual(['# H1', '', 'H2', '', '\u2022 item', '', 'text bold and l', '', 'quote']);
     // 本文は変わらない。
@@ -159,6 +174,7 @@ describe('live markup (ADR-004)', () => {
   it('switches only the line that the cursor enters and leaves', () => {
     adapter.mount(host);
     adapter.setText(DOC);
+    settleSyntax(viewOf());
     const doc = viewOf().state.doc;
     moveCursorTo(doc.line(3).from + 3);
     expect(renderedLines()).toEqual(['H1', '', '## H2', '', '\u2022 item', '', 'text bold and l', '', 'quote']);
@@ -170,6 +186,7 @@ describe('live markup (ADR-004)', () => {
   it('shows the markup on every line that a selection touches', () => {
     adapter.mount(host);
     adapter.setText(DOC);
+    settleSyntax(viewOf());
     const doc = viewOf().state.doc;
     viewOf().dispatch({ selection: { anchor: doc.line(3).from + 1, head: doc.line(7).from + 2 } });
     expect(renderedLines()).toEqual(['H1', '', '## H2', '', '- item', '', 'text **bold** and [l](http://x)', '', 'quote']);
@@ -178,6 +195,7 @@ describe('live markup (ADR-004)', () => {
   it('shows everything with markupDisplay always, and follows later changes at once', () => {
     adapter.mount(host);
     adapter.setText(DOC);
+    settleSyntax(viewOf());
     adapter.setMarkupDisplay('always');
     expect(renderedLines()).toEqual(DOC.split('\n'));
     adapter.setMarkupDisplay('cursorLine');
@@ -201,6 +219,7 @@ describe('live markup (ADR-004)', () => {
   it('draws the task box and keeps the text of the document', () => {
     adapter.mount(host);
     adapter.setText('first\n\n- [ ] todo\n- [x] done');
+    settleSyntax(viewOf());
     expect(host.querySelectorAll('.cm-md-task')).toHaveLength(2);
     expect(host.querySelectorAll('.cm-md-task-done')).toHaveLength(1);
     expect(adapter.getText()).toBe('first\n\n- [ ] todo\n- [x] done');
@@ -210,6 +229,7 @@ describe('live markup (ADR-004)', () => {
     vi.useFakeTimers();
     adapter.mount(host);
     adapter.setText('# H1\n\n## H2\n\ntext');
+    settleSyntax(viewOf());
     const content = host.querySelector('.cm-content') as HTMLElement;
     const before = renderedLines();
 
@@ -350,25 +370,69 @@ describe('focus mode', () => {
   });
 });
 
-describe('typewriter mode', () => {
-  it('adds the typewriter class to the editor while on, and removes it when off', () => {
+describe('plugin editor extensions (setPluginSetting)', () => {
+  /** 設定 mark が true の間だけ、エディタに class 'plug-on' を付ける部品。 */
+  function markPlugin(onCreate?: (value: unknown) => void) {
+    const registry = createPluginRegistry([
+      {
+        manifest: { id: 'mark', name: 'mark', version: '1.0.0', apiVersion: PLUGIN_API_VERSION, tier: 'editor' },
+        activate(ctx) {
+          const setting = ctx.registerSetting<boolean>({ key: 'mark', defaultValue: false, normalize: (raw) => raw === true });
+          ctx.registerEditorExtension({
+            setting,
+            create: (on) => {
+              onCreate?.(on);
+              return on ? EditorView.editorAttributes.of({ class: 'plug-on' }) : [];
+            },
+          });
+        },
+      },
+    ]);
+    return registry.editorExtensions;
+  }
+  const editorDom = () => host.querySelector('.cm-editor') as HTMLElement;
+
+  it('starts with the default value, and swaps the extension when the setting changes', () => {
+    adapter = createCodeMirrorAdapter(markPlugin());
     adapter.mount(host);
-    const editor = host.querySelector('.cm-editor') as HTMLElement;
-    expect(editor.classList.contains('cm-typewriter')).toBe(false);
-    adapter.setTypewriterMode(true);
-    expect(editor.classList.contains('cm-typewriter')).toBe(true);
-    adapter.setTypewriterMode(false);
-    expect(editor.classList.contains('cm-typewriter')).toBe(false);
+    expect(editorDom().classList.contains('plug-on')).toBe(false);
+    adapter.setPluginSetting('mark', true);
+    expect(editorDom().classList.contains('plug-on')).toBe(true);
+    adapter.setPluginSetting('mark', false);
+    expect(editorDom().classList.contains('plug-on')).toBe(false);
+  });
+
+  it('applies a value set before mount, and rebuilds only when the value changes', () => {
+    const created: unknown[] = [];
+    adapter = createCodeMirrorAdapter(markPlugin((v) => created.push(v)));
+    adapter.setPluginSetting('mark', true);
+    adapter.mount(host);
+    expect(editorDom().classList.contains('plug-on')).toBe(true);
+    const before = created.length;
+    adapter.setPluginSetting('mark', true);
+    expect(created.length).toBe(before);
   });
 
   it('survives setText, and leaves the text and history alone', () => {
+    adapter = createCodeMirrorAdapter(markPlugin());
     adapter.mount(host);
-    adapter.setTypewriterMode(true);
+    adapter.setPluginSetting('mark', true);
     adapter.setText('long\ndocument');
-    const editor = host.querySelector('.cm-editor') as HTMLElement;
-    expect(editor.classList.contains('cm-typewriter')).toBe(true);
+    expect(editorDom().classList.contains('plug-on')).toBe(true);
     expect(adapter.getText()).toBe('long\ndocument');
     expect(undo(viewOf())).toBe(false);
+  });
+
+  it('ignores keys that no plugin registered', () => {
+    adapter = createCodeMirrorAdapter(markPlugin());
+    adapter.mount(host);
+    expect(() => adapter.setPluginSetting('unknown', true)).not.toThrow();
+    expect(editorDom().classList.contains('plug-on')).toBe(false);
+  });
+
+  it('keeps working without plugins', () => {
+    adapter.mount(host);
+    expect(() => adapter.setPluginSetting('mark', true)).not.toThrow();
   });
 });
 
@@ -379,6 +443,7 @@ describe('list continuation on Enter', () => {
   function pressEnterAtEnd(): void {
     const view = viewOf();
     view.dispatch({ selection: { anchor: view.state.doc.length } });
+    settleSyntax(view);
     view.contentDOM.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, cancelable: true }));
   }
 
@@ -501,6 +566,8 @@ describe('task toggle (click on the checkbox of a hidden line)', () => {
   function mousedown(el: Element, init: MouseEventInit = {}): MouseEvent {
     const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, ...init });
     el.dispatchEvent(event);
+    // 切り替えた後の再解析も、短い時間で打ち切られることがある。続けて木に頼る確かめ（枠の数・次のクリック）の前に済ませる。
+    settleSyntax(viewOf());
     return event;
   }
 
@@ -511,6 +578,7 @@ describe('task toggle (click on the checkbox of a hidden line)', () => {
   function setup(text = TASKS): void {
     adapter.mount(host);
     adapter.setText(text);
+    settleSyntax(viewOf());
   }
 
   it('toggles the clicked task and nothing else, without touching the selection', () => {
@@ -548,6 +616,7 @@ describe('task toggle (click on the checkbox of a hidden line)', () => {
         ],
       }),
     });
+    settleSyntax(view);
     view.dispatch({
       selection: EditorSelection.create([EditorSelection.cursor(1), EditorSelection.range(TASKS.length - 3, TASKS.length)]),
     });

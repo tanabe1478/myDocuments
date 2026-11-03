@@ -191,7 +191,7 @@ src/platform/memory/ と src/platform/index.ts は除外していない。メモ
 | ファイル | 単体テスト | 単体テストで守られている部分 | e2e にだけ頼る部分と、主に守る spec |
 | --- | --- | --- | --- |
 | markdownDecorations.ts | 89.9% / 78.2% | 見出しの大きさ、強調、記号を隠す装飾の決定（CodeMirrorAdapter.test.ts。範囲の抽出は liveMarkup.test.ts） | 幅の測定のキャッシュ（89〜105 行）、コードフェンスの class 付け（225〜235 行）、IME 中の隠す範囲の位置の追従（298〜310 行）、フォント・字間の変更での幅の測り直し（339 行）、IME 後の timer（399 行）。writing-feel.spec.ts（ぶら下げインデント (3)）、live-markup.spec.ts（ぶら下げインデント (f)、IME の変換と記法の表示 (d)）、document.spec.ts（Markdown の見た目） |
-| focusMode.ts | 93.9% / 80% | 周囲の段落を薄くする、IME 中は再計算しない、編集に位置で追従（CodeMirrorAdapter.test.ts、focusRange.test.ts） | IME 中の保留の timer の後始末（69、72、77 行）。canvas.spec.ts（フォーカスモード (2)、段落判定 (a)(b)、日本語 IME とフォーカスモード (8)） |
+| focusMode.ts | 100% / 80% | 周囲の段落を薄くする、IME 中は再計算しない、編集に位置で追従（CodeMirrorAdapter.test.ts、focusRange.test.ts） | IME 中の保留の timer の後始末（69、72、77 行）。canvas.spec.ts（フォーカスモード (2)、段落判定 (a)(b)、日本語 IME とフォーカスモード (8)） |
 | typewriterMode.ts | 38.9% / 9.1% | class の付け外し、setText をまたぐ維持（CodeMirrorAdapter.test.ts）。中央に保つ計算の純粋関数は typewriter.ts が単体で 100% | 実際のスクロールの追従と余白の測り直し（27〜87 行のほとんど）。canvas.spec.ts（タイプライターモード (3)）、live-markup.spec.ts（タイプライターモード・フォーカスモード (j)） |
 | keepCursorVisible.ts | 30.8% / 11.1% | 組み込みだけ | 表示領域が縮んだとき（競合バーの出現など）にカーソル行を見える位置に保つ処理の本体（50〜82 行）。conflict-bar.spec.ts（競合バーの出現・消失とカーソル行） |
 | indentKeymap.ts | 26.5% / 26.3% | 計画を立てる純粋関数 indent.ts は単体で 100%（indent.test.ts） | Tab と Shift+Tab のキーマップ本体（8〜38、52〜56 行）。writing-feel.spec.ts（Tab でのインデント (4)） |

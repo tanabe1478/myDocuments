@@ -1,0 +1,265 @@
+[
+  {
+    "name": "no-file",
+    "input": null,
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": false,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 18,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"tight\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"system\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "empty-object",
+    "input": {},
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": false,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 18,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"tight\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"system\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "full-typewriter-true",
+    "input": {
+      "fontFamily": "\"Noto Serif JP\", serif",
+      "fontSizePx": 20,
+      "lineHeight": 2,
+      "paragraphSpacing": 1.5,
+      "letterSpacing": 0.05,
+      "maxWidthPx": 720,
+      "surfaceWidth": "text",
+      "sidebarOpen": true,
+      "theme": "dark",
+      "focusMode": true,
+      "typewriterMode": true,
+      "autoHideChrome": false,
+      "background": {
+        "kind": "image",
+        "color": "#102030",
+        "gradientId": "forest",
+        "imageId": "ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12"
+      },
+      "imageBrightness": 0.5,
+      "overlayOpacity": 0.6,
+      "surfaceOpacity": 0.7,
+      "hideBackground": true,
+      "listContinuation": "preserve",
+      "markupDisplay": "always"
+    },
+    "expected": "{\n  \"autoHideChrome\": false,\n  \"background\": {\n    \"color\": \"#102030\",\n    \"gradientId\": \"forest\",\n    \"imageId\": \"ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12\",\n    \"kind\": \"image\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"\\\"Noto Serif JP\\\", serif\",\n  \"fontSizePx\": 20,\n  \"hideBackground\": true,\n  \"imageBrightness\": 0.5,\n  \"letterSpacing\": 0.05,\n  \"lineHeight\": 2,\n  \"listContinuation\": \"preserve\",\n  \"markupDisplay\": \"always\",\n  \"maxWidthPx\": 720,\n  \"overlayOpacity\": 0.6,\n  \"paragraphSpacing\": 1.5,\n  \"sidebarOpen\": true,\n  \"surfaceOpacity\": 0.7,\n  \"surfaceWidth\": \"text\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": true\n}\n"
+  },
+  {
+    "name": "full-typewriter-false",
+    "input": {
+      "fontFamily": "\"Noto Serif JP\", serif",
+      "fontSizePx": 20,
+      "lineHeight": 2,
+      "paragraphSpacing": 1.5,
+      "letterSpacing": 0.05,
+      "maxWidthPx": 720,
+      "surfaceWidth": "text",
+      "sidebarOpen": true,
+      "theme": "dark",
+      "focusMode": true,
+      "typewriterMode": false,
+      "autoHideChrome": false,
+      "background": {
+        "kind": "image",
+        "color": "#102030",
+        "gradientId": "forest",
+        "imageId": "ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12"
+      },
+      "imageBrightness": 0.5,
+      "overlayOpacity": 0.6,
+      "surfaceOpacity": 0.7,
+      "hideBackground": true,
+      "listContinuation": "preserve",
+      "markupDisplay": "always"
+    },
+    "expected": "{\n  \"autoHideChrome\": false,\n  \"background\": {\n    \"color\": \"#102030\",\n    \"gradientId\": \"forest\",\n    \"imageId\": \"ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12\",\n    \"kind\": \"image\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"\\\"Noto Serif JP\\\", serif\",\n  \"fontSizePx\": 20,\n  \"hideBackground\": true,\n  \"imageBrightness\": 0.5,\n  \"letterSpacing\": 0.05,\n  \"lineHeight\": 2,\n  \"listContinuation\": \"preserve\",\n  \"markupDisplay\": \"always\",\n  \"maxWidthPx\": 720,\n  \"overlayOpacity\": 0.6,\n  \"paragraphSpacing\": 1.5,\n  \"sidebarOpen\": true,\n  \"surfaceOpacity\": 0.7,\n  \"surfaceWidth\": \"text\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "full-without-typewriter-key",
+    "input": {
+      "fontFamily": "\"Noto Serif JP\", serif",
+      "fontSizePx": 20,
+      "lineHeight": 2,
+      "paragraphSpacing": 1.5,
+      "letterSpacing": 0.05,
+      "maxWidthPx": 720,
+      "surfaceWidth": "text",
+      "sidebarOpen": true,
+      "theme": "dark",
+      "focusMode": true,
+      "autoHideChrome": false,
+      "background": {
+        "kind": "image",
+        "color": "#102030",
+        "gradientId": "forest",
+        "imageId": "ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12"
+      },
+      "imageBrightness": 0.5,
+      "overlayOpacity": 0.6,
+      "surfaceOpacity": 0.7,
+      "hideBackground": true,
+      "listContinuation": "preserve",
+      "markupDisplay": "always"
+    },
+    "expected": "{\n  \"autoHideChrome\": false,\n  \"background\": {\n    \"color\": \"#102030\",\n    \"gradientId\": \"forest\",\n    \"imageId\": \"ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12\",\n    \"kind\": \"image\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"\\\"Noto Serif JP\\\", serif\",\n  \"fontSizePx\": 20,\n  \"hideBackground\": true,\n  \"imageBrightness\": 0.5,\n  \"letterSpacing\": 0.05,\n  \"lineHeight\": 2,\n  \"listContinuation\": \"preserve\",\n  \"markupDisplay\": \"always\",\n  \"maxWidthPx\": 720,\n  \"overlayOpacity\": 0.6,\n  \"paragraphSpacing\": 1.5,\n  \"sidebarOpen\": true,\n  \"surfaceOpacity\": 0.7,\n  \"surfaceWidth\": \"text\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "typewriter-number",
+    "input": {
+      "fontFamily": "\"Noto Serif JP\", serif",
+      "fontSizePx": 20,
+      "lineHeight": 2,
+      "paragraphSpacing": 1.5,
+      "letterSpacing": 0.05,
+      "maxWidthPx": 720,
+      "surfaceWidth": "text",
+      "sidebarOpen": true,
+      "theme": "dark",
+      "focusMode": true,
+      "autoHideChrome": false,
+      "background": {
+        "kind": "image",
+        "color": "#102030",
+        "gradientId": "forest",
+        "imageId": "ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12"
+      },
+      "imageBrightness": 0.5,
+      "overlayOpacity": 0.6,
+      "surfaceOpacity": 0.7,
+      "hideBackground": true,
+      "listContinuation": "preserve",
+      "markupDisplay": "always",
+      "typewriterMode": 1
+    },
+    "expected": "{\n  \"autoHideChrome\": false,\n  \"background\": {\n    \"color\": \"#102030\",\n    \"gradientId\": \"forest\",\n    \"imageId\": \"ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12\",\n    \"kind\": \"image\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"\\\"Noto Serif JP\\\", serif\",\n  \"fontSizePx\": 20,\n  \"hideBackground\": true,\n  \"imageBrightness\": 0.5,\n  \"letterSpacing\": 0.05,\n  \"lineHeight\": 2,\n  \"listContinuation\": \"preserve\",\n  \"markupDisplay\": \"always\",\n  \"maxWidthPx\": 720,\n  \"overlayOpacity\": 0.6,\n  \"paragraphSpacing\": 1.5,\n  \"sidebarOpen\": true,\n  \"surfaceOpacity\": 0.7,\n  \"surfaceWidth\": \"text\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "typewriter-string",
+    "input": {
+      "fontFamily": "\"Noto Serif JP\", serif",
+      "fontSizePx": 20,
+      "lineHeight": 2,
+      "paragraphSpacing": 1.5,
+      "letterSpacing": 0.05,
+      "maxWidthPx": 720,
+      "surfaceWidth": "text",
+      "sidebarOpen": true,
+      "theme": "dark",
+      "focusMode": true,
+      "autoHideChrome": false,
+      "background": {
+        "kind": "image",
+        "color": "#102030",
+        "gradientId": "forest",
+        "imageId": "ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12"
+      },
+      "imageBrightness": 0.5,
+      "overlayOpacity": 0.6,
+      "surfaceOpacity": 0.7,
+      "hideBackground": true,
+      "listContinuation": "preserve",
+      "markupDisplay": "always",
+      "typewriterMode": "true"
+    },
+    "expected": "{\n  \"autoHideChrome\": false,\n  \"background\": {\n    \"color\": \"#102030\",\n    \"gradientId\": \"forest\",\n    \"imageId\": \"ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12\",\n    \"kind\": \"image\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"\\\"Noto Serif JP\\\", serif\",\n  \"fontSizePx\": 20,\n  \"hideBackground\": true,\n  \"imageBrightness\": 0.5,\n  \"letterSpacing\": 0.05,\n  \"lineHeight\": 2,\n  \"listContinuation\": \"preserve\",\n  \"markupDisplay\": \"always\",\n  \"maxWidthPx\": 720,\n  \"overlayOpacity\": 0.6,\n  \"paragraphSpacing\": 1.5,\n  \"sidebarOpen\": true,\n  \"surfaceOpacity\": 0.7,\n  \"surfaceWidth\": \"text\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "typewriter-null",
+    "input": {
+      "fontFamily": "\"Noto Serif JP\", serif",
+      "fontSizePx": 20,
+      "lineHeight": 2,
+      "paragraphSpacing": 1.5,
+      "letterSpacing": 0.05,
+      "maxWidthPx": 720,
+      "surfaceWidth": "text",
+      "sidebarOpen": true,
+      "theme": "dark",
+      "focusMode": true,
+      "autoHideChrome": false,
+      "background": {
+        "kind": "image",
+        "color": "#102030",
+        "gradientId": "forest",
+        "imageId": "ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12"
+      },
+      "imageBrightness": 0.5,
+      "overlayOpacity": 0.6,
+      "surfaceOpacity": 0.7,
+      "hideBackground": true,
+      "listContinuation": "preserve",
+      "markupDisplay": "always",
+      "typewriterMode": null
+    },
+    "expected": "{\n  \"autoHideChrome\": false,\n  \"background\": {\n    \"color\": \"#102030\",\n    \"gradientId\": \"forest\",\n    \"imageId\": \"ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12\",\n    \"kind\": \"image\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"\\\"Noto Serif JP\\\", serif\",\n  \"fontSizePx\": 20,\n  \"hideBackground\": true,\n  \"imageBrightness\": 0.5,\n  \"letterSpacing\": 0.05,\n  \"lineHeight\": 2,\n  \"listContinuation\": \"preserve\",\n  \"markupDisplay\": \"always\",\n  \"maxWidthPx\": 720,\n  \"overlayOpacity\": 0.6,\n  \"paragraphSpacing\": 1.5,\n  \"sidebarOpen\": true,\n  \"surfaceOpacity\": 0.7,\n  \"surfaceWidth\": \"text\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "typewriter-array",
+    "input": {
+      "fontFamily": "\"Noto Serif JP\", serif",
+      "fontSizePx": 20,
+      "lineHeight": 2,
+      "paragraphSpacing": 1.5,
+      "letterSpacing": 0.05,
+      "maxWidthPx": 720,
+      "surfaceWidth": "text",
+      "sidebarOpen": true,
+      "theme": "dark",
+      "focusMode": true,
+      "autoHideChrome": false,
+      "background": {
+        "kind": "image",
+        "color": "#102030",
+        "gradientId": "forest",
+        "imageId": "ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12"
+      },
+      "imageBrightness": 0.5,
+      "overlayOpacity": 0.6,
+      "surfaceOpacity": 0.7,
+      "hideBackground": true,
+      "listContinuation": "preserve",
+      "markupDisplay": "always",
+      "typewriterMode": [
+        true
+      ]
+    },
+    "expected": "{\n  \"autoHideChrome\": false,\n  \"background\": {\n    \"color\": \"#102030\",\n    \"gradientId\": \"forest\",\n    \"imageId\": \"ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12\",\n    \"kind\": \"image\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"\\\"Noto Serif JP\\\", serif\",\n  \"fontSizePx\": 20,\n  \"hideBackground\": true,\n  \"imageBrightness\": 0.5,\n  \"letterSpacing\": 0.05,\n  \"lineHeight\": 2,\n  \"listContinuation\": \"preserve\",\n  \"markupDisplay\": \"always\",\n  \"maxWidthPx\": 720,\n  \"overlayOpacity\": 0.6,\n  \"paragraphSpacing\": 1.5,\n  \"sidebarOpen\": true,\n  \"surfaceOpacity\": 0.7,\n  \"surfaceWidth\": \"text\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "run2-format",
+    "input": {
+      "fontFamily": "serif",
+      "fontSizePx": 22,
+      "lineHeight": 2,
+      "paragraphSpacing": 1,
+      "maxWidthPx": 700,
+      "theme": "dark",
+      "focusMode": true,
+      "typewriterMode": false,
+      "autoHideChrome": true
+    },
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"serif\",\n  \"fontSizePx\": 22,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 2,\n  \"listContinuation\": \"tight\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 700,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 1,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "typewriter-true-others-out-of-range",
+    "input": {
+      "typewriterMode": true,
+      "fontSizePx": 4,
+      "lineHeight": 99,
+      "theme": "blue",
+      "maxWidthPx": 100000
+    },
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": false,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 18,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"tight\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"system\",\n  \"typewriterMode\": true\n}\n"
+  },
+  {
+    "name": "unknown-keys-dropped",
+    "input": {
+      "typewriterMode": true,
+      "someFutureKey": 1,
+      "focusMode": true
+    },
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 18,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"tight\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"system\",\n  \"typewriterMode\": true\n}\n"
+  },
+  {
+    "name": "not-an-object",
+    "input": [
+      1
+    ],
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": false,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 18,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"tight\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"system\",\n  \"typewriterMode\": false\n}\n"
+  }
+]

@@ -1,16 +1,25 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PREFERENCES, RANGES, normalizePreferences } from './preferences';
+import { bundledPlugins } from '../features';
+import { createPluginRegistry } from '../plugin-api';
+import { DEFAULT_PREFERENCES, RANGES, normalizePreferences as normalizeWith } from './preferences';
 import { resolveTheme } from './apply';
 
 const IMAGE_ID = 'ab12'.repeat(16);
 
+// 部品（同梱）が登録した設定を含めて検証する。保存の形は、設定が部品の登録に移る前と同じ。
+const pluginSettings = createPluginRegistry(bundledPlugins).settings;
+const normalizePreferences = (raw: unknown) => normalizeWith(raw, pluginSettings);
+/** 部品の設定が加わった既定値（これまで DEFAULT_PREFERENCES にあった項目を含む）。 */
+const DEFAULTS_WITH_PLUGINS = { ...DEFAULT_PREFERENCES, typewriterMode: false };
+
 describe('normalizePreferences', () => {
   it('uses the defaults for missing or non-object input', () => {
-    expect(normalizePreferences(undefined)).toEqual(DEFAULT_PREFERENCES);
-    expect(normalizePreferences(null)).toEqual(DEFAULT_PREFERENCES);
-    expect(normalizePreferences('x')).toEqual(DEFAULT_PREFERENCES);
-    expect(normalizePreferences([1])).toEqual(DEFAULT_PREFERENCES);
-    expect(normalizePreferences({})).toEqual(DEFAULT_PREFERENCES);
+    expect(normalizePreferences(undefined)).toEqual(DEFAULTS_WITH_PLUGINS);
+    expect(normalizePreferences(null)).toEqual(DEFAULTS_WITH_PLUGINS);
+    expect(normalizePreferences('x')).toEqual(DEFAULTS_WITH_PLUGINS);
+    expect(normalizePreferences([1])).toEqual(DEFAULTS_WITH_PLUGINS);
+    expect(normalizePreferences({})).toEqual(DEFAULTS_WITH_PLUGINS);
   });
 
   it('has the default max width of 680px (UI-01)', () => {
@@ -80,7 +89,7 @@ describe('normalizePreferences', () => {
       typewriterMode: 1,
       fontFamily: 42,
     });
-    expect(p).toEqual(DEFAULT_PREFERENCES);
+    expect(p).toEqual(DEFAULTS_WITH_PLUGINS);
   });
 
   it('rejects font families that could break out of a CSS declaration', () => {
@@ -334,5 +343,56 @@ describe('paper width and sidebar (Run 8)', () => {
   it('is idempotent', () => {
     const once = normalizePreferences({ surfaceWidth: 'text', sidebarOpen: true });
     expect(normalizePreferences(once)).toEqual(once);
+  });
+});
+
+describe('stored shape of plugin settings (R1: the typewriter setting moved into a plugin)', () => {
+  interface GoldenCase {
+    name: string;
+    input: unknown;
+    /** 変更前（R1 の前のコミット）の normalizePreferences の結果を、キーを並べ替えて整形した文字列。 */
+    expected: string;
+  }
+  const golden = JSON.parse(readFileSync(new URL('./storedShape.golden.json', import.meta.url), 'utf8')) as GoldenCase[];
+
+  /** Rust 側（serde_json の整形出力）と同じ、キーを並べ替えた整形。保存されるバイト列の形。 */
+  const sortKeys = (v: unknown): unknown =>
+    Array.isArray(v)
+      ? v.map(sortKeys)
+      : v && typeof v === 'object'
+        ? Object.fromEntries(
+            Object.entries(v)
+              .sort(([a], [b]) => (a < b ? -1 : 1))
+              .map(([k, x]) => [k, sortKeys(x)]),
+          )
+        : v;
+  const bytes = (prefs: unknown) => JSON.stringify(sortKeys(prefs), null, 2) + '\n';
+
+  it('saves the same bytes as before for every case, including old and broken files', () => {
+    expect(golden.length).toBeGreaterThanOrEqual(10);
+    for (const c of golden) {
+      expect(bytes(normalizePreferences(c.input)), c.name).toBe(c.expected);
+    }
+  });
+
+  it('keeps the setting as a boolean at the top level, under the same key', () => {
+    expect(normalizePreferences({ typewriterMode: true }).typewriterMode).toBe(true);
+    expect(Object.keys(normalizePreferences({}))).toContain('typewriterMode');
+    for (const bad of [1, 'true', null, [true], {}, undefined]) {
+      expect(normalizePreferences({ typewriterMode: bad }).typewriterMode, String(bad)).toBe(false);
+    }
+  });
+
+  it('drops keys that no loaded plugin defines (as before), and plugin keys when no plugin is loaded', () => {
+    expect(normalizePreferences({ someFutureKey: 1 })).not.toHaveProperty('someFutureKey');
+    expect(normalizeWith({ typewriterMode: true })).not.toHaveProperty('typewriterMode');
+    expect(normalizeWith({ typewriterMode: true })).toEqual(DEFAULT_PREFERENCES);
+  });
+
+  it('reads settings of any plugin generically', () => {
+    const settings = [{ key: 'demoCount', defaultValue: 3, normalize: (raw: unknown) => (typeof raw === 'number' ? raw : 3) }];
+    expect(normalizeWith({ demoCount: 7, theme: 'dark' }, settings)).toMatchObject({ demoCount: 7, theme: 'dark' });
+    expect(normalizeWith({ demoCount: 'x' }, settings).demoCount).toBe(3);
+    expect(normalizeWith(null, settings).demoCount).toBe(3);
   });
 });

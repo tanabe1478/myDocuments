@@ -2,12 +2,13 @@ import { isolateHistory } from '@codemirror/commands';
 import { syntaxTree } from '@codemirror/language';
 import type { Extension, Text } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
+import { skipCaretFollow } from '../../plugin-api';
 import { activeLines, collectMarkup, isActiveLine } from '../liveMarkup';
 import { markupDisplayFacet } from './markdownDecorations';
 
 type Tree = ReturnType<typeof syntaxTree>;
 
-/** 切り替えの transaction の userEvent。タイプライターモードが、この transaction では中央合わせをしないために使う。 */
+/** 切り替えの transaction の userEvent。カーソルへの追従スクロールを避ける判断には使わない（そちらは skipCaretFollow の印）。 */
 export const TOGGLE_TASK_EVENT = 'input.toggle-task';
 
 /** チェックボックスの 1 文字の書き換え（[from, to) を insert に置く）。 */
@@ -39,6 +40,7 @@ export function taskToggleAt(tree: Tree, doc: Text, pos: number): TaskToggle | n
 /**
  * 記号を隠した行のチェックボックスを、修飾キーなしの左クリックで切り替える（ADR-004、Run 13）。
  * カーソルも選択もスクロールも動かさず（CodeMirror に mousedown を渡さない）、文書の 1 文字だけを書き換える。
+ * カーソルに追従してスクロールする部品が走らないよう、transaction に skipCaretFollow の印を付ける。
  * 通常の入力と同じ transaction なので、Undo 1 回で戻り、編集済みの扱いと自動保存も同じ経路を通る。
  * 切り替えないもの（今までどおりの動作）: 本文のクリック、カーソル行の [ ]、設定が「常に表示」、
  * 修飾キー付き、右・中クリック、IME の変換中。
@@ -66,7 +68,7 @@ export function taskToggleExtension(): Extension {
         changes: { from: change.from, to: change.to, insert: change.insert },
         userEvent: TOGGLE_TASK_EVENT,
         // 前後の入力と 1 つの Undo にまとめない。
-        annotations: isolateHistory.of('full'),
+        annotations: [isolateHistory.of('full'), skipCaretFollow.of(true)],
       });
       return true;
     },

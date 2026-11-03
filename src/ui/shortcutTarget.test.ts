@@ -49,7 +49,6 @@ describe('shouldHandleShortcut', () => {
   it('ignores the mode toggles while an input has focus', () => {
     const input = body().querySelector('#i');
     expect(shouldHandleShortcut('focusMode', input)).toBe(false);
-    expect(shouldHandleShortcut('typewriterMode', input)).toBe(false);
   });
 
   it('keeps the other shortcuts working in an input (panel toggle, save, fullscreen...)', () => {
@@ -62,7 +61,6 @@ describe('shouldHandleShortcut', () => {
   it('handles the mode toggles in the editor body and elsewhere', () => {
     const editor = body().querySelector('#e');
     expect(shouldHandleShortcut('focusMode', editor)).toBe(true);
-    expect(shouldHandleShortcut('typewriterMode', editor)).toBe(true);
     expect(shouldHandleShortcut('focusMode', document.body)).toBe(true);
     expect(shouldHandleShortcut('focusMode', null)).toBe(true);
   });

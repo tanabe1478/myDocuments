@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { matchesShortcut, parseShortcut } from '../plugin-api';
 import { matchShortcut, type KeyLike } from './shortcuts';
 
 const key = (k: string, mods: Partial<KeyLike> = {}): KeyLike => ({
@@ -82,11 +83,41 @@ describe('writing canvas shortcuts', () => {
     expect(matchShortcut({ ...key(',', { ctrlKey: true, keyCode: 229 }), code: 'Comma' }, false)).toBeNull();
   });
 
-  it('focus mode is Mod+Shift+F and typewriter mode is Mod+Shift+T', () => {
+  it('focus mode is Mod+Shift+F', () => {
     expect(matchShortcut(key('F', { metaKey: true, shiftKey: true }), true)).toBe('focusMode');
     expect(matchShortcut(key('F', { ctrlKey: true, shiftKey: true }), false)).toBe('focusMode');
-    expect(matchShortcut(key('T', { metaKey: true, shiftKey: true }), true)).toBe('typewriterMode');
-    expect(matchShortcut(key('T', { ctrlKey: true, shiftKey: true }), false)).toBe('typewriterMode');
+  });
+
+  it('leaves the shortcuts of plugin commands (Mod+Shift+T) to the plugin registry', () => {
+    expect(matchShortcut(key('T', { metaKey: true, shiftKey: true }), true)).toBeNull();
+    expect(matchShortcut(key('T', { ctrlKey: true, shiftKey: true }), false)).toBeNull();
+  });
+
+  it('plugin shortcuts are matched by the same rules as the fixed ones (Mod+Shift+F as the common case)', () => {
+    const focus = parseShortcut('Mod+Shift+F');
+    const events: Array<[KeyLike, boolean]> = [];
+    for (const mac of [true, false]) {
+      for (const k of ['F', 'f', 'ｆ', 'a']) {
+        for (const m of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]) {
+          events.push([
+            {
+              ...key(k),
+              code: k === 'ｆ' ? 'KeyF' : `Key${k.toUpperCase()}`,
+              metaKey: (m & 1) !== 0,
+              ctrlKey: (m & 2) !== 0,
+              altKey: (m & 4) !== 0,
+              shiftKey: (m & 8) !== 0,
+            },
+            mac,
+          ]);
+        }
+      }
+      events.push([key('F', { metaKey: true, shiftKey: true, isComposing: true }), mac]);
+      events.push([key('F', { ctrlKey: true, shiftKey: true, keyCode: 229 }), mac]);
+    }
+    for (const [e, mac] of events) {
+      expect(matchesShortcut(focus, e, mac), JSON.stringify([e, mac])).toBe(matchShortcut(e, mac) === 'focusMode');
+    }
   });
 
   it('leaves Mod+F (search) and Mod+T alone', () => {

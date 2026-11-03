@@ -16,8 +16,10 @@ export interface EditorSelection {
  * - IME の変換中（composition 中）は setText を適用せず、変換の終了後に適用する。
  * - onChange はユーザー操作による本文の変化だけを通知する。
  * - on* は購読解除関数を返す。
- * - setFocusMode / setTypewriterMode は表示だけを変える。本文・履歴・選択範囲には触れない。
+ * - setFocusMode は表示だけを変える。本文・履歴・選択範囲には触れない。
  *   setText で文書を読み込み直しても、設定は保たれる。
+ * - setPluginSetting は、部品（src/plugin-api/）が登録した設定の値を渡す。その設定から作る部品の拡張が、現在の値に差し替わる。
+ *   本文・履歴・選択範囲には触れない。setText で文書を読み込み直しても、現在の値で始まる。登録のない key は無視する。
  * - setTextKind は表示だけを変える（markdown: Markdown の装飾あり、plain: 素のテキスト）。本文・履歴・選択範囲には触れない。
  *   setText で文書を読み込み直しても、種類は保たれる。
  * - setListContinuation は Enter でのリストの継続（空行を入れるか）だけを変える。本文・履歴・選択範囲には触れない。
@@ -38,8 +40,8 @@ export interface EditorAdapter {
   focus(): void;
   /** フォーカスモード: カーソルのある段落以外の行を弱く表示する。 */
   setFocusMode(on: boolean): void;
-  /** タイプライターモード: カーソル行を表示領域の縦中央に保つ。 */
-  setTypewriterMode(on: boolean): void;
+  /** 部品が登録した設定の値。 */
+  setPluginSetting(key: string, value: unknown): void;
   /** 本文の表示の種類。.txt と .text は plain（Markdown の装飾を付けない）。 */
   setTextKind(kind: TextKind): void;
   /** Enter でのリストの継続。tight: 項目の間に空行のあるリスト（loose list）でも空行を入れない。preserve: 空行を入れてリストの形に合わせる。 */

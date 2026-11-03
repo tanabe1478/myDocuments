@@ -873,7 +873,7 @@ body {
 
 /* 競合バーの表示中は、本文の上の余白（浮動の上部バーの下に最初の行を置く 104px）を、段落間隔（空行 1 つの高さ。16px〜1 行）に詰める。
    バーが本文の領域の上に専用の行を取っていて、その下端から本文が始まるため。タイプライターモードの余白は、より具体的な
-   セレクタ（theme.ts の &.cm-typewriter .cm-content）が優先するので、詰めない。 */
+   セレクタ（src/features/typewriter/theme.ts の &.cm-typewriter .cm-content）が優先するので、詰めない。 */
 .app[data-conflict='true'] {
   --md-content-top: clamp(
     16px,

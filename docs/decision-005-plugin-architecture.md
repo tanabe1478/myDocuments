@@ -4,6 +4,8 @@
 
 Proposed（2026-11-03、R0）。この時点では案で、実装の Run で確定する。アプリのコードは変えていない。仕様 §7.2 の「編集エンジンを差し替えても UI は変えない」は、この ADR が確定したとき、エディタに関わる部品の範囲で改める（改め方は「未決のこと」）。仕様の文書そのもの（`docs/spec/`）は書き換えない。
 
+R1（2026-11-03）で、段 3 の同梱の部品に限って API v0 を実装した。細部は「R1 で決めた細部」。
+
 実験（K1〜K3）は、macOS（WKWebView）の Tauri debug ビルドだけで確かめた。Windows（WebView2）と Linux（WebKitGTK）は未確認。
 
 ## Context
@@ -298,6 +300,55 @@ iframe で読み込む場合:
 5. 隔離した表示の段（段 1）。最初は S1（アウトライン）。
 6. 外からの読み込み、セーフモード、部品の一覧、権限の確認の画面。
 7. S3（フォルダの中の一括置換）。ネイティブの検査の拡張（ほかのファイルの読み書き）が要るので、最後。
+
+## R1 で決めた細部
+
+R1（2026-11-03）で、API v0 と登録の仕組みを入れ、タイプライターモードを最初の同梱の部品にした。外からの読み込み、隔離（段 1・段 2）、権限は R1 の対象外。振る舞い、設定ファイルの形、DOM は変えていない。
+
+### API v0 の実際の形
+
+公開 API は `src/plugin-api/`。部品はこのフォルダの index だけを import する。`PLUGIN_API_VERSION` は 0。
+
+- 部品は `{ manifest, activate(ctx) }`。manifest は `id`、`name`、`version`、`apiVersion`、`tier`（R1 は `'editor'` だけ）。草案の plugin.json と default export の関数ではなく、TypeScript のオブジェクトにした（同梱の部品で、外から読み込まないため。外から読み込む Run で manifest の置き方を決め直す）。
+- 登録は activate の中で ctx に対して行う。activate の中でタイマー・リスナー・購読を始めない。後片付けは、activate が返す関数に書く（草案の「register* が解除の関数を返す」は取らなかった）。
+- ctx の登録は 4 つ。`registerSetting`（キー、既定値、正規化。登録した設定への参照を返す）、`registerEditorExtension`（設定への参照と、設定の値から CodeMirror の Extension を作る関数）、`registerCommand`（id、表示名、ショートカット、入力欄では無視するか、実行の関数）、`registerSettingsItem`（置く場所、並び順、種類、設定への参照、表示名）。
+- 拡張の差し替え: ホストが、部品の拡張ごとに Compartment を持ち、設定の値が変わると差し替える。setText で state を作り直しても、現在の値で始まる。拡張は設定 1 つに結び付く形だけで、複数の設定や文書の種類（フォーカスモードの段落の分け方など）に依存する拡張は、R2 以降で必要になったときに足す（未決）。
+- コマンドのショートカットは `Mod+T`、`Mod+Shift+T`、`Mod+,` の形（Mod は macOS で Cmd、それ以外で Ctrl）。論理キーを優先し、英字でない配列では物理キーで判定する。Alt つきと IME の変換中は対象にしない。判定は本体の固定のショートカット（`matchShortcut`）と同じ規則で、同じ入力で同じ結果になることを単体テストで比べている。固定のショートカット（新規、開く、保存、設定、サイドバー、フォーカスモード、全画面）が先に判定され、合わなければ部品のコマンドを探す。
+- 設定画面の置き場所は名前で指す。R1 は `appearance.writingAids`（外観の「執筆の補助」）だけ。並び順は数で、本体の項目が 100 刻み（フォーカスモード 100、入力中は上下のバーを隠す 300）、タイプライターモードは 200。種類は `checkbox` だけ。
+- API の版の検査: `apiVersion` が本体の版と違う部品は、新しくても古くても読み込まず、理由を記録する（v0 は実験の版で、古い版を残す期間は v1 で決める）。宣言の形の検査（id、name、version、tier）と id の重複も、同じく読み込まない理由になる。
+- 例外の隔離: activate の例外は、その部品の登録を全部外して止める。拡張を作る関数の例外、拡張の形が不正なとき（試しに state を作って確かめる）、コマンドや正規化の関数の例外は、その部品を止める。ほかの部品とアプリは動き続ける。止めたことは console に出す。部品の一覧の画面は後の Run。CodeMirror の ViewPlugin の動作中の例外は、CodeMirror がその ViewPlugin だけを止める（ホストでは受けていない）。
+- 登録の名前の衝突（設定のキー、コマンドの id、ショートカット）は、後から登録した部品の activate が例外になり、止まる。設定のキーは、本体の設定のキーとも重ならない。
+
+### 設定の保存の扱い
+
+設定ファイルの形は変えていない。タイプライターモードは、これまでと同じ最上位のキー `typewriterMode`（真偽値）のまま。
+
+- 本体の設定の型 `Preferences` から `typewriterMode` を外し、保存と設定画面で扱う全体を `StoredPreferences`（本体の設定と、部品の設定を同じ最上位に並べたもの）とした。`normalizePreferences(raw, pluginSettings)` が、本体の項目を今までどおり検証し、部品が登録した設定を、その部品の正規化の関数で検証して同じ最上位に並べる。定義のないキーは、今までどおり捨てる。
+- 同じ値なら保存されるバイト列は変更前と同じ。Rust 側は `serde_json::Value` を整形して書く。serde_json に preserve_order の機能は入っていない（`cargo tree` で確認）ので、キーは並べ替えて書かれ、JS 側のキーの順は影響しない。変更前のコミットの `normalizePreferences` の出力を、キーを並べ替えて整形した文字列として `src/preferences/storedShape.golden.json` に置き、13 の入力（設定なし、全項目あり、`typewriterMode` なし・型違い、旧い形、ほかの項目が範囲外、未知のキー）で新しい経路の出力と文字列が一致することを単体テストで確かめる。
+- 読み込まなかった部品（版の不一致、activate の例外）の設定のキーは、定義がないので、次の保存で消える。動作中に止めた部品の定義は残すので、保存値は消えない。読み込めなかった部品の保存値を残すか、部品ごとの名前空間（例: `plugins.<id>`）へ移すかは未決。移すときは、保存の形が変わるので、移行の読み込みが要る。
+
+### 共通の約束（部品どうしの見えない結びつきの置き換え）
+
+どちらも `src/plugin-api/` にあり、部品とホストは、互いを import せず、これだけで協調する。
+
+- `skipCaretFollow`（CodeMirror の Annotation）: 「この変更では、カーソルに追従してスクロールしなくてよい」。カーソルも選択も動かさない変更（チェックボックスのクリックでの切り替え。`taskToggle.ts`）が付け、カーソルを画面の位置に保つ部品（タイプライターモード）が見る。`input.toggle-task` の userEvent は、そのまま残してあるが、判断には使わない。
+- `ownsCaretScroll`（CodeMirror の Facet。いずれかが true なら true）: 「カーソルのスクロールは、この部品が受け持つ」。タイプライターモードが宣言する。`keepCursorVisible.ts` と `readingPosition.ts` は、これまでは `view.dom` の class `cm-typewriter` を見て止まっていたが、この宣言を読む。
+
+DOM の class `cm-typewriter` と CSS 変数 `--md-typewriter-pad` の名前は変えていない（余白の指定は、部品の `theme.ts` に移した）。ただし、部品の theme は CodeMirror が自動で付ける class（`ͼ` で始まる名前）を 1 つ増やすので、タイプライターモードがオンの間だけ、`.cm-editor` の class の数が 1 つ多い。
+
+### ホストが部品を知らないことの縛り方
+
+単体テスト `src/plugin-api/architecture.test.ts` が、ファイルの import と名前を読んで確かめる。
+
+- `src/features/` のファイルは、`src/plugin-api/`、`@codemirror/*`、`@lezer/*`、react だけを import する。相対 import は自分の部品のフォルダの中だけ（`src/plugin-api/` への相対 import は許す。ここに alias を足さないため）。部品どうしの import はしない。テストのファイルは vitest も許す。
+- 本体のファイル（App、CodeMirrorAdapter、EditorAdapter、shortcuts、AppearanceSettings、preferences、keepCursorVisible、readingPosition、theme、taskToggle）に、typewriter の名前（大文字小文字を問わず、コメントを含む）が出てこない。
+- 同梱の部品は `src/features/index.ts` の一覧からだけ読み込まれる。`src/features/` の外から import してよいのは、その index だけ。一覧が import するのは、部品のフォルダ全部と、それだけ。アプリが一覧を読むのは `main.tsx` の 1 か所で、そこで作った部品の一覧（レジストリ）を App に渡す。
+
+### R1 の限界
+
+- 段 3 の部品は、CodeMirror を `api.cm` ではなく直接 import している（同梱の部品はバンドルが同じなので、`instanceof` と Facet の問題は起きない）。外から読み込む Run で `api.cm` に切り替える。
+- 本文のドキュメント型（Markdown か素のテキストか）や複数の設定に依存する拡張、静的な（設定に結び付かない）拡張の登録口は、まだない。
+- 止めた部品の一覧の画面、再読み込み、セーフモードは、後の Run。
 
 ## 未決のこと
 

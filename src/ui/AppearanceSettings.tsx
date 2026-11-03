@@ -2,27 +2,30 @@ import { useId, useState } from 'react';
 import type { ContrastReport } from '../canvas/canvas';
 import { formatRatio, WCAG_AA, WCAG_AAA } from '../canvas/contrast';
 import { GRADIENTS, gradientCss, type ThemeMode } from '../canvas/gradients';
+import type { RegisteredSettingsItem, SettingsPlacement } from '../plugin-api';
 import { FONT_PRESETS, presetIdOf } from '../preferences/fonts';
 import {
   RANGES,
   validFontFamily,
   type BackgroundKind,
   type MarkupDisplay,
-  type Preferences,
+  type StoredPreferences,
   type SurfaceWidth,
   type ThemeSetting,
 } from '../preferences/preferences';
 
 export interface AppearanceSettingsProps {
-  prefs: Preferences;
+  prefs: StoredPreferences;
   /** 表示中のテーマ（グラデーションの見本の色に使う）。 */
   mode: ThemeMode;
   contrast: ContrastReport;
   /** 今の設定で、1 行に入る全角文字の数の目安。 */
   lineChars: number;
   imageStatus: 'none' | 'loading' | 'ready' | 'error';
-  onChange(patch: Partial<Preferences>): void;
+  onChange(patch: Partial<StoredPreferences>): void;
   onPickImage(): void;
+  /** 部品が置いた設定画面の項目（場所ごと）。 */
+  settingsItems(placement: SettingsPlacement): readonly RegisteredSettingsItem[];
 }
 
 const THEME_OPTIONS: ReadonlyArray<{ value: ThemeSetting; label: string }> = [
@@ -52,7 +55,7 @@ const MARKUP_DISPLAY_OPTIONS: ReadonlyArray<{ value: MarkupDisplay; label: strin
  * 変更はすぐ本文に反映される（設定画面の枠は SettingsDialog.tsx）。
  */
 export function AppearanceSettings(props: AppearanceSettingsProps) {
-  const { prefs, mode, contrast, lineChars, imageStatus, onChange, onPickImage } = props;
+  const { prefs, mode, contrast, lineChars, imageStatus, onChange, onPickImage, settingsItems } = props;
   const headingId = useId();
 
   return (
@@ -265,29 +268,40 @@ export function AppearanceSettings(props: AppearanceSettingsProps) {
 
       <fieldset>
         <legend>執筆の補助</legend>
-        <label className="check">
-          <input type="checkbox" checked={prefs.focusMode} onChange={(e) => onChange({ focusMode: e.target.checked })} />
-          フォーカスモード
-        </label>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={prefs.typewriterMode}
-            onChange={(e) => onChange({ typewriterMode: e.target.checked })}
-          />
-          タイプライターモード
-        </label>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={prefs.autoHideChrome}
-            onChange={(e) => onChange({ autoHideChrome: e.target.checked })}
-          />
-          入力中は上下のバーを隠す
-        </label>
+        {writingAidChecks(prefs, settingsItems('appearance.writingAids')).map((item) => (
+          <label className="check" key={item.key}>
+            <input type="checkbox" checked={item.checked} onChange={(e) => onChange({ [item.key]: e.target.checked })} />
+            {item.label}
+          </label>
+        ))}
       </fieldset>
     </section>
   );
+}
+
+interface CheckEntry {
+  readonly key: string;
+  readonly label: string;
+  readonly checked: boolean;
+  readonly order: number;
+}
+
+/**
+ * 「執筆の補助」のチェック項目。本体の項目（order は 100 刻み）と、部品が置いた項目を、order の順に並べる。
+ * 同じ order のときは、本体の項目、部品の登録順（sort は安定）。
+ */
+function writingAidChecks(prefs: StoredPreferences, pluginItems: readonly RegisteredSettingsItem[]): CheckEntry[] {
+  const entries: CheckEntry[] = [
+    { key: 'focusMode', label: 'フォーカスモード', checked: prefs.focusMode, order: 100 },
+    { key: 'autoHideChrome', label: '入力中は上下のバーを隠す', checked: prefs.autoHideChrome, order: 300 },
+    ...pluginItems.map((item) => ({
+      key: item.settingKey,
+      label: item.label,
+      checked: prefs[item.settingKey] === true,
+      order: item.order,
+    })),
+  ];
+  return entries.sort((a, b) => a.order - b.order);
 }
 
 function FontFields({ prefs, onChange }: Pick<AppearanceSettingsProps, 'prefs' | 'onChange'>) {

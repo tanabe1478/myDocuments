@@ -1,5 +1,6 @@
 import type { Extension } from '@codemirror/state';
 import { EditorView, ViewPlugin } from '@codemirror/view';
+import { ownsCaretScroll } from '../../plugin-api';
 
 /** 縮んだ後の表示領域の端から、カーソル行を離す余白（px）。 */
 const MARGIN_PX = 24;
@@ -12,18 +13,18 @@ const MARGIN_PX = 24;
  *
  * 併せて、本文の上の余白（.cm-content の padding-top。競合バーの表示中は styles.css が詰める）が変わったとき、
  * 見えている行が画面上で動かないよう、スクロール位置を余白の変化ぶんだけずらす（先頭にいるときは、余白の変化をそのまま見せる）。
- * タイプライターモードは、自分で縦中央に保つので対象外。
+ * カーソルのスクロールを受け持つ部品（ownsCaretScroll を宣言した部品）がある間は、その部品が位置を保つので対象外。
  */
 class KeepCursorVisiblePlugin {
   private readonly observer: ResizeObserver | null;
   private height: number;
   private padTop: number;
-  private typewriter: boolean;
+  private scrollOwned: boolean;
 
   constructor(private readonly view: EditorView) {
     this.height = view.scrollDOM.clientHeight;
     this.padTop = this.readPadTop();
-    this.typewriter = this.isTypewriter();
+    this.scrollOwned = this.isScrollOwned();
     this.observer =
       typeof ResizeObserver === 'function'
         ? new ResizeObserver(() => this.onResize())
@@ -41,18 +42,18 @@ class KeepCursorVisiblePlugin {
     return parseFloat(getComputedStyle(this.view.contentDOM).paddingTop) || 0;
   }
 
-  private isTypewriter(): boolean {
-    return this.view.dom.classList.contains('cm-typewriter');
+  private isScrollOwned(): boolean {
+    return this.view.state.facet(ownsCaretScroll);
   }
 
   /** 本文の上の余白が変わったぶん、スクロール位置をずらして、見えている行を画面上の同じ位置に保つ。 */
   private followPaddingChange(): void {
     const padTop = this.readPadTop();
-    const typewriter = this.isTypewriter();
+    const scrollOwned = this.isScrollOwned();
     const delta = padTop - this.padTop;
-    const skip = typewriter || this.typewriter;
+    const skip = scrollOwned || this.scrollOwned;
     this.padTop = padTop;
-    this.typewriter = typewriter;
+    this.scrollOwned = scrollOwned;
     if (delta === 0) return;
     // CodeMirror は余白を測定のときに読む。CSS だけで変わったときは測り直させないと、カーソルと選択の描画が古い位置に残る。
     this.view.requestMeasure();

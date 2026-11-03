@@ -4,6 +4,7 @@
  * 設定画面は src/ui/SettingsDialog.tsx。古い保存値（項目が足りない）も、足りない項目だけ既定値になる。
  */
 import { DEFAULT_GRADIENT_ID, isGradientId, type GradientId } from '../canvas/gradients';
+import type { SettingDefinition } from '../plugin-api';
 
 export type ThemeSetting = 'light' | 'dark' | 'system';
 
@@ -54,7 +55,6 @@ export interface Preferences {
   readonly sidebarOpen: boolean;
   readonly theme: ThemeSetting;
   readonly focusMode: boolean;
-  readonly typewriterMode: boolean;
   /** 執筆中に上部ツールを自動的に隠す（UI-05）。 */
   readonly autoHideChrome: boolean;
   readonly background: BackgroundSetting;
@@ -72,6 +72,12 @@ export interface Preferences {
   readonly markupDisplay: MarkupDisplay;
 }
 
+/**
+ * 保存・設定画面で扱う設定の全体。本体の設定（Preferences）と、部品が登録した設定（src/plugin-api/）を、
+ * 同じ 1 つの JSON オブジェクト（最上位のキー）に並べたもの。部品の設定の保存の形は、部品の登録の前と変わらない。
+ */
+export type StoredPreferences = Preferences & { readonly [pluginSetting: string]: unknown };
+
 export const DEFAULT_PREFERENCES: Preferences = {
   fontFamily:
     'system-ui, -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Noto Sans CJK JP", "Noto Sans JP", sans-serif',
@@ -84,7 +90,6 @@ export const DEFAULT_PREFERENCES: Preferences = {
   sidebarOpen: false,
   theme: 'system',
   focusMode: false,
-  typewriterMode: false,
   autoHideChrome: true,
   background: { kind: 'gradient', color: '#e9e4d4', gradientId: DEFAULT_GRADIENT_ID, imageId: null },
   imageBrightness: 0.8,
@@ -151,8 +156,20 @@ function background(value: unknown, fallback: BackgroundSetting): BackgroundSett
   };
 }
 
-/** 未検証の値（保存ファイルの中身など）から、常に有効な Preferences を作る。 */
-export function normalizePreferences(raw: unknown): Preferences {
+/**
+ * 未検証の値（保存ファイルの中身など）から、常に有効な Preferences を作る。
+ * pluginSettings（部品が登録した設定の定義）があれば、その値も同じ最上位に検証して並べる。定義のないキーは捨てる。
+ */
+export function normalizePreferences(raw: unknown, pluginSettings: readonly SettingDefinition<unknown>[] = []): StoredPreferences {
+  const core = normalizeCore(raw);
+  if (pluginSettings.length === 0) return core as StoredPreferences;
+  const r = typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const stored: Record<string, unknown> = { ...core };
+  for (const setting of pluginSettings) stored[setting.key] = setting.normalize(r[setting.key]);
+  return stored as StoredPreferences;
+}
+
+function normalizeCore(raw: unknown): Preferences {
   const d = DEFAULT_PREFERENCES;
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return d;
   const r = raw as Record<string, unknown>;
@@ -167,7 +184,6 @@ export function normalizePreferences(raw: unknown): Preferences {
     sidebarOpen: boolean(r.sidebarOpen, d.sidebarOpen),
     theme: THEMES.includes(r.theme as ThemeSetting) ? (r.theme as ThemeSetting) : d.theme,
     focusMode: boolean(r.focusMode, d.focusMode),
-    typewriterMode: boolean(r.typewriterMode, d.typewriterMode),
     autoHideChrome: boolean(r.autoHideChrome, d.autoHideChrome),
     background: background(r.background, d.background),
     imageBrightness: number(r.imageBrightness, RANGES.imageBrightness, d.imageBrightness),

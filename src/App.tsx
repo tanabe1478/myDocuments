@@ -18,8 +18,9 @@ import type { EditorAdapter } from './editor/EditorAdapter';
 import { createCodeMirrorAdapter } from './editor/codemirror/CodeMirrorAdapter';
 import { BridgeError, type DocumentBridge, type DraftSummary } from './platform';
 import { isOpenableExternalUrl } from './platform/externalUrl';
+import type { CommandContext, PluginRegistry, SettingHandle } from './plugin-api';
 import { applyPreferences } from './preferences/apply';
-import { normalizePreferences, type Preferences } from './preferences/preferences';
+import { normalizePreferences, type StoredPreferences } from './preferences/preferences';
 import { useResolvedTheme } from './preferences/useResolvedTheme';
 import { charsPerLine, columnWidth } from './editor/layout';
 import { ConflictBar, isConflictBarVisible } from './ui/ConflictBar';
@@ -31,7 +32,7 @@ import { RecoveryDialog } from './ui/RecoveryDialog';
 import { SettingsDialog } from './ui/SettingsDialog';
 import { Sidebar, SIDEBAR_ID } from './ui/Sidebar';
 import { sidebarMode, sidebarReserve } from './ui/sidebarLayout';
-import { isMacPlatform, matchShortcut, shouldHandleShortcut } from './ui/shortcuts';
+import { isMacPlatform, isTextEntryTarget, matchShortcut, shouldHandleShortcut } from './ui/shortcuts';
 import { Toast, type ToastNotice } from './ui/Toast';
 import { toastLayout } from './ui/toastLayout';
 
@@ -59,7 +60,16 @@ interface PendingRecovery {
   resolve(choice: RecoveryChoice): void;
 }
 
-export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; initialPreferences: Preferences }) {
+export function App({
+  bridge,
+  initialPreferences,
+  plugins,
+}: {
+  bridge: DocumentBridge;
+  initialPreferences: StoredPreferences;
+  /** 読み込み済みの部品の一覧。ホストはここに登録されたものだけを使う。 */
+  plugins: PluginRegistry;
+}) {
   const hostRef = useRef<HTMLDivElement>(null);
   const topbarRef = useRef<HTMLElement>(null);
   const conflictRef = useRef<HTMLDivElement>(null);
@@ -72,7 +82,7 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
   const [trash, setTrash] = useState<PendingTrash | null>(null);
   const [diffOpen, setDiffOpen] = useState(false);
   const [notice, setNotice] = useState<ToastNotice | null>(null);
-  const [prefs, setPrefs] = useState<Preferences>(initialPreferences);
+  const [prefs, setPrefs] = useState<StoredPreferences>(initialPreferences);
   const [settingsOpen, setSettingsOpen] = useState(false);
   /** 入力で隠した状態（autoHideChrome が ON のときだけ効く）。ポインタ・フォーカス・F6 で戻る。 */
   const [typing, setTyping] = useState(false);
@@ -102,8 +112,23 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
   const notify = useCallback((n: Notice) => setNotice({ ...n, id: ++noticeId.current }), []);
 
   const updatePrefs = useCallback(
-    (patch: Partial<Preferences>) => setPrefs((p) => normalizePreferences({ ...p, ...patch })),
-    [],
+    (patch: Partial<StoredPreferences>) => setPrefs((p) => normalizePreferences({ ...p, ...patch }, plugins.settings)),
+    [plugins],
+  );
+
+  /** 部品のコマンドに渡す。設定の読み書きは、本体の設定と同じ経路（検証・保存）を通る。 */
+  const commandContext = useMemo<CommandContext>(
+    () => ({
+      settings: {
+        get: <T,>(setting: SettingHandle<T>): T => (prefsRef.current[setting.key] as T | undefined) ?? setting.defaultValue,
+        update: <T,>(setting: SettingHandle<T>, next: (current: T) => T): void => {
+          const current = (prefsRef.current[setting.key] as T | undefined) ?? setting.defaultValue;
+          const value = next(current);
+          setPrefs((p) => normalizePreferences({ ...p, [setting.key]: value }, plugins.settings));
+        },
+      },
+    }),
+    [plugins],
   );
 
   // エクスプローラーから文書を開く。開けたら、本文へフォーカスを移す（すぐ書ける）。
@@ -143,13 +168,15 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    const adapter = createCodeMirrorAdapter();
+    const adapter = createCodeMirrorAdapter(plugins.editorExtensions);
     adapter.mount(host);
     adapter.focus();
     adapterRef.current = adapter;
     adapter.setTextKind(textKindOf(controller.getState().path));
     adapter.setFocusMode(prefsRef.current.focusMode);
-    adapter.setTypewriterMode(prefsRef.current.typewriterMode);
+    for (const extension of plugins.editorExtensions) {
+      adapter.setPluginSetting(extension.settingKey, prefsRef.current[extension.settingKey]);
+    }
     adapter.setListContinuation(prefsRef.current.listContinuation);
     adapter.setMarkupDisplay(prefsRef.current.markupDisplay);
     const off = adapter.onChange((text) => {
@@ -198,7 +225,7 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
       adapter.destroy();
       adapterRef.current = null;
     };
-  }, [bridge, controller, notify]);
+  }, [bridge, controller, notify, plugins]);
 
   // .txt と .text は素のテキストとして表示する（別名保存で拡張子が変わったときも追従する）。描画の前に切り替える。
   const textKind = textKindOf(state.path);
@@ -222,7 +249,12 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
   }, [explorer]);
 
   useEffect(() => adapterRef.current?.setFocusMode(prefs.focusMode), [prefs.focusMode]);
-  useEffect(() => adapterRef.current?.setTypewriterMode(prefs.typewriterMode), [prefs.typewriterMode]);
+  // 部品が登録した設定の値を、エディタへ渡す（値が変わった部品の拡張だけが差し替わる）。
+  useEffect(() => {
+    for (const extension of plugins.editorExtensions) {
+      adapterRef.current?.setPluginSetting(extension.settingKey, prefs[extension.settingKey]);
+    }
+  }, [plugins, prefs]);
   useEffect(() => adapterRef.current?.setListContinuation(prefs.listContinuation), [prefs.listContinuation]);
   useEffect(() => adapterRef.current?.setMarkupDisplay(prefs.markupDisplay), [prefs.markupDisplay]);
 
@@ -365,7 +397,15 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
         return;
       }
       const action = matchShortcut(e, mac);
-      if (!action || !shouldHandleShortcut(action, e.target)) return;
+      if (!action) {
+        // 本体の固定のショートカットに合わなければ、部品のコマンドのショートカット。
+        const command = plugins.findCommandByKey(e, mac);
+        if (!command || (command.ignoreInTextEntry && isTextEntryTarget(e.target))) return;
+        e.preventDefault();
+        command.run(commandContext);
+        return;
+      }
+      if (!shouldHandleShortcut(action, e.target)) return;
       e.preventDefault();
       switch (action) {
         case 'new':
@@ -390,9 +430,6 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
         case 'focusMode':
           setPrefs((p) => ({ ...p, focusMode: !p.focusMode }));
           break;
-        case 'typewriterMode':
-          setPrefs((p) => ({ ...p, typewriterMode: !p.typewriterMode }));
-          break;
         case 'fullscreen':
           bridge.toggleFullscreen().catch((err) => notify({ kind: 'error', message: describeError(err) }));
           break;
@@ -400,7 +437,7 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [bridge, controller, runCommand, toggleSettings, toggleSidebar, settingsOpen, cycleRegion, notify]);
+  }, [bridge, controller, runCommand, toggleSettings, toggleSidebar, settingsOpen, cycleRegion, notify, plugins, commandContext]);
 
   useEffect(() => {
     document.title = `${dirty ? '● ' : ''}${title} - Immersive Markdown Editor`;
@@ -519,6 +556,7 @@ export function App({ bridge, initialPreferences }: { bridge: DocumentBridge; in
           contrast={canvas.contrast}
           lineChars={lineChars}
           imageStatus={image.status}
+          settingsItems={plugins.settingsItems}
           onChange={updatePrefs}
           onPickImage={() => void pickImage()}
           onClose={closeSettings}

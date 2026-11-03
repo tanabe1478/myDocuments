@@ -1,7 +1,20 @@
 import { insertNewlineContinueMarkup, markdown, markdownLanguage } from '@codemirror/lang-markdown';
+import { ensureSyntaxTree } from '@codemirror/language';
 import { EditorSelection, EditorState, type StateCommand } from '@codemirror/state';
 import { describe, expect, it } from 'vitest';
 import { insertNewlineContinueTight } from './listContinuation';
+
+/**
+ * 構文解析を最後まで済ませた state を返す。
+ * state の作成時の解析は短い時間で打ち切られ、負荷が高いと木が未完成のまま、lang-markdown のコマンドが何もしない。
+ * ensureSyntaxTree は解析を進めるが、state が持つ木は古いままなので、空の transaction で持ち替える。
+ * parsed が true（言語を入れている）のとき、解析が終わらなければテストを失敗にする（何も確かめない通過を防ぐ）。
+ */
+function settleSyntax(state: EditorState, parsed: boolean): EditorState {
+  const tree = ensureSyntaxTree(state, state.doc.length, 10_000);
+  if (parsed) expect(tree).not.toBeNull();
+  return state.update({}).state;
+}
 
 /** `|` をカーソル位置として読み、コマンドを 1 回実行する。結果の文書と、カーソルを `|` で戻した文字列を返す。 */
 function run(command: StateCommand, source: string, extensions = [markdown({ base: markdownLanguage })]) {
@@ -16,11 +29,12 @@ function run(command: StateCommand, source: string, extensions = [markdown({ bas
     pos += part.length;
     cursors.push(pos);
   });
-  const state = EditorState.create({
+  const created = EditorState.create({
     doc,
     selection: EditorSelection.create(cursors.map((c) => EditorSelection.cursor(c))),
     extensions: [EditorState.allowMultipleSelections.of(true), ...extensions],
   });
+  const state = settleSyntax(created, extensions.length > 0);
   let result: EditorState | null = null;
   const handled = command({ state, dispatch: (tr) => (result = tr.state) });
   if (!result) return { handled, doc, withCursor: source, state };
@@ -176,11 +190,14 @@ describe('insertNewlineContinueTight: loose list で空行を入れない', () =
   });
 
   it('1 回の transaction で行われる（Undo 1 回で戻る）', () => {
-    const state = EditorState.create({
-      doc: '- a\n\n- b',
-      selection: EditorSelection.cursor(8),
-      extensions: [markdown({ base: markdownLanguage })],
-    });
+    const state = settleSyntax(
+      EditorState.create({
+        doc: '- a\n\n- b',
+        selection: EditorSelection.cursor(8),
+        extensions: [markdown({ base: markdownLanguage })],
+      }),
+      true,
+    );
     const trs: unknown[] = [];
     insertNewlineContinueTight({ state, dispatch: (tr) => trs.push(tr) });
     expect(trs).toHaveLength(1);
