@@ -6,6 +6,8 @@ import { createPluginRegistry, ownsCaretScroll, skipCaretFollow, type CommandCon
 import { TYPEWRITER_SETTING_KEY, typewriterPlugin } from '.';
 import { typewriterModeExtension } from './typewriterMode';
 
+const ENV = { textKind: 'markdown' } as const;
+
 // jsdom には、CodeMirror が測定に使う矩形取得 API がなく、要素の高さも 0。
 beforeAll(() => {
   const rect = { x: 0, y: 0, top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0, toJSON: () => ({}) };
@@ -84,8 +86,8 @@ describe('typewriter plugin registration', () => {
   it('builds the extension from the setting value: nothing when off', () => {
     const [ext] = registry().editorExtensions;
     expect(ext).toMatchObject({ pluginId: 'typewriter', settingKey: 'typewriterMode', defaultValue: false });
-    expect(ext?.create(false)).toEqual([]);
-    expect(ext?.create(true)).not.toEqual([]);
+    expect(ext?.create(false, ENV)).toEqual([]);
+    expect(ext?.create(true, ENV)).not.toEqual([]);
   });
 });
 
@@ -94,7 +96,7 @@ describe('typewriter extension', () => {
     const [ext] = registry().editorExtensions;
     view = new EditorView({
       parent: host,
-      state: EditorState.create({ doc: 'a\n\nb\n\nc', extensions: ext?.create(on) }),
+      state: EditorState.create({ doc: 'a\n\nb\n\nc', extensions: ext?.create(on, ENV) }),
     });
     return view;
   }

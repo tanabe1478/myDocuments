@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
-import { isTextEntryTarget, shouldHandleShortcut } from './shortcuts';
+import { isTextEntryTarget, shouldRunPluginCommand } from './shortcuts';
 
 function mount(html: string): HTMLElement {
   document.body.innerHTML = html;
@@ -43,25 +43,25 @@ describe('isTextEntryTarget', () => {
   });
 });
 
-describe('shouldHandleShortcut', () => {
+describe('shouldRunPluginCommand', () => {
   const body = () => mount('<input id="i"><div class="cm-editor"><div class="cm-content" contenteditable="true" id="e"></div></div>');
+  const modeToggle = { ignoreInTextEntry: true };
+  const anywhere = { ignoreInTextEntry: false };
 
-  it('ignores the mode toggles while an input has focus', () => {
+  it('ignores the mode toggles (ignoreInTextEntry) while an input has focus', () => {
     const input = body().querySelector('#i');
-    expect(shouldHandleShortcut('focusMode', input)).toBe(false);
+    expect(shouldRunPluginCommand(modeToggle, input)).toBe(false);
   });
 
-  it('keeps the other shortcuts working in an input (panel toggle, save, fullscreen...)', () => {
+  it('runs a command that does not ask to be ignored, even in an input', () => {
     const input = body().querySelector('#i');
-    for (const a of ['new', 'open', 'save', 'saveAs', 'settings', 'sidebar', 'fullscreen'] as const) {
-      expect(shouldHandleShortcut(a, input), a).toBe(true);
-    }
+    expect(shouldRunPluginCommand(anywhere, input)).toBe(true);
   });
 
-  it('handles the mode toggles in the editor body and elsewhere', () => {
+  it('runs the mode toggles in the editor body and elsewhere', () => {
     const editor = body().querySelector('#e');
-    expect(shouldHandleShortcut('focusMode', editor)).toBe(true);
-    expect(shouldHandleShortcut('focusMode', document.body)).toBe(true);
-    expect(shouldHandleShortcut('focusMode', null)).toBe(true);
+    expect(shouldRunPluginCommand(modeToggle, editor)).toBe(true);
+    expect(shouldRunPluginCommand(modeToggle, document.body)).toBe(true);
+    expect(shouldRunPluginCommand(modeToggle, null)).toBe(true);
   });
 });

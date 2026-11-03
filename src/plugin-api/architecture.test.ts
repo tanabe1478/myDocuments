@@ -37,9 +37,22 @@ describe('src/features/: what a bundled plugin may import', () => {
   const files = listFiles(FEATURES);
   const pluginDirs = readdirSync(FEATURES).filter((d) => statSync(path.join(FEATURES, d)).isDirectory());
 
-  it('has at least the typewriter plugin, in its own folder', () => {
+  it('has the bundled plugins (typewriter, focus), each in its own folder', () => {
     expect(pluginDirs).toContain('typewriter');
+    expect(pluginDirs).toContain('focus');
     expect(files.length).toBeGreaterThan(0);
+  });
+
+  it('the files of the focus plugin are covered by the import rule (checked on their own, so the rule cannot silently skip them)', () => {
+    const focusFiles = files.filter((f) => isInside(f, path.join(FEATURES, 'focus'))).map(rel);
+    expect(focusFiles).toEqual(
+      expect.arrayContaining(['features/focus/index.ts', 'features/focus/focusMode.ts', 'features/focus/focusRange.ts', 'features/focus/theme.ts', 'features/focus/focusRange.test.ts', 'features/focus/plugin.test.ts']),
+    );
+    const specs = specifiers(path.join(FEATURES, 'focus', 'focusRange.ts'));
+    expect(specs).toEqual(['../../plugin-api']);
+    expect(specifiers(path.join(FEATURES, 'focus', 'focusMode.ts'))).toEqual(
+      expect.arrayContaining(['@codemirror/state', '@codemirror/view', '../../plugin-api', './focusRange', './theme']),
+    );
   });
 
   it('imports only src/plugin-api/, @codemirror/*, @lezer/*, react, and its own folder (no other plugin, no host)', () => {
@@ -104,9 +117,21 @@ describe('the host does not know any plugin by name', () => {
     for (const f of HOST) expect(existsSync(path.join(SRC, f)), f).toBe(true);
   });
 
-  it('has no "typewriter" (any case, comments included) in the host files', () => {
-    const hits = HOST.filter((f) => /typewriter/i.test(readFileSync(path.join(SRC, f), 'utf8')));
+  // 部品の名前、部品の中の識別子、部品が持つ DOM の class（コメントを含む。大文字小文字を問わない）。
+  const NAMES = [/typewriter/i, /focusMode/i, /focusRange/i, /cm-md-dim/i, /setFocusMode/i];
+
+  it('has no plugin names in the host files (typewriter, focusMode, focusRange, cm-md-dim, setFocusMode; any case, comments included)', () => {
+    const hits = HOST.flatMap((f) => {
+      const text = readFileSync(path.join(SRC, f), 'utf8');
+      return NAMES.filter((n) => n.test(text)).map((n) => `${f}: ${n.source}`);
+    });
     expect(hits).toEqual([]);
+  });
+
+  it('the name check itself catches each name (guards against a pattern that silently matches nothing)', () => {
+    for (const sample of ['TypeWriter', 'prefs.focusMode', 'FOCUSRANGE', "'.cm-md-dim'", 'adapter.setFocusMode(true)']) {
+      expect(NAMES.some((n) => n.test(sample)), sample).toBe(true);
+    }
   });
 });
 

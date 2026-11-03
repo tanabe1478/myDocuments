@@ -18,8 +18,9 @@ import type { EditorAdapter } from './editor/EditorAdapter';
 import { createCodeMirrorAdapter } from './editor/codemirror/CodeMirrorAdapter';
 import { BridgeError, type DocumentBridge, type DraftSummary } from './platform';
 import { isOpenableExternalUrl } from './platform/externalUrl';
-import type { CommandContext, PluginRegistry, SettingHandle } from './plugin-api';
+import type { PluginRegistry } from './plugin-api';
 import { applyPreferences } from './preferences/apply';
+import { createCommandContext } from './preferences/commandContext';
 import { normalizePreferences, type StoredPreferences } from './preferences/preferences';
 import { useResolvedTheme } from './preferences/useResolvedTheme';
 import { charsPerLine, columnWidth } from './editor/layout';
@@ -32,7 +33,7 @@ import { RecoveryDialog } from './ui/RecoveryDialog';
 import { SettingsDialog } from './ui/SettingsDialog';
 import { Sidebar, SIDEBAR_ID } from './ui/Sidebar';
 import { sidebarMode, sidebarReserve } from './ui/sidebarLayout';
-import { isMacPlatform, isTextEntryTarget, matchShortcut, shouldHandleShortcut } from './ui/shortcuts';
+import { isMacPlatform, matchShortcut, shouldRunPluginCommand } from './ui/shortcuts';
 import { Toast, type ToastNotice } from './ui/Toast';
 import { toastLayout } from './ui/toastLayout';
 
@@ -117,17 +118,8 @@ export function App({
   );
 
   /** 部品のコマンドに渡す。設定の読み書きは、本体の設定と同じ経路（検証・保存）を通る。 */
-  const commandContext = useMemo<CommandContext>(
-    () => ({
-      settings: {
-        get: <T,>(setting: SettingHandle<T>): T => (prefsRef.current[setting.key] as T | undefined) ?? setting.defaultValue,
-        update: <T,>(setting: SettingHandle<T>, next: (current: T) => T): void => {
-          const current = (prefsRef.current[setting.key] as T | undefined) ?? setting.defaultValue;
-          const value = next(current);
-          setPrefs((p) => normalizePreferences({ ...p, [setting.key]: value }, plugins.settings));
-        },
-      },
-    }),
+  const commandContext = useMemo(
+    () => createCommandContext(() => prefsRef.current, setPrefs, plugins.settings),
     [plugins],
   );
 
@@ -173,7 +165,6 @@ export function App({
     adapter.focus();
     adapterRef.current = adapter;
     adapter.setTextKind(textKindOf(controller.getState().path));
-    adapter.setFocusMode(prefsRef.current.focusMode);
     for (const extension of plugins.editorExtensions) {
       adapter.setPluginSetting(extension.settingKey, prefsRef.current[extension.settingKey]);
     }
@@ -248,7 +239,6 @@ export function App({
     };
   }, [explorer]);
 
-  useEffect(() => adapterRef.current?.setFocusMode(prefs.focusMode), [prefs.focusMode]);
   // 部品が登録した設定の値を、エディタへ渡す（値が変わった部品の拡張だけが差し替わる）。
   useEffect(() => {
     for (const extension of plugins.editorExtensions) {
@@ -400,12 +390,11 @@ export function App({
       if (!action) {
         // 本体の固定のショートカットに合わなければ、部品のコマンドのショートカット。
         const command = plugins.findCommandByKey(e, mac);
-        if (!command || (command.ignoreInTextEntry && isTextEntryTarget(e.target))) return;
+        if (!command || !shouldRunPluginCommand(command, e.target)) return;
         e.preventDefault();
         command.run(commandContext);
         return;
       }
-      if (!shouldHandleShortcut(action, e.target)) return;
       e.preventDefault();
       switch (action) {
         case 'new':
@@ -426,9 +415,6 @@ export function App({
         case 'sidebar':
           // 設定画面（モーダル）を開いている間は、後ろのレイアウトを動かさない。
           if (!settingsOpen) toggleSidebar();
-          break;
-        case 'focusMode':
-          setPrefs((p) => ({ ...p, focusMode: !p.focusMode }));
           break;
         case 'fullscreen':
           bridge.toggleFullscreen().catch((err) => notify({ kind: 'error', message: describeError(err) }));

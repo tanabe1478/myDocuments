@@ -283,93 +283,6 @@ describe('IME composition', () => {
   });
 });
 
-const dim = () =>
-  Array.from(host.querySelectorAll('.cm-line')).map((l) => l.classList.contains('cm-md-dim'));
-
-describe('focus mode', () => {
-  const DOC = 'one\ntwo\n\nthree\n\nfour';
-
-  it('is off by default, and dims every line outside the cursor paragraph when on', () => {
-    adapter.mount(host);
-    adapter.setText(DOC);
-    expect(dim()).toEqual([false, false, false, false, false, false]);
-
-    adapter.setFocusMode(true);
-    viewOf().dispatch({ selection: { anchor: 0 } });
-    expect(dim()).toEqual([false, false, true, true, true, true]);
-
-    // 4 行目（three）へ
-    viewOf().dispatch({ selection: { anchor: DOC.indexOf('three') } });
-    expect(dim()).toEqual([true, true, true, false, true, true]);
-
-    adapter.setFocusMode(false);
-    expect(dim()).toEqual([false, false, false, false, false, false]);
-  });
-
-  it('only changes line classes: the text, history and selection are untouched', () => {
-    adapter.mount(host);
-    adapter.setText(DOC);
-    viewOf().dispatch({ selection: { anchor: 2, head: 6 } });
-    adapter.setFocusMode(true);
-    expect(adapter.getText()).toBe(DOC);
-    expect(viewOf().state.selection.main).toMatchObject({ anchor: 2, head: 6 });
-    expect(undo(viewOf())).toBe(false);
-  });
-
-  it('survives setText (loading another document keeps the mode)', () => {
-    adapter.mount(host);
-    adapter.setFocusMode(true);
-    adapter.setText('a\n\nb');
-    viewOf().dispatch({ selection: { anchor: 0 } });
-    expect(dim()).toEqual([false, true, true]);
-  });
-
-  it('can be set before mount', () => {
-    adapter.setFocusMode(true);
-    adapter.mount(host);
-    adapter.setText('a\n\nb');
-    viewOf().dispatch({ selection: { anchor: 0 } });
-    expect(dim()).toEqual([false, true, true]);
-  });
-
-  it('does not recompute while composing, and reflects the change after compositionend', () => {
-    vi.useFakeTimers();
-    adapter.mount(host);
-    adapter.setText(DOC);
-    adapter.setFocusMode(true);
-    viewOf().dispatch({ selection: { anchor: 0 } });
-    expect(dim()).toEqual([false, false, true, true, true, true]);
-    const content = host.querySelector('.cm-content') as HTMLElement;
-
-    content.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
-    // 変換中にカーソルが別の段落へ移っても、行の属性は変えない。
-    viewOf().dispatch({ selection: { anchor: DOC.indexOf('three') } });
-    expect(dim()).toEqual([false, false, true, true, true, true]);
-    vi.advanceTimersByTime(500);
-    expect(dim()).toEqual([false, false, true, true, true, true]);
-
-    content.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
-    vi.advanceTimersByTime(200);
-    expect(dim()).toEqual([true, true, true, false, true, true]);
-  });
-
-  it('follows edits made while composing, by position, then settles afterwards', () => {
-    vi.useFakeTimers();
-    adapter.mount(host);
-    adapter.setText('abc\n\ndef');
-    adapter.setFocusMode(true);
-    viewOf().dispatch({ selection: { anchor: 3 } });
-    const content = host.querySelector('.cm-content') as HTMLElement;
-    content.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
-    viewOf().dispatch({ changes: { from: 3, insert: 'に' }, selection: { anchor: 4 } });
-    expect(adapter.getText()).toBe('abcに\n\ndef');
-    expect(dim()).toEqual([false, true, true]);
-    content.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
-    vi.advanceTimersByTime(200);
-    expect(dim()).toEqual([false, true, true]);
-  });
-});
-
 describe('plugin editor extensions (setPluginSetting)', () => {
   /** 設定 mark が true の間だけ、エディタに class 'plug-on' を付ける部品。 */
   function markPlugin(onCreate?: (value: unknown) => void) {
@@ -428,6 +341,66 @@ describe('plugin editor extensions (setPluginSetting)', () => {
     adapter.mount(host);
     expect(() => adapter.setPluginSetting('unknown', true)).not.toThrow();
     expect(editorDom().classList.contains('plug-on')).toBe(false);
+  });
+
+  /** 文書の種類を読む拡張（dependsOnTextKind）と、読まない拡張。作るたびに、渡された種類を記録する。 */
+  function kindPlugins(created: string[]) {
+    const registry = createPluginRegistry([
+      {
+        manifest: { id: 'kind', name: 'kind', version: '1.0.0', apiVersion: PLUGIN_API_VERSION, tier: 'editor' },
+        activate(ctx) {
+          const aware = ctx.registerSetting<boolean>({ key: 'aware', defaultValue: true, normalize: (raw) => raw === true });
+          ctx.registerEditorExtension({
+            setting: aware,
+            dependsOnTextKind: true,
+            create: (on, env) => {
+              created.push(`aware:${env.textKind}`);
+              return on ? EditorView.editorAttributes.of({ class: `kind-${env.textKind}` }) : [];
+            },
+          });
+          const blind = ctx.registerSetting<boolean>({ key: 'blind', defaultValue: true, normalize: (raw) => raw === true });
+          ctx.registerEditorExtension({
+            setting: blind,
+            create: (_on, env) => {
+              created.push(`blind:${env.textKind}`);
+              return [];
+            },
+          });
+        },
+      },
+    ]);
+    return registry.editorExtensions;
+  }
+
+  it('rebuilds only the extensions that depend on the document kind, when the kind changes', () => {
+    const created: string[] = [];
+    adapter = createCodeMirrorAdapter(kindPlugins(created));
+    adapter.mount(host);
+    expect(editorDom().classList.contains('kind-markdown')).toBe(true);
+    created.length = 0;
+
+    adapter.setTextKind('plain');
+    expect(created).toEqual(['aware:plain']);
+    expect(editorDom().classList.contains('kind-plain')).toBe(true);
+    expect(editorDom().classList.contains('kind-markdown')).toBe(false);
+
+    // 同じ種類をもう一度渡しても、作り直さない。
+    adapter.setTextKind('plain');
+    expect(created).toEqual(['aware:plain']);
+
+    adapter.setTextKind('markdown');
+    expect(created).toEqual(['aware:plain', 'aware:markdown']);
+    expect(editorDom().classList.contains('kind-markdown')).toBe(true);
+  });
+
+  it('starts with the current kind after setText, and when the kind is set before mount', () => {
+    const created: string[] = [];
+    adapter = createCodeMirrorAdapter(kindPlugins(created));
+    adapter.setTextKind('plain');
+    adapter.mount(host);
+    expect(editorDom().classList.contains('kind-plain')).toBe(true);
+    adapter.setText('other document');
+    expect(editorDom().classList.contains('kind-plain')).toBe(true);
   });
 
   it('keeps working without plugins', () => {
@@ -546,17 +519,6 @@ describe('text kind (.txt and .text are shown as plain text)', () => {
     adapter.setText(MARKDOWN);
     adapter.mount(host);
     expect(host.querySelector('.cm-md-h1')).toBeNull();
-  });
-
-  it('splits focus-mode paragraphs by blank lines only for plain text', () => {
-    adapter.mount(host);
-    adapter.setFocusMode(true);
-    adapter.setText('# 見出し\n本文\n\n別段落');
-    const dimmed = () => Array.from(host.querySelectorAll('.cm-line'), (l) => l.classList.contains('cm-md-dim'));
-    viewOf().dispatch({ selection: { anchor: 0 } });
-    expect(dimmed()).toEqual([false, true, true, true]);
-    adapter.setTextKind('plain');
-    expect(dimmed()).toEqual([false, false, true, true]);
   });
 });
 

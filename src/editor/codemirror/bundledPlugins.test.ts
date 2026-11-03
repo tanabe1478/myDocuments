@@ -3,7 +3,7 @@ import { history, undo } from '@codemirror/commands';
 import { ensureSyntaxTree } from '@codemirror/language';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bundledPlugins } from '../../features';
 import { createPluginRegistry, ownsCaretScroll, skipCaretFollow } from '../../plugin-api';
 import type { EditorAdapter } from '../EditorAdapter';
@@ -42,6 +42,7 @@ beforeEach(() => {
 afterEach(() => {
   adapter.destroy();
   host.remove();
+  vi.useRealTimers();
 });
 
 describe('typewriter mode through the adapter (was setTypewriterMode)', () => {
@@ -83,6 +84,133 @@ describe('typewriter mode through the adapter (was setTypewriterMode)', () => {
     expect(readingMargins()).toBe(0);
     adapter.setPluginSetting('typewriterMode', false);
     expect(readingMargins()).toBe(1);
+  });
+});
+
+const dim = () =>
+  Array.from(host.querySelectorAll('.cm-line')).map((l) => l.classList.contains('cm-md-dim'));
+
+describe('focus mode through the adapter (was setFocusMode)', () => {
+  const DOC = 'one\ntwo\n\nthree\n\nfour';
+  const setFocusMode = (on: boolean) => adapter.setPluginSetting('focusMode', on);
+
+  it('is off by default, and dims every line outside the cursor paragraph when on', () => {
+    adapter.mount(host);
+    adapter.setText(DOC);
+    expect(dim()).toEqual([false, false, false, false, false, false]);
+
+    setFocusMode(true);
+    viewOf().dispatch({ selection: { anchor: 0 } });
+    expect(dim()).toEqual([false, false, true, true, true, true]);
+
+    // 4 行目（three）へ
+    viewOf().dispatch({ selection: { anchor: DOC.indexOf('three') } });
+    expect(dim()).toEqual([true, true, true, false, true, true]);
+
+    setFocusMode(false);
+    expect(dim()).toEqual([false, false, false, false, false, false]);
+  });
+
+  it('only changes line classes: the text, history and selection are untouched', () => {
+    adapter.mount(host);
+    adapter.setText(DOC);
+    viewOf().dispatch({ selection: { anchor: 2, head: 6 } });
+    setFocusMode(true);
+    expect(adapter.getText()).toBe(DOC);
+    expect(viewOf().state.selection.main).toMatchObject({ anchor: 2, head: 6 });
+    expect(undo(viewOf())).toBe(false);
+  });
+
+  it('survives setText (loading another document keeps the mode)', () => {
+    adapter.mount(host);
+    setFocusMode(true);
+    adapter.setText('a\n\nb');
+    viewOf().dispatch({ selection: { anchor: 0 } });
+    expect(dim()).toEqual([false, true, true]);
+  });
+
+  it('can be set before mount', () => {
+    setFocusMode(true);
+    adapter.mount(host);
+    adapter.setText('a\n\nb');
+    viewOf().dispatch({ selection: { anchor: 0 } });
+    expect(dim()).toEqual([false, true, true]);
+  });
+
+  it('does not recompute while composing, and reflects the change after compositionend', () => {
+    vi.useFakeTimers();
+    adapter.mount(host);
+    adapter.setText(DOC);
+    setFocusMode(true);
+    viewOf().dispatch({ selection: { anchor: 0 } });
+    expect(dim()).toEqual([false, false, true, true, true, true]);
+    const content = host.querySelector('.cm-content') as HTMLElement;
+
+    content.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+    // 変換中にカーソルが別の段落へ移っても、行の属性は変えない。
+    viewOf().dispatch({ selection: { anchor: DOC.indexOf('three') } });
+    expect(dim()).toEqual([false, false, true, true, true, true]);
+    vi.advanceTimersByTime(500);
+    expect(dim()).toEqual([false, false, true, true, true, true]);
+
+    content.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
+    vi.advanceTimersByTime(200);
+    expect(dim()).toEqual([true, true, true, false, true, true]);
+  });
+
+  it('follows edits made while composing, by position, then settles afterwards', () => {
+    vi.useFakeTimers();
+    adapter.mount(host);
+    adapter.setText('abc\n\ndef');
+    setFocusMode(true);
+    viewOf().dispatch({ selection: { anchor: 3 } });
+    const content = host.querySelector('.cm-content') as HTMLElement;
+    content.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+    viewOf().dispatch({ changes: { from: 3, insert: 'に' }, selection: { anchor: 4 } });
+    expect(adapter.getText()).toBe('abcに\n\ndef');
+    expect(dim()).toEqual([false, true, true]);
+    content.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
+    vi.advanceTimersByTime(200);
+    expect(dim()).toEqual([false, true, true]);
+  });
+
+  it('splits paragraphs by blank lines only for plain text: the plugin is rebuilt when the kind changes', () => {
+    adapter.mount(host);
+    adapter.setPluginSetting('focusMode', true);
+    adapter.setText('# 見出し\n本文\n\n別段落');
+    const dimmed = () => Array.from(host.querySelectorAll('.cm-line'), (l) => l.classList.contains('cm-md-dim'));
+    viewOf().dispatch({ selection: { anchor: 0 } });
+    expect(dimmed()).toEqual([false, true, true, true]);
+    adapter.setTextKind('plain');
+    expect(dimmed()).toEqual([false, false, true, true]);
+  });
+});
+
+describe('bundled plugins together', () => {
+  it('lists the writing aids as focus mode (100), typewriter mode (200), in that order', () => {
+    expect(registry.settingsItems('appearance.writingAids').map((i) => [i.label, i.order, i.settingKey])).toEqual([
+      ['フォーカスモード', 100, 'focusMode'],
+      ['タイプライターモード', 200, 'typewriterMode'],
+    ]);
+  });
+
+  it('keeps focus mode before typewriter mode in the extension order, and their shortcuts apart', () => {
+    expect(registry.editorExtensions.map((e) => e.settingKey)).toEqual(['focusMode', 'typewriterMode']);
+    expect(registry.commands.map((c) => [c.id, c.shortcut?.text])).toEqual([
+      ['focus.toggle', 'Mod+Shift+F'],
+      ['typewriter.toggle', 'Mod+Shift+T'],
+    ]);
+  });
+
+  it('focus mode and typewriter mode can be on at once (the combination of live-markup.spec)', () => {
+    adapter.mount(host);
+    adapter.setText('a\n\nb');
+    adapter.setPluginSetting('focusMode', true);
+    adapter.setPluginSetting('typewriterMode', true);
+    viewOf().dispatch({ selection: { anchor: 0 } });
+    const editor = host.querySelector('.cm-editor') as HTMLElement;
+    expect(editor.classList.contains('cm-typewriter')).toBe(true);
+    expect(dim()).toEqual([false, true, true]);
   });
 });
 

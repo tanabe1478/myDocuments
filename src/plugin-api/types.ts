@@ -40,11 +40,26 @@ export interface SettingHandle<T> {
   readonly defaultValue: T;
 }
 
+/** 本文の表示の種類。markdown は Markdown として扱う文書、plain は素のテキスト（.txt、.text）。 */
+export type TextKind = 'markdown' | 'plain';
+
+/** 拡張を作るときにホストが渡す、今の文書についての情報。 */
+export interface EditorExtensionEnvironment {
+  /** 今の文書の種類。dependsOnTextKind が true の登録だけ、この値が変わると拡張が作り直される。 */
+  readonly textKind: TextKind;
+}
+
 /** 設定の値から CodeMirror の拡張を作る登録。値が変わると、ホストが部品ごとの Compartment で差し替える。 */
 export interface EditorExtensionRegistration<T> {
   readonly setting: SettingHandle<T>;
-  /** 現在の値に対する拡張。純粋に作る（副作用を持たない）。setText で state を作り直しても、現在の値で呼ばれる。 */
-  create(value: T): Extension;
+  /**
+   * true のとき、文書の種類（env.textKind）が変わるたびに、ホストが拡張を作り直す（設定の値が変わったときと同じ差し替え）。
+   * create が env.textKind を読むなら true にする。false（既定）のとき、種類が変わっても create は呼ばれない
+   * （env.textKind は、拡張を作った時点の値のまま）。
+   */
+  readonly dependsOnTextKind?: boolean;
+  /** 現在の値と文書の種類に対する拡張。純粋に作る（副作用を持たない）。setText で state を作り直しても、現在の値で呼ばれる。 */
+  create(value: T, env: EditorExtensionEnvironment): Extension;
 }
 
 /** コマンドの実行時にホストが渡すもの。 */

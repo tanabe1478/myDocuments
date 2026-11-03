@@ -4,10 +4,12 @@
  */
 export { PLUGIN_API_VERSION } from './version';
 export { ownsCaretScroll, skipCaretFollow } from './conventions';
+export { frontmatterEndLine } from './frontmatter';
 export {
   SETTINGS_PLACEMENTS,
   type CommandContext,
   type CommandRegistration,
+  type EditorExtensionEnvironment,
   type EditorExtensionRegistration,
   type Plugin,
   type PluginContext,
@@ -17,6 +19,7 @@ export {
   type SettingHandle,
   type SettingsItemRegistration,
   type SettingsPlacement,
+  type TextKind,
 } from './types';
 export { matchesShortcut, parseShortcut, type KeyEventLike, type ParsedShortcut } from './shortcut';
 export {

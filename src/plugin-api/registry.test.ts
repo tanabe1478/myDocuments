@@ -9,6 +9,8 @@ import {
   type PluginRegistryOptions,
 } from '.';
 
+const ENV = { textKind: 'markdown' } as const;
+
 const manifest = (over: Partial<PluginManifest> = {}): PluginManifest => ({
   id: 'demo',
   name: 'デモ',
@@ -134,16 +136,45 @@ describe('isolation of exceptions', () => {
       options,
     );
     const [bad, ok] = registry.editorExtensions;
-    expect(bad?.create(false)).toEqual([]);
-    expect(bad?.create(true)).toEqual([]);
+    expect(bad?.create(false, ENV)).toEqual([]);
+    expect(bad?.create(true, ENV)).toEqual([]);
     expect(registry.records[0]).toMatchObject({ id: 'bad-ext', status: 'stopped', reason: 'create failed' });
     // 止めた後は、値に関係なく空。
-    expect(bad?.create(false)).toEqual([]);
-    expect(ok?.create(true)).not.toEqual([]);
+    expect(bad?.create(false, ENV)).toEqual([]);
+    expect(ok?.create(true, ENV)).not.toEqual([]);
     expect(registry.records[1]?.status).toBe('active');
     // 動作中に止めても、設定の定義は残る（保存値を落とさない）。
     expect(registry.settings.map((s) => s.key)).toEqual(['bad', 'ok']);
     expect(registry.editorExtensions.map((e) => e.pluginId)).toEqual(['ok-ext']);
+  });
+
+  it('hands the document kind to create, and flags only the registrations that depend on it', () => {
+    const { options } = quiet();
+    const seen: string[] = [];
+    const registry = createPluginRegistry(
+      [
+        plugin((ctx) => {
+          const s = ctx.registerSetting({ key: 'kindy', defaultValue: true, normalize: (r) => r === true });
+          ctx.registerEditorExtension({
+            setting: s,
+            dependsOnTextKind: true,
+            create: (_value, env) => {
+              seen.push(env.textKind);
+              return [];
+            },
+          });
+          const t = ctx.registerSetting({ key: 'plain', defaultValue: true, normalize: (r) => r === true });
+          ctx.registerEditorExtension({ setting: t, create: () => [] });
+        }),
+      ],
+      options,
+    );
+    const [kindy, other] = registry.editorExtensions;
+    expect(kindy?.dependsOnTextKind).toBe(true);
+    expect(other?.dependsOnTextKind).toBe(false);
+    kindy?.create(true, { textKind: 'plain' });
+    kindy?.create(true, { textKind: 'markdown' });
+    expect(seen).toEqual(['plain', 'markdown']);
   });
 
   it('stops the plugin when the extension it returns is not a valid CodeMirror extension', () => {
@@ -157,7 +188,7 @@ describe('isolation of exceptions', () => {
       ],
       options,
     );
-    const ext = registry.editorExtensions[0]?.create(true);
+    const ext = registry.editorExtensions[0]?.create(true, ENV);
     expect(ext).toEqual([]);
     expect(registry.records[0]?.status).toBe('stopped');
   });
@@ -275,8 +306,8 @@ describe('registrations', () => {
     expect(registry.settings[0]?.normalize('yes')).toBe(false);
     expect(registry.settings[0]?.normalize(true)).toBe(true);
     expect(registry.editorExtensions[0]).toMatchObject({ pluginId: 'demo', settingKey: 'flag', defaultValue: false });
-    expect(registry.editorExtensions[0]?.create(false)).toEqual([]);
-    expect(registry.editorExtensions[0]?.create(true)).toHaveLength(1);
+    expect(registry.editorExtensions[0]?.create(false, ENV)).toEqual([]);
+    expect(registry.editorExtensions[0]?.create(true, ENV)).toHaveLength(1);
     expect(registry.commands[0]).toMatchObject({ id: 'demo.toggle', title: '切り替え', ignoreInTextEntry: true });
     expect(registry.settingsItems('appearance.writingAids').map((i) => [i.label, i.order, i.settingKey])).toEqual([
       ['先頭', 50, 'flag'],

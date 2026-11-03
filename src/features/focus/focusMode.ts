@@ -1,7 +1,8 @@
 import { RangeSetBuilder, StateEffect, type Extension } from '@codemirror/state';
 import { Decoration, ViewPlugin, type DecorationSet, type EditorView, type ViewUpdate } from '@codemirror/view';
-import type { TextKind } from '../../document/fileKinds';
-import { focusRange } from '../focusRange';
+import type { TextKind } from '../../plugin-api';
+import { focusRange } from './focusRange';
+import { focusTheme } from './theme';
 
 /** カーソルのある段落以外の行に付ける class（見た目は theme.ts）。 */
 export const DIM_CLASS = 'cm-md-dim';
@@ -84,13 +85,16 @@ class FocusModePlugin {
  * 表示（行の class）だけを変え、本文には触れない。kind が plain（.txt、.text）なら、空行だけで段落を分ける。
  */
 export function focusModeExtension(kind: TextKind = 'markdown'): Extension {
-  return ViewPlugin.define((view) => new FocusModePlugin(view, kind), {
-    decorations: (plugin) => plugin.decorations,
-    eventHandlers: {
-      compositionend(this: FocusModePlugin) {
-        this.compositionEnded();
-        return false;
+  return [
+    ViewPlugin.define((view) => new FocusModePlugin(view, kind), {
+      decorations: (plugin) => plugin.decorations,
+      eventHandlers: {
+        compositionend(this: FocusModePlugin) {
+          this.compositionEnded();
+          return false;
+        },
       },
-    },
-  });
+    }),
+    focusTheme,
+  ];
 }

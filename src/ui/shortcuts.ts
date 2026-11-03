@@ -5,7 +5,6 @@ export type ShortcutAction =
   | 'saveAs'
   | 'settings'
   | 'sidebar'
-  | 'focusMode'
   | 'fullscreen';
 
 /** matchShortcut が見る、KeyboardEvent の部分。 */
@@ -27,8 +26,7 @@ export function isMacPlatform(): boolean {
 
 /**
  * macOS は Cmd、それ以外は Ctrl（以下 Mod）。
- * 新規 Mod+N、開く Mod+O、保存 Mod+S、別名保存 Mod+Shift+S、設定画面 Mod+,、サイドバー Mod+B、
- * フォーカスモード Mod+Shift+F。
+ * 新規 Mod+N、開く Mod+O、保存 Mod+S、別名保存 Mod+Shift+S、設定画面 Mod+,、サイドバー Mod+B。
  * 部品（src/plugin-api/）が登録したコマンドのショートカットは、ここでは扱わない（部品の一覧が持つ。ここの固定のショートカットが先に判定される）。
  * 全画面は macOS が Ctrl+Cmd+F、Windows / Linux が F11（各 OS の標準）。
  * 検索の Mod+F（Shift なし）は CodeMirror の持ち物なので、ここでは扱わない。
@@ -57,8 +55,6 @@ export function matchShortcut(e: KeyLike, mac: boolean): ShortcutAction | null {
       return e.shiftKey ? 'saveAs' : 'save';
     case 'b':
       return e.shiftKey ? null : 'sidebar';
-    case 'f':
-      return e.shiftKey ? 'focusMode' : null;
     default:
       return null;
   }
@@ -78,10 +74,10 @@ export function isTextEntryTarget(target: EventTarget | null): boolean {
 }
 
 /**
- * ショートカットを実行してよいか。入力欄にフォーカスがあるときは、モードの切替
- * （フォーカスモード）だけ無視する。設定画面の開閉・サイドバー・保存・全画面などは従来どおり。
+ * 部品のコマンドを、このキー入力の対象で実行してよいか。ignoreInTextEntry のコマンド（モードの切替）は、
+ * 入力欄にフォーカスがあるときは実行しない。固定のショートカット（設定画面の開閉・サイドバー・保存・全画面など）は、
+ * 入力欄でも従来どおり実行する。
  */
-export function shouldHandleShortcut(action: ShortcutAction, target: EventTarget | null): boolean {
-  if (action === 'focusMode') return !isTextEntryTarget(target);
-  return true;
+export function shouldRunPluginCommand(command: { readonly ignoreInTextEntry: boolean }, target: EventTarget | null): boolean {
+  return !(command.ignoreInTextEntry && isTextEntryTarget(target));
 }

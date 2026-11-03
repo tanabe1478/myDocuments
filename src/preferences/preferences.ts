@@ -54,7 +54,6 @@ export interface Preferences {
   /** 左サイドバーを開いているか。次の起動で復元する。 */
   readonly sidebarOpen: boolean;
   readonly theme: ThemeSetting;
-  readonly focusMode: boolean;
   /** 執筆中に上部ツールを自動的に隠す（UI-05）。 */
   readonly autoHideChrome: boolean;
   readonly background: BackgroundSetting;
@@ -89,7 +88,6 @@ export const DEFAULT_PREFERENCES: Preferences = {
   surfaceWidth: 'fill',
   sidebarOpen: false,
   theme: 'system',
-  focusMode: false,
   autoHideChrome: true,
   background: { kind: 'gradient', color: '#e9e4d4', gradientId: DEFAULT_GRADIENT_ID, imageId: null },
   imageBrightness: 0.8,
@@ -183,7 +181,6 @@ function normalizeCore(raw: unknown): Preferences {
     surfaceWidth: SURFACE_WIDTHS.includes(r.surfaceWidth as SurfaceWidth) ? (r.surfaceWidth as SurfaceWidth) : d.surfaceWidth,
     sidebarOpen: boolean(r.sidebarOpen, d.sidebarOpen),
     theme: THEMES.includes(r.theme as ThemeSetting) ? (r.theme as ThemeSetting) : d.theme,
-    focusMode: boolean(r.focusMode, d.focusMode),
     autoHideChrome: boolean(r.autoHideChrome, d.autoHideChrome),
     background: background(r.background, d.background),
     imageBrightness: number(r.imageBrightness, RANGES.imageBrightness, d.imageBrightness),

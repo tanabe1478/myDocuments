@@ -292,7 +292,6 @@ interface CheckEntry {
  */
 function writingAidChecks(prefs: StoredPreferences, pluginItems: readonly RegisteredSettingsItem[]): CheckEntry[] {
   const entries: CheckEntry[] = [
-    { key: 'focusMode', label: 'フォーカスモード', checked: prefs.focusMode, order: 100 },
     { key: 'autoHideChrome', label: '入力中は上下のバーを隠す', checked: prefs.autoHideChrome, order: 300 },
     ...pluginItems.map((item) => ({
       key: item.settingKey,

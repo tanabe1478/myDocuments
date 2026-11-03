@@ -3,6 +3,8 @@ import { matchesShortcut, parseShortcut, type KeyEventLike, type ParsedShortcut 
 import {
   SETTINGS_PLACEMENTS,
   type CommandContext,
+  type EditorExtensionEnvironment,
+  type EditorExtensionRegistration,
   type Plugin,
   type PluginContext,
   type SettingDefinition,
@@ -32,8 +34,10 @@ export interface RegisteredEditorExtension {
   readonly pluginId: string;
   readonly settingKey: string;
   readonly defaultValue: unknown;
+  /** 文書の種類が変わったとき、ホストが拡張を作り直すか。 */
+  readonly dependsOnTextKind: boolean;
   /** 止めた部品、または例外を出したときは、空の拡張。 */
-  create(value: unknown): Extension;
+  create(value: unknown, env: EditorExtensionEnvironment): Extension;
 }
 
 export interface RegisteredCommand {
@@ -181,16 +185,17 @@ export function createPluginRegistry(plugins: readonly Plugin[], options: Plugin
         return { key, defaultValue: definition.defaultValue };
       },
 
-      registerEditorExtension<T>({ setting, create }: { setting: SettingHandle<T>; create(value: T): Extension }): void {
+      registerEditorExtension<T>({ setting, create, dependsOnTextKind }: EditorExtensionRegistration<T>): void {
         own(setting);
         entry.regs.editorExtensions.push({
           pluginId: entry.id,
           settingKey: setting.key,
           defaultValue: setting.defaultValue,
+          dependsOnTextKind: dependsOnTextKind === true,
           create: guard(
             entry,
-            (value: unknown) => {
-              const extension = create(value as T);
+            (value: unknown, env: EditorExtensionEnvironment) => {
+              const extension = create(value as T, env);
               // 拡張の形が不正なら、state を作るときに例外になり、文書の読み込みごと失敗する。ここで試して止める。
               EditorState.create({ extensions: extension });
               return extension;

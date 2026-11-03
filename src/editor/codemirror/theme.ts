@@ -41,9 +41,6 @@ export const editorTheme = EditorView.theme({
     lineBreak: 'strict',
   },
   '.cm-line': { padding: '0' },
-  // フォーカスモード: カーソルのある段落以外を弱く表示する。
-  // 切り替えの遷移は styles.css（Reduced Motion のときは付けない）。
-  '.cm-md-dim': { opacity: '0.38' },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--md-color-caret)', borderLeftWidth: '2px' },
   '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground': {
     background: 'var(--md-color-selection)',

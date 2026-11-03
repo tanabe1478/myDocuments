@@ -2,11 +2,9 @@ import { defaultKeymap, history } from '@codemirror/commands';
 import { search, searchKeymap } from '@codemirror/search';
 import { Compartment, EditorState, type Extension, type StateEffect } from '@codemirror/state';
 import { EditorView, drawSelection, keymap } from '@codemirror/view';
-import type { TextKind } from '../../document/fileKinds';
-import type { RegisteredEditorExtension } from '../../plugin-api';
+import type { RegisteredEditorExtension, TextKind } from '../../plugin-api';
 import type { ListContinuation, MarkupDisplay } from '../../preferences/preferences';
 import type { EditorAdapter, EditorSelection } from '../EditorAdapter';
-import { focusModeExtension } from './focusMode';
 import { historyKeymap } from './historyKeymap';
 import { indentKeymap } from './indentKeymap';
 import { keepCursorVisibleExtension } from './keepCursorVisible';
@@ -39,7 +37,6 @@ export class CodeMirrorAdapter implements EditorAdapter {
   private pendingTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly changeListeners = new Set<(text: string) => void>();
   private readonly selectionListeners = new Set<(selection: EditorSelection) => void>();
-  private focusMode = false;
   private textKind: TextKind = 'markdown';
   private listContinuation: ListContinuation = 'tight';
   private markupDisplay: MarkupDisplay = 'cursorLine';
@@ -48,7 +45,6 @@ export class CodeMirrorAdapter implements EditorAdapter {
   /** 本文の下側を覆う要素（トースト）の高さ。scrollMargins の下側に使う（レイアウトは変えない）。 */
   private bottomInset = 0;
   // setText は state を作り直すので、モードは Compartment で持ち、作り直しても現在の値で始める。
-  private readonly focusCompartment = new Compartment();
   private readonly kindCompartment = new Compartment();
   private readonly listCompartment = new Compartment();
   private readonly markupCompartment = new Compartment();
@@ -100,12 +96,6 @@ export class CodeMirrorAdapter implements EditorAdapter {
     this.view?.focus();
   }
 
-  setFocusMode(on: boolean): void {
-    if (this.focusMode === on) return;
-    this.focusMode = on;
-    this.view?.dispatch({ effects: this.focusCompartment.reconfigure(this.focusExtension()) });
-  }
-
   setPluginSetting(key: string, value: unknown): void {
     const effects: StateEffect<unknown>[] = [];
     for (const slot of this.pluginSlots) {
@@ -122,8 +112,10 @@ export class CodeMirrorAdapter implements EditorAdapter {
     this.view?.dispatch({
       effects: [
         this.kindCompartment.reconfigure(this.kindExtension()),
-        // フォーカスモードの段落の分け方も、種類で変わる。
-        this.focusCompartment.reconfigure(this.focusExtension()),
+        // 文書の種類に依存する部品の拡張は、種類が変わったときに作り直す（宣言した部品だけ）。
+        ...this.pluginSlots
+          .filter((slot) => slot.registration.dependsOnTextKind)
+          .map((slot) => slot.compartment.reconfigure(this.pluginExtension(slot))),
       ],
     });
   }
@@ -193,16 +185,12 @@ export class CodeMirrorAdapter implements EditorAdapter {
     }, PENDING_RETRY_MS);
   }
 
-  private focusExtension(): Extension {
-    return this.focusMode ? focusModeExtension(this.textKind) : [];
-  }
-
   private kindExtension(): Extension {
     return this.textKind === 'plain' ? plainTextDecorations() : markdownDecorations();
   }
 
   private pluginExtension(slot: PluginSlot): Extension {
-    return slot.registration.create(slot.value);
+    return slot.registration.create(slot.value, { textKind: this.textKind });
   }
 
   private createState(doc: string): EditorState {
@@ -218,7 +206,6 @@ export class CodeMirrorAdapter implements EditorAdapter {
       EditorState.lineSeparator.of('\n'),
       EditorView.lineWrapping,
       this.kindCompartment.of(this.kindExtension()),
-      this.focusCompartment.of(this.focusExtension()),
       ...this.pluginSlots.map((slot) => slot.compartment.of(this.pluginExtension(slot))),
       this.listCompartment.of(listContinuationExtension(this.listContinuation)),
       this.markupCompartment.of(markupDisplayFacet.of(this.markupDisplay)),

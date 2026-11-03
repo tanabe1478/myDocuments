@@ -17,7 +17,7 @@
  */
 import type { Text } from '@codemirror/state';
 import type { syntaxTree } from '@codemirror/language';
-import { frontmatterEndLine } from './focusRange';
+import { frontmatterEndLine } from '../plugin-api';
 import { hangPrefix } from './lineKinds';
 
 type Tree = ReturnType<typeof syntaxTree>;

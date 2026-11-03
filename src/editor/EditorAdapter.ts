@@ -1,4 +1,4 @@
-import type { TextKind } from '../document/fileKinds';
+import type { TextKind } from '../plugin-api';
 import type { ListContinuation, MarkupDisplay } from '../preferences/preferences';
 
 /** 選択範囲。本文（LF 正規化済みの文字列）上の UTF-16 オフセット。 */
@@ -16,12 +16,10 @@ export interface EditorSelection {
  * - IME の変換中（composition 中）は setText を適用せず、変換の終了後に適用する。
  * - onChange はユーザー操作による本文の変化だけを通知する。
  * - on* は購読解除関数を返す。
- * - setFocusMode は表示だけを変える。本文・履歴・選択範囲には触れない。
- *   setText で文書を読み込み直しても、設定は保たれる。
  * - setPluginSetting は、部品（src/plugin-api/）が登録した設定の値を渡す。その設定から作る部品の拡張が、現在の値に差し替わる。
  *   本文・履歴・選択範囲には触れない。setText で文書を読み込み直しても、現在の値で始まる。登録のない key は無視する。
  * - setTextKind は表示だけを変える（markdown: Markdown の装飾あり、plain: 素のテキスト）。本文・履歴・選択範囲には触れない。
- *   setText で文書を読み込み直しても、種類は保たれる。
+ *   setText で文書を読み込み直しても、種類は保たれる。種類を知る部品の拡張（dependsOnTextKind の登録）は、種類が変わると作り直される。
  * - setListContinuation は Enter でのリストの継続（空行を入れるか）だけを変える。本文・履歴・選択範囲には触れない。
  *   setText で文書を読み込み直しても、設定は保たれる。.txt と .text では Markdown の継続そのものが働かない（今と同じ）。
  * - setMarkupDisplay は Markdown の記号の見せ方だけを変える（cursorLine: カーソルのある行と選択にかかる行だけ記号を見せ、
@@ -38,8 +36,6 @@ export interface EditorAdapter {
   onChange(cb: (text: string) => void): () => void;
   onSelectionChange(cb: (selection: EditorSelection) => void): () => void;
   focus(): void;
-  /** フォーカスモード: カーソルのある段落以外の行を弱く表示する。 */
-  setFocusMode(on: boolean): void;
   /** 部品が登録した設定の値。 */
   setPluginSetting(key: string, value: unknown): void;
   /** 本文の表示の種類。.txt と .text は plain（Markdown の装飾を付けない）。 */

@@ -3,6 +3,7 @@
  * ファイルを開く・保存するダイアログの絞り込み（tauriBridge）、エクスプローラーの灰色表示、
  * 本文の表示（Markdown の装飾を付けるか）の判定が、すべてここを使う。
  */
+import type { TextKind } from '../plugin-api';
 
 /** Markdown として開く拡張子（小文字、ドットなし）。 */
 export const MARKDOWN_EXTENSIONS: readonly string[] = ['md', 'markdown', 'mdown', 'mkd', 'mdx'];
@@ -13,8 +14,8 @@ export const PLAIN_TEXT_EXTENSIONS: readonly string[] = ['txt', 'text'];
 /** 開ける拡張子の全部。 */
 export const OPENABLE_EXTENSIONS: readonly string[] = [...MARKDOWN_EXTENSIONS, ...PLAIN_TEXT_EXTENSIONS];
 
-/** 本文の表示の種類。markdown は装飾あり、plain は素のテキスト。 */
-export type TextKind = 'markdown' | 'plain';
+/** 本文の表示の種類。markdown は装飾あり、plain は素のテキスト。型の定義は公開 API（部品も同じ型を受け取る）。 */
+export type { TextKind };
 
 /** ファイル名（またはパス）の拡張子を、小文字・ドットなしで返す。なければ空文字。先頭のドットだけの名前（.md）は拡張子なし。 */
 export function extensionOf(nameOrPath: string): string {

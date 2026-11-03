@@ -835,10 +835,6 @@ body {
     transition: opacity 0.45s ease;
   }
 
-  .cm-md-dim {
-    transition: opacity 0.25s ease;
-  }
-
   /* サイドバーの開閉。押し出すとき（push）は幅、重ねるとき（overlay）は位置を動かす。見えなくなるのは動き終わってから。 */
   .sidebar {
     transition:

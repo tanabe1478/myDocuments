@@ -11,7 +11,7 @@ const IMAGE_ID = 'ab12'.repeat(16);
 const pluginSettings = createPluginRegistry(bundledPlugins).settings;
 const normalizePreferences = (raw: unknown) => normalizeWith(raw, pluginSettings);
 /** 部品の設定が加わった既定値（これまで DEFAULT_PREFERENCES にあった項目を含む）。 */
-const DEFAULTS_WITH_PLUGINS = { ...DEFAULT_PREFERENCES, typewriterMode: false };
+const DEFAULTS_WITH_PLUGINS = { ...DEFAULT_PREFERENCES, focusMode: false, typewriterMode: false };
 
 describe('normalizePreferences', () => {
   it('uses the defaults for missing or non-object input', () => {
@@ -346,7 +346,7 @@ describe('paper width and sidebar (Run 8)', () => {
   });
 });
 
-describe('stored shape of plugin settings (R1: the typewriter setting moved into a plugin)', () => {
+describe('stored shape of plugin settings (R1: typewriter, R2: focus mode; both moved into plugins)', () => {
   interface GoldenCase {
     name: string;
     input: unknown;
@@ -375,18 +375,33 @@ describe('stored shape of plugin settings (R1: the typewriter setting moved into
     }
   });
 
-  it('keeps the setting as a boolean at the top level, under the same key', () => {
-    expect(normalizePreferences({ typewriterMode: true }).typewriterMode).toBe(true);
-    expect(Object.keys(normalizePreferences({}))).toContain('typewriterMode');
-    for (const bad of [1, 'true', null, [true], {}, undefined]) {
-      expect(normalizePreferences({ typewriterMode: bad }).typewriterMode, String(bad)).toBe(false);
+  it('keeps each setting as a boolean at the top level, under the same key', () => {
+    for (const key of ['typewriterMode', 'focusMode']) {
+      expect(normalizePreferences({ [key]: true })[key], key).toBe(true);
+      expect(Object.keys(normalizePreferences({})), key).toContain(key);
+      for (const bad of [1, 'true', 'yes', null, [true], {}, undefined]) {
+        expect(normalizePreferences({ [key]: bad })[key], `${key}: ${String(bad)}`).toBe(false);
+      }
     }
+  });
+
+  it('reads old files without the focus mode key, or with a wrong type, as off (and keeps the other items)', () => {
+    const missing = normalizePreferences({ theme: 'dark', typewriterMode: true });
+    expect(missing).toMatchObject({ theme: 'dark', typewriterMode: true, focusMode: false });
+    const wrongType = normalizePreferences({ theme: 'dark', focusMode: 'on', typewriterMode: true });
+    expect(wrongType).toMatchObject({ theme: 'dark', typewriterMode: true, focusMode: false });
+  });
+
+  it('does not carry the plugin settings in the host preferences (the host defaults know neither key)', () => {
+    expect(Object.keys(DEFAULT_PREFERENCES)).not.toContain('focusMode');
+    expect(Object.keys(DEFAULT_PREFERENCES)).not.toContain('typewriterMode');
   });
 
   it('drops keys that no loaded plugin defines (as before), and plugin keys when no plugin is loaded', () => {
     expect(normalizePreferences({ someFutureKey: 1 })).not.toHaveProperty('someFutureKey');
-    expect(normalizeWith({ typewriterMode: true })).not.toHaveProperty('typewriterMode');
-    expect(normalizeWith({ typewriterMode: true })).toEqual(DEFAULT_PREFERENCES);
+    expect(normalizeWith({ typewriterMode: true, focusMode: true })).not.toHaveProperty('typewriterMode');
+    expect(normalizeWith({ typewriterMode: true, focusMode: true })).not.toHaveProperty('focusMode');
+    expect(normalizeWith({ typewriterMode: true, focusMode: true })).toEqual(DEFAULT_PREFERENCES);
   });
 
   it('reads settings of any plugin generically', () => {
