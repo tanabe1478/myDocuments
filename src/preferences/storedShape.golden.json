@@ -261,5 +261,86 @@
       1
     ],
     "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": false,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 18,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"tight\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"system\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "list-continuation-tight",
+    "input": {
+      "theme": "dark",
+      "fontSizePx": 22,
+      "focusMode": true,
+      "listContinuation": "tight"
+    },
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 22,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"tight\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "list-continuation-preserve",
+    "input": {
+      "theme": "dark",
+      "fontSizePx": 22,
+      "focusMode": true,
+      "listContinuation": "preserve"
+    },
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 22,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"preserve\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "list-continuation-out-of-range",
+    "input": {
+      "theme": "dark",
+      "fontSizePx": 22,
+      "focusMode": true,
+      "listContinuation": "loose"
+    },
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 22,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"tight\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "list-continuation-wrong-case",
+    "input": {
+      "theme": "dark",
+      "fontSizePx": 22,
+      "focusMode": true,
+      "listContinuation": "Preserve"
+    },
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 22,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"tight\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "list-continuation-number",
+    "input": {
+      "theme": "dark",
+      "fontSizePx": 22,
+      "focusMode": true,
+      "listContinuation": 1
+    },
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 22,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"tight\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "list-continuation-null",
+    "input": {
+      "theme": "dark",
+      "fontSizePx": 22,
+      "focusMode": true,
+      "listContinuation": null
+    },
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 22,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"tight\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "list-continuation-array",
+    "input": {
+      "theme": "dark",
+      "fontSizePx": 22,
+      "focusMode": true,
+      "listContinuation": [
+        "preserve"
+      ]
+    },
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 22,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"tight\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "list-continuation-missing",
+    "input": {
+      "theme": "dark",
+      "fontSizePx": 22,
+      "focusMode": true
+    },
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 22,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"tight\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
   }
 ]

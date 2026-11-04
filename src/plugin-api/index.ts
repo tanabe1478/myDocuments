@@ -3,10 +3,12 @@
  * 設計の経緯と R1 で決めた細部は docs/decision-005-plugin-architecture.md。
  */
 export { PLUGIN_API_VERSION } from './version';
-export { ownsCaretScroll, skipCaretFollow } from './conventions';
+export { AFTER_COMPOSITION_MS, ownsCaretScroll, skipCaretFollow } from './conventions';
 export { frontmatterEndLine } from './frontmatter';
 export {
   SETTINGS_PLACEMENTS,
+  SETTINGS_PLACEMENT_KINDS,
+  type CheckboxSettingsItem,
   type CommandContext,
   type CommandRegistration,
   type EditorExtensionEnvironment,
@@ -15,8 +17,11 @@ export {
   type PluginContext,
   type PluginManifest,
   type PluginTier,
+  type RadioOption,
+  type RadioSettingsItem,
   type SettingDefinition,
   type SettingHandle,
+  type SettingsItemKind,
   type SettingsItemRegistration,
   type SettingsPlacement,
   type TextKind,
@@ -29,6 +34,9 @@ export {
   type PluginRegistryOptions,
   type PluginStatus,
   type RegisteredCommand,
+  type RegisteredCheckboxItem,
+  type RegisteredItemAt,
   type RegisteredEditorExtension,
+  type RegisteredRadioItem,
   type RegisteredSettingsItem,
 } from './registry';

@@ -1,5 +1,5 @@
 import type { TextKind } from '../plugin-api';
-import type { ListContinuation, MarkupDisplay } from '../preferences/preferences';
+import type { MarkupDisplay } from '../preferences/preferences';
 
 /** 選択範囲。本文（LF 正規化済みの文字列）上の UTF-16 オフセット。 */
 export interface EditorSelection {
@@ -20,8 +20,6 @@ export interface EditorSelection {
  *   本文・履歴・選択範囲には触れない。setText で文書を読み込み直しても、現在の値で始まる。登録のない key は無視する。
  * - setTextKind は表示だけを変える（markdown: Markdown の装飾あり、plain: 素のテキスト）。本文・履歴・選択範囲には触れない。
  *   setText で文書を読み込み直しても、種類は保たれる。種類を知る部品の拡張（dependsOnTextKind の登録）は、種類が変わると作り直される。
- * - setListContinuation は Enter でのリストの継続（空行を入れるか）だけを変える。本文・履歴・選択範囲には触れない。
- *   setText で文書を読み込み直しても、設定は保たれる。.txt と .text では Markdown の継続そのものが働かない（今と同じ）。
  * - setMarkupDisplay は Markdown の記号の見せ方だけを変える（cursorLine: カーソルのある行と選択にかかる行だけ記号を見せ、
  *   ほかの行は隠す。always: すべての行で見せる。ADR-004）。本文・履歴・選択範囲には触れない（隠すのは表示だけ）。
  *   setText で文書を読み込み直しても、設定は保たれる。.txt と .text には効かない。
@@ -41,7 +39,6 @@ export interface EditorAdapter {
   /** 本文の表示の種類。.txt と .text は plain（Markdown の装飾を付けない）。 */
   setTextKind(kind: TextKind): void;
   /** Enter でのリストの継続。tight: 項目の間に空行のあるリスト（loose list）でも空行を入れない。preserve: 空行を入れてリストの形に合わせる。 */
-  setListContinuation(mode: ListContinuation): void;
   /** 記号の見せ方。 */
   setMarkupDisplay(mode: MarkupDisplay): void;
   /** リンクを開く操作（⌘/Ctrl+クリック）の通知を購読する。解除関数を返す。 */

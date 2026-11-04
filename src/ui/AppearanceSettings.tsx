@@ -2,7 +2,7 @@ import { useId, useState } from 'react';
 import type { ContrastReport } from '../canvas/canvas';
 import { formatRatio, WCAG_AA, WCAG_AAA } from '../canvas/contrast';
 import { GRADIENTS, gradientCss, type ThemeMode } from '../canvas/gradients';
-import type { RegisteredSettingsItem, SettingsPlacement } from '../plugin-api';
+import type { PluginRegistry, RegisteredItemAt } from '../plugin-api';
 import { FONT_PRESETS, presetIdOf } from '../preferences/fonts';
 import {
   RANGES,
@@ -25,7 +25,7 @@ export interface AppearanceSettingsProps {
   onChange(patch: Partial<StoredPreferences>): void;
   onPickImage(): void;
   /** 部品が置いた設定画面の項目（場所ごと）。 */
-  settingsItems(placement: SettingsPlacement): readonly RegisteredSettingsItem[];
+  settingsItems: PluginRegistry['settingsItems'];
 }
 
 const THEME_OPTIONS: ReadonlyArray<{ value: ThemeSetting; label: string }> = [
@@ -290,7 +290,7 @@ interface CheckEntry {
  * 「執筆の補助」のチェック項目。本体の項目（order は 100 刻み）と、部品が置いた項目を、order の順に並べる。
  * 同じ order のときは、本体の項目、部品の登録順（sort は安定）。
  */
-function writingAidChecks(prefs: StoredPreferences, pluginItems: readonly RegisteredSettingsItem[]): CheckEntry[] {
+function writingAidChecks(prefs: StoredPreferences, pluginItems: readonly RegisteredItemAt<'appearance.writingAids'>[]): CheckEntry[] {
   const entries: CheckEntry[] = [
     { key: 'autoHideChrome', label: '入力中は上下のバーを隠す', checked: prefs.autoHideChrome, order: 300 },
     ...pluginItems.map((item) => ({

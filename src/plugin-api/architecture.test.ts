@@ -37,9 +37,10 @@ describe('src/features/: what a bundled plugin may import', () => {
   const files = listFiles(FEATURES);
   const pluginDirs = readdirSync(FEATURES).filter((d) => statSync(path.join(FEATURES, d)).isDirectory());
 
-  it('has the bundled plugins (typewriter, focus), each in its own folder', () => {
+  it('has the bundled plugins (typewriter, focus, list-continuation), each in its own folder', () => {
     expect(pluginDirs).toContain('typewriter');
     expect(pluginDirs).toContain('focus');
+    expect(pluginDirs).toContain('list-continuation');
     expect(files.length).toBeGreaterThan(0);
   });
 
@@ -53,6 +54,26 @@ describe('src/features/: what a bundled plugin may import', () => {
     expect(specifiers(path.join(FEATURES, 'focus', 'focusMode.ts'))).toEqual(
       expect.arrayContaining(['@codemirror/state', '@codemirror/view', '../../plugin-api', './focusRange', './theme']),
     );
+  });
+
+  it('the files of the list-continuation plugin are covered by the import rule (checked on their own, so the rule cannot silently skip them)', () => {
+    const own = files.filter((f) => isInside(f, path.join(FEATURES, 'list-continuation'))).map(rel);
+    expect(own).toEqual(
+      expect.arrayContaining([
+        'features/list-continuation/index.ts',
+        'features/list-continuation/listContinuation.ts',
+        'features/list-continuation/listContinuation.test.ts',
+        'features/list-continuation/plugin.test.ts',
+      ]),
+    );
+    expect(specifiers(path.join(FEATURES, 'list-continuation', 'index.ts'))).toEqual(['../../plugin-api', './listContinuation']);
+    expect(specifiers(path.join(FEATURES, 'list-continuation', 'listContinuation.ts'))).toEqual(
+      expect.arrayContaining(['@codemirror/lang-markdown', '@codemirror/state', '@codemirror/view']),
+    );
+    // ホストの設定の型（src/preferences/）を import しない（部品が自分の型を持つ）。
+    for (const f of files.filter((f) => isInside(f, path.join(FEATURES, 'list-continuation')))) {
+      expect(specifiers(f).filter((spec) => spec.includes('preferences')), rel(f)).toEqual([]);
+    }
   });
 
   it('imports only src/plugin-api/, @codemirror/*, @lezer/*, react, and its own folder (no other plugin, no host)', () => {
@@ -111,6 +132,8 @@ describe('the host does not know any plugin by name', () => {
     'editor/codemirror/readingPosition.ts',
     'editor/codemirror/theme.ts',
     'editor/codemirror/taskToggle.ts',
+    'ui/EditingSettings.tsx',
+    'ui/SettingsDialog.tsx',
   ];
 
   it('lists files that exist', () => {
@@ -118,9 +141,19 @@ describe('the host does not know any plugin by name', () => {
   });
 
   // 部品の名前、部品の中の識別子、部品が持つ DOM の class（コメントを含む。大文字小文字を問わない）。
-  const NAMES = [/typewriter/i, /focusMode/i, /focusRange/i, /cm-md-dim/i, /setFocusMode/i];
+  const NAMES = [
+    /typewriter/i,
+    /focusMode/i,
+    /focusRange/i,
+    /cm-md-dim/i,
+    /setFocusMode/i,
+    /listContinuation/i,
+    /ListContinuation/i,
+    /insertNewlineContinue/i,
+    /setListContinuation/i,
+  ];
 
-  it('has no plugin names in the host files (typewriter, focusMode, focusRange, cm-md-dim, setFocusMode; any case, comments included)', () => {
+  it('has no plugin names in the host files (typewriter, focusMode, focusRange, cm-md-dim, setFocusMode, listContinuation, insertNewlineContinue, setListContinuation; any case, comments included)', () => {
     const hits = HOST.flatMap((f) => {
       const text = readFileSync(path.join(SRC, f), 'utf8');
       return NAMES.filter((n) => n.test(text)).map((n) => `${f}: ${n.source}`);
@@ -129,7 +162,18 @@ describe('the host does not know any plugin by name', () => {
   });
 
   it('the name check itself catches each name (guards against a pattern that silently matches nothing)', () => {
-    for (const sample of ['TypeWriter', 'prefs.focusMode', 'FOCUSRANGE', "'.cm-md-dim'", 'adapter.setFocusMode(true)']) {
+    for (const sample of [
+      'TypeWriter',
+      'prefs.focusMode',
+      'FOCUSRANGE',
+      "'.cm-md-dim'",
+      'adapter.setFocusMode(true)',
+      'prefs.listContinuation',
+      'type ListContinuation',
+      'LISTCONTINUATION',
+      'insertNewlineContinueTight',
+      'adapter.setListContinuation(mode)',
+    ]) {
       expect(NAMES.some((n) => n.test(sample)), sample).toBe(true);
     }
   });

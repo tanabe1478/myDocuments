@@ -4,7 +4,7 @@
 
 Proposed（2026-11-03、R0）。この時点では案で、実装の Run で確定する。アプリのコードは変えていない。仕様 §7.2 の「編集エンジンを差し替えても UI は変えない」は、この ADR が確定したとき、エディタに関わる部品の範囲で改める（改め方は「未決のこと」）。仕様の文書そのもの（`docs/spec/`）は書き換えない。
 
-R1（2026-11-03）で、段 3 の同梱の部品に限って API v0 を実装した。細部は「R1 で決めた細部」。R2（2026-11-03）で、フォーカスモードを 2 つ目の同梱の部品にした。細部は「R2 で決めた細部」。
+R1（2026-11-03）で、段 3 の同梱の部品に限って API v0 を実装した。細部は「R1 で決めた細部」。R2（2026-11-03）で、フォーカスモードを 2 つ目の同梱の部品にした。細部は「R2 で決めた細部」。R3（2026-11-03）で、リストの継続を 3 つ目の同梱の部品にし、設定画面の選択肢の項目と「編集」の置き場所を足した。細部は「R3 で決めた細部」。
 
 実験（K1〜K3）は、macOS（WKWebView）の Tauri debug ビルドだけで確かめた。Windows（WebView2）と Linux（WebKitGTK）は未確認。
 
@@ -396,6 +396,71 @@ R1 のタイプライターモードと同じく、部品のテーマは CodeMir
 
 - `dependsOnTextKind` は、文書の種類 1 つだけを対象にしている。文書のパス、文書の長さなど、ほかの文書の情報に依存する拡張が出てきたら、`env` に足す（そのとき、再作成の条件の宣言の形を決め直す）。
 - 設定 1 つに結び付く拡張だけで、複数の設定に依存する拡張の登録口はまだない。
+
+## R3 で決めた細部
+
+R3（2026-11-03）で、リストの継続を 3 つ目の同梱の部品（`src/features/list-continuation/`）にした。振る舞い、設定ファイルの形、DOM は変えていない。API の版は 0 のまま。外からの読み込み、隔離、権限は対象外。あわせて、R2 のレビューの注記 3 件（N-R2-1〜3）を直した。
+
+### 設定画面の選択肢の項目
+
+`registerSettingsItem` の `kind` に `'radio'` を足した。種類ごとに、登録の形が違う（`SettingsItemRegistration` は `kind` で分かれる）。
+
+- `kind: 'radio'`: `setting`（`SettingHandle<string>`。値は選択肢の `value` のどれか）、`legend`（枠の見出し）、`options`（`{ value, label }` が 1 つ以上）、`hint`（選択肢の下の補足の文。省略可）。
+- 描く DOM は、変更前の `EditingSettings.tsx` と同じ: `fieldset > legend`、`div.choices > label.choice > input[type=radio] + 文字`、`p.hint`（`hint` を省いたときは `p` を出さない）。選ばれるのは、保存された値と `value` が等しい選択肢。保存された値がどの選択肢でもなければ、どれも選ばれない（設定の読み込みで、範囲外の値は既定値になるので、通常は起きない）。選ぶと、`onChange({ [設定のキー]: value })`（本体の設定と同じ経路。検証と保存を通る）。
+- 登録の検査（満たさなければ activate の例外になり、その部品は止まる）: `legend` が空でない、`options` が 1 つ以上で、各 `value` が文字列で重ならず、各 `label` が空でない、設定の既定値が選択肢のどれか、`hint` は文字列、`order` は有限の数。
+- 取らなかった案: 選択肢の `value` を `string` の組み合わせ型にする（型は実行時に消えるので、検査は結局要る。設定の型は部品が持つ）。真偽値以外を全部「選択肢」にまとめる（数値の範囲など、別の描き方が要る項目は、種類を足して扱う）。
+
+### 「編集」の置き場所の名前
+
+`editing.body`。名前は `<節>.<節の中の置き場>`（R1 の `appearance.writingAids` と同じ形）。「外観」の節の「執筆の補助」は、ホストが枠（fieldset と legend）を持ち、その中にチェックボックスが並ぶので、枠の名前を置き場所にした。「編集」の節は、見出し（h3）だけをホストが持ち、枠（fieldset）は選択肢の項目が自分で持つ。置き場所が指すのは「節の本文」そのものなので、`body` にした（`settings`、`items` は節の名前と紛らわしいので取らなかった）。
+
+置き場所ごとに、置ける種類を決めてある（`SETTINGS_PLACEMENT_KINDS`: `appearance.writingAids` は `checkbox`、`editing.body` は `radio`）。その場所でホストが描けない種類の登録は、activate の例外にする（登録されたのに何も出ない、をなくす）。`settingsItems(placement)` の戻り値の型も、置き場所で決まる。「編集」の節には、ほかの種類（チェックボックスなど）の描き方を決めていないので置けない。必要になったときに足す。
+
+### ラジオの name の決め方
+
+規則で作る。設定のキーを、小文字のハイフン区切りにする（`listContinuation` → `list-continuation`。小文字・数字の次の大文字の前にハイフンを入れ、全体を小文字にする）。変更前の name `list-continuation` と一致する。登録で指定させる案は取らなかった: 部品が別の部品や本体の name を重ねられる。キーはすでに部品の間で一意なので、規則なら重なりの検査は、大文字小文字だけが違うキー（`Mode` と `mode`）の 1 通りで済み、登録の例外にする。限界: 本体自身のラジオの name（`background-kind`、`gradient`）との重なりは検査していない（`surface-width`、`markup-display`、`theme` は、本体の設定のキーと重ならない検査で、部品のキーにならない）。
+
+### Enter の優先順位の確かめ方
+
+リストの継続の拡張は、`tight` のときだけ `Prec.highest` の Enter のキー割り当てを足し、`preserve` は何も足さない（lang-markdown の `Prec.high` の Enter と、`defaultKeymap` の Enter が残る）。優先度は `Prec` が決めるので、部品の一覧の並びには左右されない（同じ優先度の拡張どうしだけ、並びが効く。ほかの `Prec.highest` の拡張はない。`indentKeymap` と `verticalMotion` は `Prec.high` で、Enter を持たない）。
+
+確かめ方は 2 つ。(1) 変更前のコミットを展開した複製で、部品の拡張と同じ組み立ての state（`createCodeMirrorAdapter` と、そのときの `setListContinuation`）から、`keymap` の Facet の中の Enter のキー割り当てを効く順に取り出した（tight: `insertNewlineContinueTight`、lang-markdown の Enter、`defaultKeymap` の Enter（shift つき）の 3 つ。preserve: 後ろの 2 つ）。(2) 変更後は、同じ並びになることを単体テスト（`bundledPlugins.test.ts` の「Enter priority is unchanged」）で確かめている。`tight` と `preserve` の切り替えは、`setPluginSetting` が部品の Compartment を差し替える（R1 の仕組み）。
+
+### 設定の保存
+
+設定のキー `listContinuation`（文字列 `'tight'` または `'preserve'`）は、これまでと同じ最上位のまま。`preferences.ts` から `ListContinuation` の型、`Preferences.listContinuation`、既定値、正規化を外し、部品が `registerSetting` で登録する（正規化は同じ: 2 つの値以外は `'tight'`）。保存されるバイト列は変更前と同じ。`storedShape.golden.json` に、変更前のコミットの出力から作った 8 つの入力（`listContinuation` が tight、preserve、範囲外の文字列、大文字違い、数値、null、配列、キーなし）を足し、R1・R2 の 13 の入力と合わせて、新しい経路の出力と文字列が一致することを確かめる。`preferences.ts` に `listContinuation` の文字列は残らない（R1・R2 と同じ。保存の形を保つのは部品の `normalize` と、テスト側の golden）。ホストのファイルに避けられない文字列はなかった。
+
+### 設定画面の「編集」の節
+
+見出し（`section[data-testid=settings-editing] > h3`）だけをホストの `EditingSettings.tsx` に残し、`editing.body` の項目を `order` の順に並べる。部品が止まったとき（または外したとき）は、その項目も消える。変更前後の DOM（要素、class、`data-testid`、name、value、文言、並び、属性）の同一性は、単体テスト（`EditingSettings.test.tsx`）と、変更前後の実ブラウザでの比較で確かめた。
+
+### 見つけた不具合（R1 から）
+
+背景画像を取り込む処理（`App.tsx` の `pickImage`）が、設定を検証し直すときに、部品の設定の定義を渡していなかった。そのため、取り込みの後、部品の設定（R1 のタイプライターモード、R2 のフォーカスモード）が保存の形から落ちていた（変更前のコミットで、`focusMode: true` で取り込むと、保存された設定から `focusMode` が消えることを確認）。リストの継続は、変更前は本体の設定だったので落ちなかった。部品にすると同じ経路で落ちて、振る舞いが変わるので、R3 で定義を渡すように直した（タイプライターモード、フォーカスモードの同じ不具合も同時に直る）。e2e（`tests/e2e/plugin-settings.spec.ts`）で、取り込みの後も設定が保たれることを確かめる。
+
+### N-R2-1: next の例外
+
+`settings.update` の `next` は、`setPrefs` の更新関数の中で呼ばれる（`run` が戻った後のことがある）ので、`run` を包む例外の隔離（レジストリの `guard`）に捕まらなかった。レジストリが、部品に渡す `CommandContext` の `update` を包み、`next` を、例外なら部品を止めて今の値を返す関数に差し替えた（止め方は、`run` の例外と同じ `stop`。止めた部品の `next` は呼ばない）。ホスト側の `updateStoredSetting` は、`next` が今の値をそのまま返したとき、設定を検証し直さずに直前の設定をそのまま返す（止めた部品の検証の関数は既定値を返すので、検証し直すと設定が前の値から変わってしまう。同じ値の更新は、再描画も保存も起こさない）。単体テスト: `registry.test.ts`（`next` が遅れて例外、すぐ例外、止めた部品の後片付け、止めた後は `next` を呼ばない）と、`commandContext.test.ts`（本体の更新の写しの上で、設定が前の値のまま・描画が例外にならない・StrictMode の 2 回呼びでも止めるのは 1 回）。
+
+限界（変更前からのこと）: 部品が止まった後は、その部品の検証の関数が既定値を返すので、次に本体の別の設定を変えて検証し直すと、止めた部品の設定の値は既定値に戻る（定義は残すので、キーは保存から消えない）。止めた部品の保存値をそのまま残すかは未決。
+
+### N-R2-2: next の文書
+
+`types.ts` の `CommandContext.settings.update` に書いた: `next` は副作用を持たない純粋な関数にする。ホストは `next` を React の更新関数の中で呼ぶので、2 回以上呼ばれうる（StrictMode の開発ビルド）。`update` を呼んだ時点では呼ばれず、遅れて呼ばれうる（`update` が戻った時点で設定が変わっているとは限らない）。例外は、その部品を止める。
+
+### N-R2-3: 変換の確定後の待ち
+
+IME の変換が終わってから、保留した再計算をするまでの待ち（60 ms）の定数 `AFTER_COMPOSITION_MS` を、`src/plugin-api/conventions.ts`（共通の約束）に置き、公開 API の index から出した。本体の記法の隠し方（`markdownDecorations.ts`）とフォーカスモードの部品（`focusMode.ts`）が、そこから使う。値は 60 のまま。単体テスト（`conventions.test.ts`）が、定義が 1 か所だけであること、2 つのファイルが import していること、60 が残っていないことを確かめる。
+
+### ホストが部品を知らないことの縛りの拡張
+
+`architecture.test.ts` の、ホストのファイルの名前の検査に、`listContinuation`、`ListContinuation`、`insertNewlineContinue`、`setListContinuation` を足した（大文字小文字を問わず、コメントを含む）。対象のファイルに、`ui/EditingSettings.tsx` と `ui/SettingsDialog.tsx` を足した。`src/features/list-continuation/` のファイルが import の縛りの対象になっていること、本体の設定の型（`src/preferences/`）を import しないことも確かめている。`EditorAdapter` から `setListContinuation` を外した。
+
+### R3 の限界
+
+- 選択肢の項目は、「編集」の節の本文にだけ置ける。置き場所ごとの種類の対応（`SETTINGS_PLACEMENT_KINDS`）は、置き場所を足すたびに決める。
+- 選択肢の項目の値は文字列だけ。値の型を保証するのは、部品の `normalize`。
+- ラジオの name は、本体のラジオとの重なりを検査していない（上記）。
 
 ## 未決のこと
 

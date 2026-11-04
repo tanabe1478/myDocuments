@@ -2,11 +2,13 @@ import { EditorState, type Extension } from '@codemirror/state';
 import { matchesShortcut, parseShortcut, type KeyEventLike, type ParsedShortcut } from './shortcut';
 import {
   SETTINGS_PLACEMENTS,
+  SETTINGS_PLACEMENT_KINDS,
   type CommandContext,
   type EditorExtensionEnvironment,
   type EditorExtensionRegistration,
   type Plugin,
   type PluginContext,
+  type RadioOption,
   type SettingDefinition,
   type SettingHandle,
   type SettingsPlacement,
@@ -51,14 +53,31 @@ export interface RegisteredCommand {
   run(ctx: CommandContext): void;
 }
 
-export interface RegisteredSettingsItem {
+interface RegisteredSettingsItemBase {
   readonly pluginId: string;
   readonly placement: SettingsPlacement;
   readonly order: number;
-  readonly kind: 'checkbox';
   readonly settingKey: string;
+}
+
+export interface RegisteredCheckboxItem extends RegisteredSettingsItemBase {
+  readonly kind: 'checkbox';
   readonly label: string;
 }
+
+export interface RegisteredRadioItem extends RegisteredSettingsItemBase {
+  readonly kind: 'radio';
+  /** ラジオの name。設定のキーから規則で作る（`listContinuation` → `list-continuation`）。 */
+  readonly name: string;
+  readonly legend: string;
+  readonly options: readonly RadioOption[];
+  readonly hint: string | null;
+}
+
+export type RegisteredSettingsItem = RegisteredCheckboxItem | RegisteredRadioItem;
+
+/** 置き場所に置ける項目（SETTINGS_PLACEMENT_KINDS の種類）。 */
+export type RegisteredItemAt<P extends SettingsPlacement> = Extract<RegisteredSettingsItem, { readonly kind: (typeof SETTINGS_PLACEMENT_KINDS)[P] }>;
 
 export interface PluginRegistry {
   readonly records: readonly PluginRecord[];
@@ -66,7 +85,8 @@ export interface PluginRegistry {
   readonly settings: readonly SettingDefinition<unknown>[];
   readonly editorExtensions: readonly RegisteredEditorExtension[];
   readonly commands: readonly RegisteredCommand[];
-  settingsItems(placement: SettingsPlacement): readonly RegisteredSettingsItem[];
+  /** 置き場所の項目（その場所に置ける種類のものだけ）を、order の順に。 */
+  settingsItems<P extends SettingsPlacement>(placement: P): readonly RegisteredItemAt<P>[];
   /** キー入力に合うコマンド（なければ null）。ホストの固定のショートカットを先に判定してから呼ぶ。 */
   findCommandByKey(e: KeyEventLike, mac: boolean): RegisteredCommand | null;
   /** 部品の後片付け（activate が返した関数）を呼び、以降は何も登録されていない状態にする。 */
@@ -100,6 +120,11 @@ interface Entry {
   reason: string | null;
   regs: Registrations;
   cleanup: (() => void) | null;
+}
+
+/** 設定のキーから、ラジオの name を作る規則: 小文字のハイフン区切り（listContinuation → list-continuation）。 */
+function radioNameOf(settingKey: string): string {
+  return settingKey.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
 }
 
 function describe(error: unknown): string {
@@ -159,6 +184,26 @@ export function createPluginRegistry(plugins: readonly Plugin[], options: Plugin
         return fallback();
       }
     };
+
+  /**
+   * 部品に渡す CommandContext。update の next は、ホストが描画の仕組みの中（run が戻った後を含む）で呼ぶので、
+   * run を包む guard の外で例外が出る。next も同じ止め方で包み、例外なら部品を止めて、設定は前の値のままにする。
+   */
+  const isolateUpdates = (entry: Entry, ctx: CommandContext): CommandContext => ({
+    settings: {
+      get: (setting) => ctx.settings.get(setting),
+      update: (setting, next) =>
+        ctx.settings.update(setting, (current) => {
+          if (entry.status !== 'active') return current;
+          try {
+            return next(current);
+          } catch (error) {
+            stop(entry, error);
+            return current;
+          }
+        }),
+    },
+  });
 
   const allRegistrations = (): Registrations[] => entries.map((e) => e.regs);
 
@@ -221,17 +266,53 @@ export function createPluginRegistry(plugins: readonly Plugin[], options: Plugin
           title,
           shortcut: parsed,
           ignoreInTextEntry: ignoreInTextEntry === true,
-          run: guard(entry, (ctx: CommandContext) => run(ctx), () => undefined),
+          run: guard(entry, (ctx: CommandContext) => run(isolateUpdates(entry, ctx)), () => undefined),
         });
       },
 
-      registerSettingsItem({ placement, order, kind, setting, label }): void {
+      registerSettingsItem(item): void {
+        const { placement, order, kind, setting } = item;
         if (!SETTINGS_PLACEMENTS.includes(placement)) throw new Error(`設定画面の場所「${String(placement)}」はありません`);
-        if (kind !== 'checkbox') throw new Error(`設定画面の項目の種類「${String(kind)}」は使えません`);
+        if (kind !== 'checkbox' && kind !== 'radio') throw new Error(`設定画面の項目の種類「${String(kind)}」は使えません`);
+        if (SETTINGS_PLACEMENT_KINDS[placement] !== kind) {
+          throw new Error(`設定画面の場所「${placement}」には、種類「${SETTINGS_PLACEMENT_KINDS[placement]}」の項目だけ置けます（${kind}）`);
+        }
         if (typeof order !== 'number' || !Number.isFinite(order)) throw new Error('order は有限の数にしてください');
-        if (typeof label !== 'string' || label === '') throw new Error('label がありません');
         own(setting);
-        entry.regs.settingsItems.push({ pluginId: entry.id, placement, order, kind, settingKey: setting.key, label });
+        if (item.kind === 'checkbox') {
+          if (typeof item.label !== 'string' || item.label === '') throw new Error('label がありません');
+          entry.regs.settingsItems.push({ pluginId: entry.id, placement, order, kind: 'checkbox', settingKey: setting.key, label: item.label });
+          return;
+        }
+        const { legend, options, hint } = item;
+        const radioSetting = item.setting;
+        if (typeof legend !== 'string' || legend === '') throw new Error('legend がありません');
+        if (!Array.isArray(options) || options.length === 0) throw new Error('options は 1 つ以上の選択肢にしてください');
+        const values = new Set<string>();
+        for (const option of options) {
+          if (typeof option?.value !== 'string' || typeof option.label !== 'string' || option.label === '') {
+            throw new Error('選択肢には、文字列の value と、空でない label が要ります');
+          }
+          if (values.has(option.value)) throw new Error(`選択肢の value「${option.value}」が重なっています`);
+          values.add(option.value);
+        }
+        if (!values.has(radioSetting.defaultValue)) throw new Error(`設定「${radioSetting.key}」の既定値は、選択肢のどれかにしてください`);
+        if (hint !== undefined && typeof hint !== 'string') throw new Error('hint は文字列にしてください');
+        const name = radioNameOf(radioSetting.key);
+        if (allRegistrations().some((r) => r.settingsItems.some((i) => i.kind === 'radio' && i.name === name))) {
+          throw new Error(`ラジオの name「${name}」はほかの項目が使っています`);
+        }
+        entry.regs.settingsItems.push({
+          pluginId: entry.id,
+          placement,
+          order,
+          kind: 'radio',
+          settingKey: radioSetting.key,
+          name,
+          legend,
+          options: options.map(({ value, label }) => ({ value, label })),
+          hint: hint ?? null,
+        });
       },
     };
   };
@@ -283,11 +364,11 @@ export function createPluginRegistry(plugins: readonly Plugin[], options: Plugin
     get commands() {
       return active().flatMap((e) => e.regs.commands);
     },
-    settingsItems(placement) {
+    settingsItems<P extends SettingsPlacement>(placement: P): readonly RegisteredItemAt<P>[] {
       return active()
         .flatMap((e) => e.regs.settingsItems)
         .filter((i) => i.placement === placement)
-        .sort((a, b) => a.order - b.order);
+        .sort((a, b) => a.order - b.order) as RegisteredItemAt<P>[];
     },
     findCommandByKey(e, mac) {
       return active().flatMap((x) => x.regs.commands).find((c) => c.shortcut !== null && matchesShortcut(c.shortcut, e, mac)) ?? null;

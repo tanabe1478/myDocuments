@@ -2,7 +2,7 @@
 import { history, undo } from '@codemirror/commands';
 import { ensureSyntaxTree } from '@codemirror/language';
 import { EditorState } from '@codemirror/state';
-import { EditorView } from '@codemirror/view';
+import { EditorView, keymap } from '@codemirror/view';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bundledPlugins } from '../../features';
 import { createPluginRegistry, ownsCaretScroll, skipCaretFollow } from '../../plugin-api';
@@ -186,6 +186,95 @@ describe('focus mode through the adapter (was setFocusMode)', () => {
   });
 });
 
+describe('list continuation through the adapter (was setListContinuation)', () => {
+  const LOOSE = '- a\n\n- b';
+
+  /** 構文解析を最後まで済ませてから、本文に Enter のキー入力を送る（末尾にカーソルを置く）。 */
+  function pressEnterAtEnd(): void {
+    const view = viewOf();
+    view.dispatch({ selection: { anchor: view.state.doc.length } });
+    ensureSyntaxTree(view.state, view.state.doc.length, 10_000);
+    view.dispatch({});
+    view.contentDOM.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, cancelable: true }));
+  }
+
+  it('does not add a blank line to a loose list by default', () => {
+    adapter.mount(host);
+    adapter.setText(LOOSE);
+    pressEnterAtEnd();
+    expect(adapter.getText()).toBe('- a\n\n- b\n- ');
+  });
+
+  it('adds the blank line in preserve mode, and takes effect at once (no reload)', () => {
+    adapter.mount(host);
+    adapter.setText(LOOSE);
+    adapter.setPluginSetting('listContinuation', 'preserve');
+    pressEnterAtEnd();
+    expect(adapter.getText()).toBe('- a\n\n- b\n\n- ');
+    adapter.setPluginSetting('listContinuation', 'tight');
+    adapter.setText(LOOSE);
+    pressEnterAtEnd();
+    expect(adapter.getText()).toBe('- a\n\n- b\n- ');
+  });
+
+  it('keeps the mode across setText, and can be set before mount', () => {
+    adapter.setPluginSetting('listContinuation', 'preserve');
+    adapter.mount(host);
+    adapter.setText(LOOSE);
+    pressEnterAtEnd();
+    expect(adapter.getText()).toBe('- a\n\n- b\n\n- ');
+    adapter.setText(LOOSE);
+    pressEnterAtEnd();
+    expect(adapter.getText()).toBe('- a\n\n- b\n\n- ');
+  });
+
+  it('undoes in one step', () => {
+    adapter.mount(host);
+    adapter.setText(LOOSE);
+    pressEnterAtEnd();
+    expect(undo(viewOf())).toBe(true);
+    expect(adapter.getText()).toBe(LOOSE);
+  });
+
+  it('does not continue Markdown in a plain text document (same as before)', () => {
+    adapter.mount(host);
+    adapter.setTextKind('plain');
+    adapter.setText(LOOSE);
+    pressEnterAtEnd();
+    expect(adapter.getText()).toBe('- a\n\n- b\n');
+    adapter.setPluginSetting('listContinuation', 'preserve');
+    adapter.setText(LOOSE);
+    pressEnterAtEnd();
+    expect(adapter.getText()).toBe('- a\n\n- b\n');
+  });
+
+  /** Enter に結び付いたキー割り当てを、効く順に並べる（キー割り当ての Facet は、優先度の高い順に並ぶ）。 */
+  function enterBindings(): Array<{ name: string; hasShift: boolean }> {
+    return viewOf()
+      .state.facet(keymap)
+      .flat()
+      .filter((b) => b.key === 'Enter')
+      .map((b) => ({ name: b.run?.name ?? '', hasShift: b.shift !== undefined }));
+  }
+
+  it('Enter priority is unchanged: tight comes first (highest), then the two bindings that were behind it; preserve leaves only those two', () => {
+    // 変更前のコミット（リストの継続を本体が持っていたとき）で、同じ組み立ての state から調べた並び:
+    //   tight    = [insertNewlineContinueTight, (lang-markdown の Enter), (defaultKeymap の Enter。shift つき)]
+    //   preserve = [(lang-markdown の Enter), (defaultKeymap の Enter。shift つき)]
+    adapter.mount(host);
+    expect(enterBindings()).toEqual([
+      { name: 'insertNewlineContinueTight', hasShift: false },
+      { name: '', hasShift: false },
+      { name: '', hasShift: true },
+    ]);
+    adapter.setPluginSetting('listContinuation', 'preserve');
+    expect(enterBindings()).toEqual([
+      { name: '', hasShift: false },
+      { name: '', hasShift: true },
+    ]);
+  });
+});
+
 describe('bundled plugins together', () => {
   it('lists the writing aids as focus mode (100), typewriter mode (200), in that order', () => {
     expect(registry.settingsItems('appearance.writingAids').map((i) => [i.label, i.order, i.settingKey])).toEqual([
@@ -194,8 +283,8 @@ describe('bundled plugins together', () => {
     ]);
   });
 
-  it('keeps focus mode before typewriter mode in the extension order, and their shortcuts apart', () => {
-    expect(registry.editorExtensions.map((e) => e.settingKey)).toEqual(['focusMode', 'typewriterMode']);
+  it('keeps the extension order of the list (focus mode, list continuation, typewriter mode), and the shortcuts apart', () => {
+    expect(registry.editorExtensions.map((e) => e.settingKey)).toEqual(['focusMode', 'listContinuation', 'typewriterMode']);
     expect(registry.commands.map((c) => [c.id, c.shortcut?.text])).toEqual([
       ['focus.toggle', 'Mod+Shift+F'],
       ['typewriter.toggle', 'Mod+Shift+T'],

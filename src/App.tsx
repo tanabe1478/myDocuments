@@ -168,7 +168,6 @@ export function App({
     for (const extension of plugins.editorExtensions) {
       adapter.setPluginSetting(extension.settingKey, prefsRef.current[extension.settingKey]);
     }
-    adapter.setListContinuation(prefsRef.current.listContinuation);
     adapter.setMarkupDisplay(prefsRef.current.markupDisplay);
     const off = adapter.onChange((text) => {
       controller.handleEdit(text);
@@ -245,7 +244,6 @@ export function App({
       adapterRef.current?.setPluginSetting(extension.settingKey, prefs[extension.settingKey]);
     }
   }, [plugins, prefs]);
-  useEffect(() => adapterRef.current?.setListContinuation(prefs.listContinuation), [prefs.listContinuation]);
   useEffect(() => adapterRef.current?.setMarkupDisplay(prefs.markupDisplay), [prefs.markupDisplay]);
 
   // 設定を CSS 変数と data-theme に反映する（即時）。
@@ -326,8 +324,9 @@ export function App({
       const path = await bridge.pickImagePath();
       if (path === null) return;
       const imageId = await bridge.importBackgroundImage(path);
+      // 部品の設定の定義も渡す（渡さないと、部品の設定が保存の形から落ちる）。
       setPrefs((p) =>
-        normalizePreferences({ ...p, background: { ...p.background, kind: 'image', imageId }, hideBackground: false }),
+        normalizePreferences({ ...p, background: { ...p.background, kind: 'image', imageId }, hideBackground: false }, plugins.settings),
       );
     } catch (e) {
       const message =
@@ -336,7 +335,7 @@ export function App({
           : describeError(e);
       notify({ kind: 'error', message });
     }
-  }, [bridge, notify]);
+  }, [bridge, notify, plugins]);
 
   // 自動非表示: ポインタが動いたら戻す。座標が変わらない通知（描画の変化に伴うものなど）は無視する。
   useEffect(() => {

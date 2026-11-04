@@ -1,6 +1,6 @@
 import { RangeSetBuilder, StateEffect, type Extension } from '@codemirror/state';
 import { Decoration, ViewPlugin, type DecorationSet, type EditorView, type ViewUpdate } from '@codemirror/view';
-import type { TextKind } from '../../plugin-api';
+import { AFTER_COMPOSITION_MS, type TextKind } from '../../plugin-api';
 import { focusRange } from './focusRange';
 import { focusTheme } from './theme';
 
@@ -11,9 +11,6 @@ const dimLine = Decoration.line({ class: DIM_CLASS });
 
 /** 変換の終了後に、保留していた再計算を促す。 */
 const refresh = StateEffect.define<null>();
-
-/** IME の変換終了から再計算までの待ち（CodeMirror が変換の終了を確定する時間より後）。 */
-const AFTER_COMPOSITION_MS = 60;
 
 function dimDecorations(view: EditorView, kind: TextKind): DecorationSet {
   const { doc, selection } = view.state;

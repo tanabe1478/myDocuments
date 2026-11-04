@@ -1,7 +1,12 @@
 import { insertNewlineContinueMarkupCommand } from '@codemirror/lang-markdown';
 import { EditorSelection, Prec, type ChangeSpec, type Extension, type StateCommand, type Transaction } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
-import type { ListContinuation } from '../../preferences/preferences';
+
+/**
+ * リストで Enter を押して次の項目を続けるときの空行の扱い。
+ * tight: 空行を入れない。preserve: 項目の間に空行のあるリスト（loose list）では、次の項目の前にも空行を入れる。
+ */
+export type ListContinuation = 'tight' | 'preserve';
 
 /** 空白と引用の記号だけの行（継続のために足される空行は、リストの入れ子や引用の分の記号を含むことがある）。 */
 const BLANK_SEPARATOR = /^[\s>]*$/;

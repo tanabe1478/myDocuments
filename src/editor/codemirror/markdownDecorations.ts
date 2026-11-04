@@ -10,6 +10,7 @@ import {
   type ViewUpdate,
 } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
+import { AFTER_COMPOSITION_MS } from '../../plugin-api';
 import type { MarkupDisplay } from '../../preferences/preferences';
 import { fallbackPrefixWidthEm, hangPrefix, isBlankLine, measurableText } from '../lineKinds';
 import {
@@ -287,9 +288,6 @@ function blockLines(view: EditorView, meter: PrefixMeter, hidden: readonly Marku
 
 /** 変換の終了後に、保留していた再計算を促す。 */
 const refreshMarkup = StateEffect.define<null>();
-
-/** IME の変換終了から再計算までの待ち（CodeMirror が変換の終了を確定する時間より後）。 */
-const AFTER_COMPOSITION_MS = 60;
 
 /** 本文の変化に、隠している範囲の位置を追従させる（変換中。範囲が消えたものは捨てる）。 */
 function mapSpans(spans: readonly MarkupSpan[], update: ViewUpdate): MarkupSpan[] {

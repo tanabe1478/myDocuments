@@ -66,7 +66,16 @@ export interface EditorExtensionRegistration<T> {
 export interface CommandContext {
   readonly settings: {
     get<T>(setting: SettingHandle<T>): T;
-    /** 現在の値から次の値を作って保存する（値はホストが setting.normalize で検証する）。 */
+    /**
+     * 現在の値から次の値を作って保存する（値はホストが setting.normalize で検証する）。
+     *
+     * next は、副作用を持たない純粋な関数にする（同じ current には同じ値を返す。外の状態を読み書きしない）。
+     * ホストは next を、描画の仕組み（React の state の更新関数）の中で呼ぶので、次の 2 点が起きうる。
+     * - 2 回以上呼ばれうる（開発ビルドの StrictMode は更新関数を 2 回呼ぶ）。
+     * - update を呼んだ時点では呼ばれず、遅れて呼ばれうる（同じ tick の更新はまとめて、呼んだ順に適用される）。
+     *   update が戻った時点で設定が変わっているとは限らず、変わった値は get で読めるとは限らない。
+     * next が例外を出したときは、その部品を止め（コマンドの run が例外を出したときと同じ）、設定は前の値のままにする。
+     */
     update<T>(setting: SettingHandle<T>, next: (current: T) => T): void;
   };
 }
@@ -86,18 +95,59 @@ export interface CommandRegistration {
   run(ctx: CommandContext): void;
 }
 
-/** 設定画面で項目を置ける場所。 */
-export const SETTINGS_PLACEMENTS = ['appearance.writingAids'] as const;
+/**
+ * 設定画面で項目を置ける場所。名前は `<節>.<節の中の置き場>`。
+ * - appearance.writingAids: 「外観」の節の「執筆の補助」の枠の中。チェックボックスの並び。
+ * - editing.body: 「編集」の節の本文。節の見出しの下に、項目が並ぶ（枠はホストが持たず、項目が自分の枠を持つ）。
+ */
+export const SETTINGS_PLACEMENTS = ['appearance.writingAids', 'editing.body'] as const;
 export type SettingsPlacement = (typeof SETTINGS_PLACEMENTS)[number];
 
-export interface SettingsItemRegistration {
+/** 置き場所ごとに置ける項目の種類（ホストがその場所で描ける種類）。合わない登録は、登録の例外になる。 */
+export const SETTINGS_PLACEMENT_KINDS = {
+  'appearance.writingAids': 'checkbox',
+  'editing.body': 'radio',
+} as const satisfies Record<SettingsPlacement, SettingsItemKind>;
+
+export type SettingsItemKind = 'checkbox' | 'radio';
+
+interface SettingsItemBase {
   readonly placement: SettingsPlacement;
   /** 場所の中の並び順（小さいほど上）。ホストの項目は 100 刻み。同じ値のときは、ホストの項目、登録の順。 */
   readonly order: number;
+}
+
+/** チェックボックス 1 つ。設定は真偽値。 */
+export interface CheckboxSettingsItem extends SettingsItemBase {
   readonly kind: 'checkbox';
   readonly setting: SettingHandle<boolean>;
   readonly label: string;
 }
+
+/** 選択肢の 1 つ。 */
+export interface RadioOption {
+  /** 設定に保存される値。 */
+  readonly value: string;
+  readonly label: string;
+}
+
+/**
+ * 選択肢（ラジオボタン）の項目。設定は、選択肢の value のどれか（文字列）。
+ * 枠（fieldset）、見出し（legend）、選択肢、補足の文（hint）を 1 まとまりで描く。ラジオの name は、設定のキーから
+ * 規則で作る（小文字のハイフン区切り: `listContinuation` → `list-continuation`）。
+ */
+export interface RadioSettingsItem extends SettingsItemBase {
+  readonly kind: 'radio';
+  readonly setting: SettingHandle<string>;
+  /** 項目の見出し。 */
+  readonly legend: string;
+  /** 1 つ以上。value は重ならない。設定の既定値は、このどれかにする。 */
+  readonly options: readonly RadioOption[];
+  /** 選択肢の下に出す補足の文。省略すると出さない。 */
+  readonly hint?: string;
+}
+
+export type SettingsItemRegistration = CheckboxSettingsItem | RadioSettingsItem;
 
 /** activate に渡される登録の口。 */
 export interface PluginContext {

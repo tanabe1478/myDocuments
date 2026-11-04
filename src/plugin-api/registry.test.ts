@@ -330,6 +330,256 @@ describe('registrations', () => {
   });
 });
 
+describe('settings item: radio (choices)', () => {
+  const radioPlugin = (over: Record<string, unknown> = {}, id = 'demo', key = 'listMode') =>
+    plugin(
+      (ctx) => {
+        const mode = ctx.registerSetting<string>({ key, defaultValue: 'a', normalize: (r) => (r === 'b' ? 'b' : 'a') });
+        ctx.registerSettingsItem({
+          placement: 'editing.body',
+          order: 100,
+          kind: 'radio',
+          setting: mode,
+          legend: '見出し',
+          options: [
+            { value: 'a', label: 'エー' },
+            { value: 'b', label: 'ビー' },
+          ],
+          hint: '補足',
+          ...over,
+        } as never);
+      },
+      { id },
+    );
+
+  it('exposes the item to the host: legend, options, hint, and a radio name made from the setting key by a rule', () => {
+    const registry = createPluginRegistry([radioPlugin()], quiet().options);
+    expect(registry.records[0]?.status).toBe('active');
+    expect(registry.settingsItems('editing.body')).toEqual([
+      {
+        pluginId: 'demo',
+        placement: 'editing.body',
+        order: 100,
+        kind: 'radio',
+        settingKey: 'listMode',
+        name: 'list-mode',
+        legend: '見出し',
+        options: [
+          { value: 'a', label: 'エー' },
+          { value: 'b', label: 'ビー' },
+        ],
+        hint: '補足',
+      },
+    ]);
+    expect(registry.settingsItems('appearance.writingAids')).toEqual([]);
+  });
+
+  it('makes the radio name by lowercasing and hyphenating the word boundaries of the key (listContinuation -> list-continuation)', () => {
+    const names = ['listContinuation', 'a', 'markupDisplay2Mode', 'Plain'].map((key, i) => {
+      const registry = createPluginRegistry([radioPlugin({}, `p${i}`, key)], quiet().options);
+      return (registry.settingsItems('editing.body')[0] as { name: string }).name;
+    });
+    expect(names).toEqual(['list-continuation', 'a', 'markup-display2-mode', 'plain']);
+  });
+
+  it('treats the hint as optional (null when omitted)', () => {
+    const registry = createPluginRegistry([radioPlugin({ hint: undefined })], quiet().options);
+    expect(registry.records[0]?.status).toBe('active');
+    expect(registry.settingsItems('editing.body')[0]).toMatchObject({ hint: null });
+  });
+
+  it('does not keep a reference to the options array it was given', () => {
+    const options = [{ value: 'a', label: 'エー' }];
+    const registry = createPluginRegistry([radioPlugin({ options })], quiet().options);
+    options.push({ value: 'b', label: 'ビー' });
+    expect((registry.settingsItems('editing.body')[0] as { options: readonly unknown[] }).options).toHaveLength(1);
+  });
+
+  it('rejects invalid radio registrations inside activate (the plugin is stopped and nothing is left behind)', () => {
+    const cases: Array<[string, Record<string, unknown>]> = [
+      ['no legend', { legend: '' }],
+      ['no options', { options: [] }],
+      ['options is not an array', { options: 'a' }],
+      ['an option without a label', { options: [{ value: 'a', label: '' }] }],
+      ['a non-string value', { options: [{ value: 1, label: 'x' }] }],
+      ['duplicate values', { options: [{ value: 'a', label: 'x' }, { value: 'a', label: 'y' }] }],
+      ['a default value that is not among the options', { options: [{ value: 'b', label: 'x' }] }],
+      ['a hint that is not a string', { hint: 1 }],
+      ['a non-finite order', { order: Number.NaN }],
+    ];
+    for (const [name, over] of cases) {
+      const registry = createPluginRegistry([radioPlugin(over)], quiet().options);
+      expect(registry.records[0]?.status, name).toBe('stopped');
+      expect(registry.settingsItems('editing.body'), name).toEqual([]);
+    }
+  });
+
+  it('allows only the kind the placement can draw: a checkbox in editing.body and a radio in writingAids are rejected', () => {
+    const wrongCheckbox = plugin((ctx) => {
+      const flag = ctx.registerSetting<boolean>({ key: 'flag', defaultValue: false, normalize: (r) => r === true });
+      ctx.registerSettingsItem({ placement: 'editing.body', order: 1, kind: 'checkbox', setting: flag, label: 'x' } as never);
+    });
+    const wrongRadio = radioPlugin({ placement: 'appearance.writingAids' }, 'other', 'otherKey');
+    const registry = createPluginRegistry([wrongCheckbox, wrongRadio], quiet().options);
+    expect(registry.records.map((r) => r.status)).toEqual(['stopped', 'stopped']);
+    expect(registry.records[0]?.reason).toContain('editing.body');
+  });
+
+  it('refuses a radio name that another item already uses (keys that differ only in case)', () => {
+    const registry = createPluginRegistry([radioPlugin({}, 'one', 'Mode'), radioPlugin({}, 'two', 'mode')], quiet().options);
+    expect(registry.records.map((r) => r.status)).toEqual(['active', 'stopped']);
+    expect(registry.records[1]?.reason).toContain('mode');
+  });
+
+  it('orders items in editing.body by order, then by registration', () => {
+    const registry = createPluginRegistry(
+      [radioPlugin({ order: 200, legend: '後' }, 'late', 'lateKey'), radioPlugin({ order: 100, legend: '先' }, 'early', 'earlyKey')],
+      quiet().options,
+    );
+    expect(registry.settingsItems('editing.body').map((i) => (i as { legend: string }).legend)).toEqual(['先', '後']);
+  });
+
+  it('does not offer the items of a stopped plugin', () => {
+    const stopping = plugin(
+      (ctx) => {
+        const mode = ctx.registerSetting<string>({ key: 'modeKey', defaultValue: 'a', normalize: () => 'a' });
+        ctx.registerSettingsItem({ placement: 'editing.body', order: 1, kind: 'radio', setting: mode, legend: 'x', options: [{ value: 'a', label: 'A' }] });
+        ctx.registerCommand({
+          id: 'boom',
+          title: 'Boom',
+          shortcut: 'Mod+B',
+          run: () => {
+            throw new Error('x');
+          },
+        });
+      },
+      { id: 'stopping' },
+    );
+    const registry = createPluginRegistry([stopping], quiet().options);
+    expect(registry.settingsItems('editing.body')).toHaveLength(1);
+    registry.findCommandByKey(keyEvent('b'), false)?.run(ctxStub);
+    expect(registry.settingsItems('editing.body')).toEqual([]);
+  });
+});
+
+describe('settings.update: an exception in next (N-R2-1)', () => {
+  /**
+   * ホストの更新の写し。update に渡された next は、すぐには呼ばれず、後で（run が戻った後に）値を渡して呼ばれる。
+   * 例外は、呼んだ側（描画の仕組みの中）へ伝わるので、ここでも受け止めずに伝える。
+   */
+  function deferredHost(initial: number) {
+    let value = initial;
+    const queue: Array<(current: number) => number> = [];
+    const ctx: CommandContext = {
+      settings: {
+        get: <T,>() => value as T,
+        update: <T,>(_setting: unknown, next: (current: T) => T) => void queue.push(next as unknown as (c: number) => number),
+      },
+    };
+    return { ctx, value: () => value, apply: () => queue.splice(0).forEach((next) => (value = next(value))) };
+  }
+
+  const counter = (next: (n: number) => number, extra: Plugin['activate'] = () => {}) =>
+    plugin((ctx) => {
+      const count = ctx.registerSetting<number>({ key: 'count', defaultValue: 0, normalize: (r) => (typeof r === 'number' ? r : 0) });
+      ctx.registerCommand({ id: 'go', title: 'Go', shortcut: 'Mod+G', run: ({ settings }) => settings.update(count, next) });
+      return extra(ctx);
+    });
+
+  it('stops the plugin when next throws (even after run has returned), and leaves the setting at its previous value', () => {
+    const { report, options } = quiet();
+    const registry = createPluginRegistry(
+      [
+        counter(() => {
+          throw new Error('bad next');
+        }),
+        plugin((ctx) => ctx.registerCommand({ id: 'other', title: 'Other', shortcut: 'Mod+H', run: () => {} }), { id: 'other-plugin' }),
+      ],
+      options,
+    );
+    const host = deferredHost(3);
+    registry.findCommandByKey(keyEvent('g'), false)?.run(host.ctx);
+    expect(registry.records[0]?.status).toBe('active'); // run は戻った。next はまだ呼ばれていない。
+    expect(() => host.apply()).not.toThrow();
+    expect(host.value()).toBe(3);
+    expect(registry.records[0]).toMatchObject({ status: 'stopped', reason: 'bad next' });
+    expect(report).toHaveBeenCalledWith('error', expect.stringContaining('「demo」を止めました'), expect.any(Error));
+    expect(registry.findCommandByKey(keyEvent('g'), false)).toBeNull();
+    expect(registry.findCommandByKey(keyEvent('h'), false)?.id).toBe('other-plugin.other');
+  });
+
+  it('also stops the plugin when next throws while run is still running (the host calls it at once)', () => {
+    const registry = createPluginRegistry(
+      [
+        counter(() => {
+          throw new Error('now');
+        }),
+      ],
+      quiet().options,
+    );
+    let value = 7;
+    const ctx: CommandContext = { settings: { get: <T,>() => value as T, update: <T,>(_s: unknown, next: (c: T) => T) => void (value = next(value as T) as number) } };
+    expect(() => registry.findCommandByKey(keyEvent('g'), false)?.run(ctx)).not.toThrow();
+    expect(value).toBe(7);
+    expect(registry.records[0]?.status).toBe('stopped');
+  });
+
+  it('runs the cleanup of the plugin it stops', () => {
+    const cleanup = vi.fn();
+    const registry = createPluginRegistry(
+      [
+        counter(
+          () => {
+            throw new Error('x');
+          },
+          () => cleanup,
+        ),
+      ],
+      quiet().options,
+    );
+    const host = deferredHost(0);
+    registry.findCommandByKey(keyEvent('g'), false)?.run(host.ctx);
+    host.apply();
+    expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it('applies a next that does not throw as before (called with the current value, once per call)', () => {
+    const next = vi.fn((n: number) => n + 1);
+    const registry = createPluginRegistry([counter(next)], quiet().options);
+    const host = deferredHost(3);
+    registry.findCommandByKey(keyEvent('g'), false)?.run(host.ctx);
+    expect(next).not.toHaveBeenCalled();
+    host.apply();
+    expect(next).toHaveBeenCalledWith(3);
+    expect(host.value()).toBe(4);
+    expect(registry.records[0]?.status).toBe('active');
+  });
+
+  it('does not call next of a plugin that was stopped before the host applied the update (the value stays)', () => {
+    const next = vi.fn((n: number) => n + 1);
+    const registry = createPluginRegistry([counter(next), plugin(() => {}, { id: 'x' })], quiet().options);
+    const host = deferredHost(3);
+    registry.findCommandByKey(keyEvent('g'), false)?.run(host.ctx);
+    registry.dispose();
+    host.apply();
+    expect(next).not.toHaveBeenCalled();
+    expect(host.value()).toBe(3);
+  });
+
+  it('passes get through to the host unchanged', () => {
+    let seen: unknown = null;
+    const registry = createPluginRegistry(
+      [plugin((ctx) => {
+        const count = ctx.registerSetting<number>({ key: 'count', defaultValue: 0, normalize: () => 0 });
+        ctx.registerCommand({ id: 'read', title: 'Read', shortcut: 'Mod+R', run: ({ settings }) => void (seen = settings.get(count)) });
+      })],
+      quiet().options,
+    );
+    registry.findCommandByKey(keyEvent('r'), false)?.run(deferredHost(9).ctx);
+    expect(seen).toBe(9);
+  });
+});
+
 describe('cleanup', () => {
   it('calls the function returned by activate on dispose, and survives its exceptions', () => {
     const { report, options } = quiet();

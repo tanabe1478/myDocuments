@@ -12,12 +12,6 @@ export type ThemeSetting = 'light' | 'dark' | 'system';
 export type SurfaceWidth = 'fill' | 'text';
 
 /**
- * リストで Enter を押して次の項目を続けるときの空行の扱い。
- * tight: 空行を入れない。preserve: 項目の間に空行のあるリスト（loose list）では、次の項目の前にも空行を入れる。
- */
-export type ListContinuation = 'tight' | 'preserve';
-
-/**
  * Markdown の記号（見出しの #、リンクの []() など）の見せ方。
  * cursorLine: カーソルのある行（と選択にかかる行）だけ記号を見せ、ほかの行は記号を隠して整形して見せる。
  * always: すべての行で記号を薄く表示する（隠さない）。
@@ -65,8 +59,6 @@ export interface Preferences {
   readonly surfaceOpacity: number;
   /** 背景を描かず、テーマの既定配色だけにする（アクセシビリティ）。 */
   readonly hideBackground: boolean;
-  /** リストで Enter を押したときの継続（空行を入れるか）。 */
-  readonly listContinuation: ListContinuation;
   /** Markdown の記号の見せ方（.txt、.text には効かない）。 */
   readonly markupDisplay: MarkupDisplay;
 }
@@ -94,7 +86,6 @@ export const DEFAULT_PREFERENCES: Preferences = {
   overlayOpacity: 0.35,
   surfaceOpacity: 0.85,
   hideBackground: false,
-  listContinuation: 'tight',
   markupDisplay: 'cursorLine',
 };
 
@@ -111,7 +102,6 @@ export const RANGES = {
 
 const THEMES: readonly ThemeSetting[] = ['light', 'dark', 'system'];
 const SURFACE_WIDTHS: readonly SurfaceWidth[] = ['fill', 'text'];
-const LIST_CONTINUATIONS: readonly ListContinuation[] = ['tight', 'preserve'];
 const MARKUP_DISPLAYS: readonly MarkupDisplay[] = ['cursorLine', 'always'];
 const BACKGROUND_KINDS: readonly BackgroundKind[] = ['color', 'gradient', 'image'];
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
@@ -187,9 +177,6 @@ function normalizeCore(raw: unknown): Preferences {
     overlayOpacity: number(r.overlayOpacity, RANGES.overlayOpacity, d.overlayOpacity),
     surfaceOpacity: number(r.surfaceOpacity, RANGES.surfaceOpacity, d.surfaceOpacity),
     hideBackground: boolean(r.hideBackground, d.hideBackground),
-    listContinuation: LIST_CONTINUATIONS.includes(r.listContinuation as ListContinuation)
-      ? (r.listContinuation as ListContinuation)
-      : d.listContinuation,
     markupDisplay: MARKUP_DISPLAYS.includes(r.markupDisplay as MarkupDisplay)
       ? (r.markupDisplay as MarkupDisplay)
       : d.markupDisplay,

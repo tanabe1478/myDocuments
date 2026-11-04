@@ -409,68 +409,6 @@ describe('plugin editor extensions (setPluginSetting)', () => {
   });
 });
 
-describe('list continuation on Enter', () => {
-  const LOOSE = '- a\n\n- b';
-
-  /** 末尾にカーソルを置いて、本文に Enter のキー入力を送る。 */
-  function pressEnterAtEnd(): void {
-    const view = viewOf();
-    view.dispatch({ selection: { anchor: view.state.doc.length } });
-    settleSyntax(view);
-    view.contentDOM.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, cancelable: true }));
-  }
-
-  it('does not add a blank line to a loose list by default', () => {
-    adapter.mount(host);
-    adapter.setText(LOOSE);
-    pressEnterAtEnd();
-    expect(adapter.getText()).toBe('- a\n\n- b\n- ');
-  });
-
-  it('adds the blank line in preserve mode, and takes effect at once (no reload)', () => {
-    adapter.mount(host);
-    adapter.setText(LOOSE);
-    adapter.setListContinuation('preserve');
-    pressEnterAtEnd();
-    expect(adapter.getText()).toBe('- a\n\n- b\n\n- ');
-    adapter.setListContinuation('tight');
-    adapter.setText(LOOSE);
-    pressEnterAtEnd();
-    expect(adapter.getText()).toBe('- a\n\n- b\n- ');
-  });
-
-  it('keeps the mode across setText, and can be set before mount', () => {
-    adapter.setListContinuation('preserve');
-    adapter.mount(host);
-    adapter.setText(LOOSE);
-    pressEnterAtEnd();
-    expect(adapter.getText()).toBe('- a\n\n- b\n\n- ');
-    adapter.setText(LOOSE);
-    pressEnterAtEnd();
-    expect(adapter.getText()).toBe('- a\n\n- b\n\n- ');
-  });
-
-  it('undoes in one step', () => {
-    adapter.mount(host);
-    adapter.setText(LOOSE);
-    pressEnterAtEnd();
-    expect(undo(viewOf())).toBe(true);
-    expect(adapter.getText()).toBe(LOOSE);
-  });
-
-  it('does not continue Markdown in a plain text document (same as before)', () => {
-    adapter.mount(host);
-    adapter.setTextKind('plain');
-    adapter.setText(LOOSE);
-    pressEnterAtEnd();
-    expect(adapter.getText()).toBe('- a\n\n- b\n');
-    adapter.setListContinuation('preserve');
-    adapter.setText(LOOSE);
-    pressEnterAtEnd();
-    expect(adapter.getText()).toBe('- a\n\n- b\n');
-  });
-});
-
 describe('text kind (.txt and .text are shown as plain text)', () => {
   const MARKDOWN = '# 見出し\n\n- 項目\n\n本文';
 

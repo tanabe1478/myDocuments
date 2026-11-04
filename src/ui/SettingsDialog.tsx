@@ -95,7 +95,7 @@ export function SettingsDialog({ onClose, ...appearance }: SettingsDialogProps) 
         </header>
         <div className="settings-body" data-testid="settings-body">
           <AppearanceSettings {...appearance} />
-          <EditingSettings prefs={appearance.prefs} onChange={appearance.onChange} />
+          <EditingSettings prefs={appearance.prefs} onChange={appearance.onChange} settingsItems={appearance.settingsItems} />
         </div>
       </section>
     </div>

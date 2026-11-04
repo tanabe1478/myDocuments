@@ -11,7 +11,7 @@ const IMAGE_ID = 'ab12'.repeat(16);
 const pluginSettings = createPluginRegistry(bundledPlugins).settings;
 const normalizePreferences = (raw: unknown) => normalizeWith(raw, pluginSettings);
 /** 部品の設定が加わった既定値（これまで DEFAULT_PREFERENCES にあった項目を含む）。 */
-const DEFAULTS_WITH_PLUGINS = { ...DEFAULT_PREFERENCES, focusMode: false, typewriterMode: false };
+const DEFAULTS_WITH_PLUGINS = { ...DEFAULT_PREFERENCES, focusMode: false, typewriterMode: false, listContinuation: 'tight' };
 
 describe('normalizePreferences', () => {
   it('uses the defaults for missing or non-object input', () => {
@@ -147,7 +147,7 @@ describe('background and accessibility fields (R3-1)', () => {
       surfaceWidth: DEFAULT_PREFERENCES.surfaceWidth,
       sidebarOpen: DEFAULT_PREFERENCES.sidebarOpen,
       // Run 11 で増えた項目。
-      listContinuation: DEFAULT_PREFERENCES.listContinuation,
+      listContinuation: DEFAULTS_WITH_PLUGINS.listContinuation,
       // Run 12 で増えた項目。
       markupDisplay: DEFAULT_PREFERENCES.markupDisplay,
     });
@@ -223,7 +223,8 @@ describe('background and accessibility fields (R3-1)', () => {
 
 describe('listContinuation (Run 11)', () => {
   it('defaults to tight', () => {
-    expect(DEFAULT_PREFERENCES.listContinuation).toBe('tight');
+    expect(DEFAULTS_WITH_PLUGINS.listContinuation).toBe('tight');
+    expect(Object.keys(DEFAULT_PREFERENCES)).not.toContain('listContinuation');
     expect(normalizePreferences({}).listContinuation).toBe('tight');
     expect(normalizePreferences(null).listContinuation).toBe('tight');
   });
@@ -395,12 +396,14 @@ describe('stored shape of plugin settings (R1: typewriter, R2: focus mode; both 
   it('does not carry the plugin settings in the host preferences (the host defaults know neither key)', () => {
     expect(Object.keys(DEFAULT_PREFERENCES)).not.toContain('focusMode');
     expect(Object.keys(DEFAULT_PREFERENCES)).not.toContain('typewriterMode');
+    expect(Object.keys(DEFAULT_PREFERENCES)).not.toContain('listContinuation');
   });
 
   it('drops keys that no loaded plugin defines (as before), and plugin keys when no plugin is loaded', () => {
     expect(normalizePreferences({ someFutureKey: 1 })).not.toHaveProperty('someFutureKey');
     expect(normalizeWith({ typewriterMode: true, focusMode: true })).not.toHaveProperty('typewriterMode');
     expect(normalizeWith({ typewriterMode: true, focusMode: true })).not.toHaveProperty('focusMode');
+    expect(normalizeWith({ typewriterMode: true, focusMode: true, listContinuation: 'preserve' })).not.toHaveProperty('listContinuation');
     expect(normalizeWith({ typewriterMode: true, focusMode: true })).toEqual(DEFAULT_PREFERENCES);
   });
 

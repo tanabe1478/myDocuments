@@ -3,12 +3,11 @@ import { search, searchKeymap } from '@codemirror/search';
 import { Compartment, EditorState, type Extension, type StateEffect } from '@codemirror/state';
 import { EditorView, drawSelection, keymap } from '@codemirror/view';
 import type { RegisteredEditorExtension, TextKind } from '../../plugin-api';
-import type { ListContinuation, MarkupDisplay } from '../../preferences/preferences';
+import type { MarkupDisplay } from '../../preferences/preferences';
 import type { EditorAdapter, EditorSelection } from '../EditorAdapter';
 import { historyKeymap } from './historyKeymap';
 import { indentKeymap } from './indentKeymap';
 import { keepCursorVisibleExtension } from './keepCursorVisible';
-import { listContinuationExtension } from './listContinuation';
 import { linkOpenExtension } from './linkOpen';
 import { markdownDecorations, markupDisplayFacet, plainTextDecorations } from './markdownDecorations';
 import { readingPositionExtension } from './readingPosition';
@@ -38,7 +37,6 @@ export class CodeMirrorAdapter implements EditorAdapter {
   private readonly changeListeners = new Set<(text: string) => void>();
   private readonly selectionListeners = new Set<(selection: EditorSelection) => void>();
   private textKind: TextKind = 'markdown';
-  private listContinuation: ListContinuation = 'tight';
   private markupDisplay: MarkupDisplay = 'cursorLine';
   /** リンクを開く操作（⌘/Ctrl+クリック）の通知先。 */
   private readonly linkListeners = new Set<(url: string) => void>();
@@ -46,7 +44,6 @@ export class CodeMirrorAdapter implements EditorAdapter {
   private bottomInset = 0;
   // setText は state を作り直すので、モードは Compartment で持ち、作り直しても現在の値で始める。
   private readonly kindCompartment = new Compartment();
-  private readonly listCompartment = new Compartment();
   private readonly markupCompartment = new Compartment();
 
   /** 部品の拡張。部品の一覧（PluginRegistry）の順。 */
@@ -118,12 +115,6 @@ export class CodeMirrorAdapter implements EditorAdapter {
           .map((slot) => slot.compartment.reconfigure(this.pluginExtension(slot))),
       ],
     });
-  }
-
-  setListContinuation(mode: ListContinuation): void {
-    if (this.listContinuation === mode) return;
-    this.listContinuation = mode;
-    this.view?.dispatch({ effects: this.listCompartment.reconfigure(listContinuationExtension(mode)) });
   }
 
   setMarkupDisplay(mode: MarkupDisplay): void {
@@ -207,7 +198,6 @@ export class CodeMirrorAdapter implements EditorAdapter {
       EditorView.lineWrapping,
       this.kindCompartment.of(this.kindExtension()),
       ...this.pluginSlots.map((slot) => slot.compartment.of(this.pluginExtension(slot))),
-      this.listCompartment.of(listContinuationExtension(this.listContinuation)),
       this.markupCompartment.of(markupDisplayFacet.of(this.markupDisplay)),
       linkOpenExtension((url) => this.linkListeners.forEach((cb) => cb(url))),
       taskToggleExtension(),

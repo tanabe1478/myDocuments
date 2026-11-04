@@ -9,6 +9,8 @@ function readSetting<T>(prefs: StoredPreferences, setting: SettingHandle<T>): T 
 /**
  * 設定 1 つの更新を、直前の設定から作った次の設定にする。次の値は、直前の設定の値から計算し、
  * 本体の設定と同じ経路（normalizePreferences）で検証する。
+ * 次の値が今の値と同じなら、直前の設定をそのまま返す（検証し直さない。部品が止まっていて、next が今の値を返したとき、
+ * 検証の関数が止めた部品の既定値を返して、設定が前の値から変わることを防ぐ）。
  */
 export function updateStoredSetting<T>(
   prefs: StoredPreferences,
@@ -16,7 +18,10 @@ export function updateStoredSetting<T>(
   next: (current: T) => T,
   pluginSettings: readonly SettingDefinition<unknown>[],
 ): StoredPreferences {
-  return normalizePreferences({ ...prefs, [setting.key]: next(readSetting(prefs, setting)) }, pluginSettings);
+  const current = readSetting(prefs, setting);
+  const value = next(current);
+  if (Object.is(value, current)) return prefs;
+  return normalizePreferences({ ...prefs, [setting.key]: value }, pluginSettings);
 }
 
 /**
