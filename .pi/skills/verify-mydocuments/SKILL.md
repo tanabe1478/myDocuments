@@ -148,6 +148,26 @@ npm run perf -- --quick --web-only --inject-input-delay 3   # 計測専用: 全 
 - 測定中は、同じマシンで重い処理（cargo、npm run test:e2e など）を並行して走らせない。結果は環境（負荷、電源）に左右される。
 - Web UI の計測はメモリ bridge の上で動く。DocumentBridge の内側（Rust の I/O と IPC）は含まないので、ディスクの読み書きは docio の項目で別に見る。
 
+## 隔離した操作（段 2）の検証
+
+部品の仕組み（ADR-005）の、隔離した操作の段（段 2）を変えたとき、またはその隔離を確かめ直したいときの手順。上の Launch から Cleanup とは別で、macOS の実際の Tauri の窓を使う。OS へのキー入力・マウス操作は送らない。
+
+- ブラウザ版（primary）: e2e のビルドが、テスト用の段 2 の部品（src/isolated-plugins/e2eFixtures.ts）を、seed の isolated に名前を書いたときだけ読み込む。確かめる内容は tests/e2e/isolated-plugins.spec.ts（`npm run test:e2e`）。Launch と Drive の seed にも `isolated: { plugins: ['e2e-ok'], runTimeoutMs: 1000 }` を書ける。観測の入口は `window.__mdeE2EIsolatedTrace`（本体の側で見えた start、command、ready、run、done、stopped の記録）と、console の `[plugin] 部品「<id>」を止めました: <理由>`。seed に isolated がなければ、iframe も Worker も作られない。
+- Tauri の窓（隔離の検証）: Cargo の feature `isolation-probe` と `VITE_ISOLATION_PROBE=1` の両方を有効にしたビルドだけが、記録用のネイティブのコマンドと、検証用の段 2 の部品を持つ。
+
+```
+node .pi/skills/verify-mydocuments/scripts/tauri.mjs build --probe          # 別の target ディレクトリ（src-tauri/target/isolation-probe）に作る。通常の実行ファイルは上書きしない
+node .pi/skills/verify-mydocuments/scripts/isolation-probe.mjs --run-id <id> # 受け口（127.0.0.1）を立て、Tauri を run 専用の HOME で起動し、検証が終わるのを待ち、窓を撮り、Tauri と受け口を止めて判定する
+node .pi/skills/verify-mydocuments/scripts/isolation-probe.mjs --judge-only <dir>   # 記録済みの canary.log、net.log、report.jsonl を判定し直すだけ
+node .pi/skills/verify-mydocuments/scripts/check-probe-absent.mjs           # 本番の dist/ と通常の実行ファイルに、検証用のコードがないことの検査
+```
+
+- 判定の根拠は、ネイティブ側の記録（canary.log。検証用のコマンドが書く）と、127.0.0.1 の受け口の記録（net.log）。webview 側の自己申告（report.jsonl）は、表に並べるだけ。結果は artifacts/verify-mydocuments/<run-id>/evidence/isolation-probe/（judgement.json、judgement.md、各記録、窓の撮影）。$YORISHIRO_EVIDENCE_DIR があれば、そこにもコピーする。
+- exit code: 0 は鍵なしで届く経路がなく、対照も届いた（PASS）。2 は鍵なしで届く経路があった（FAIL。直さずに報告する）。3 は検証が終わらなかった、または対照が届かなかった（INCOMPLETE）。対照が届かない結果は、届かなかったという結論にしない。
+- 鍵ありで届く経路（ADR-005 の「R5 で確かめた隔離」）は FAIL にしない。表に「鍵ありで届く経路」として出る。
+- 検証用のビルドは、repo の dist/ を検証用のコード入りにする。終わったら、通常の `tauri.mjs build`（--probe なし）か `npm run build` で作り直してから、check-probe-absent.mjs を実行する。
+- 届かなかった項目の結論は、その経路が実際に試されたこと（自己申告に、拒否のエラーが出ていること）と、対照が届いたことの両方で支える。
+
 ## Helpers
 
 すべて Node で、.pi/skills/verify-mydocuments/scripts/ にある。呼び出し方は上の各節のとおり。
@@ -155,8 +175,10 @@ npm run perf -- --quick --web-only --inject-input-delay 3   # 計測専用: 全 
 - launch.mjs: ビルドと preview の起動、state の記録。
 - doctor.mjs: read-only の健全性確認（ps や lsof が使えなくても落ちない）。
 - drive.mjs: シナリオの実行と証跡の保存。
-- tauri.mjs: Tauri の build、start、windows、shot、stop（macOS 専用。窓の一覧は cgwindows.swift を swift で実行して得る）。
+- tauri.mjs: Tauri の build、start、windows、shot、stop（macOS 専用。窓の一覧は cgwindows.swift を swift で実行して得る）。build と start は --probe で、隔離の検証用のビルドと起動（isolation-probe.mjs が使う）。
 - cleanup.mjs: この run のプロセスの停止（pid がこの run のものと確認できたときだけ）と dist の削除。
+- isolation-probe.mjs: 隔離した操作（段 2）の隔離の検証（受け口の起動、検証用の Tauri の起動と停止、判定。macOS 専用）。
+- check-probe-absent.mjs: 本番の dist/ と通常の実行ファイルに、検証用のコードがないことの検査。
 - check-skill.mjs: この Skill の形式検査（依存なし。`node .pi/skills/verify-mydocuments/scripts/check-skill.mjs`）。Skill を編集したら実行する。
 
 共通処理は lib.mjs（直接は実行しない）。保守は maintain-verification-skill に引き継ぐ。

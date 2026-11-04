@@ -3,9 +3,12 @@ import { matchesShortcut, parseShortcut, type KeyEventLike, type ParsedShortcut 
 import {
   SETTINGS_PLACEMENTS,
   SETTINGS_PLACEMENT_KINDS,
+  type ActionPlugin,
   type CommandContext,
   type EditorExtensionEnvironment,
   type EditorExtensionRegistration,
+  type IsolatedCommandInfo,
+  type IsolatedPluginHost,
   type Plugin,
   type PluginContext,
   type RadioOption,
@@ -96,11 +99,18 @@ export interface PluginRegistry {
 export interface PluginRegistryOptions {
   /** 部品が設定のキーに使えない名前（ホスト自身の設定のキー）。 */
   readonly reservedSettingKeys?: Iterable<string>;
+  /**
+   * 隔離した操作（段 2。tier が 'action'）の部品を動かす仕組み（src/plugin-host/）。なければ、段 2 の部品は読み込まない
+   * （incompatible）。段 2 の部品がないときは、渡さない（iframe も Worker も作られない）。
+   */
+  readonly isolation?: IsolatedPluginHost;
   /** 読み込まなかった・止めたことの記録先。既定は console（warn / error）。 */
   readonly report?: (level: 'warn' | 'error', message: string, error?: unknown) => void;
 }
 
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+/** 段 2 の部品のコード（文字列）の大きさの上限。 */
+const MAX_ACTION_SOURCE = 1024 * 1024;
 const SETTING_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9]*$/;
 
 interface Registrations {
@@ -142,11 +152,15 @@ function manifestProblem(manifest: unknown): string | null {
   if (typeof m.id !== 'string' || !ID_PATTERN.test(m.id)) return 'id は小文字の英数字とハイフンにしてください';
   if (typeof m.name !== 'string' || m.name.trim() === '') return 'name がありません';
   if (typeof m.version !== 'string' || m.version.trim() === '') return 'version がありません';
-  if (m.tier !== 'editor') return `tier は 'editor' だけに対応しています（${String(m.tier)}）`;
+  if (m.tier !== 'editor' && m.tier !== 'action') return `tier は 'editor' か 'action' だけに対応しています（${String(m.tier)}）`;
+  // 段 2 の権限の宣言（permissions）は、権限の確認の画面と一緒に R6 で足す。R5 の段 2 は、権限の要らない API（registerCommand）だけ。
+  if (m.tier === 'action' && 'permissions' in m && !(Array.isArray(m.permissions) && m.permissions.length === 0)) {
+    return '段 2 の部品の permissions は、まだ宣言できません';
+  }
   return null;
 }
 
-export function createPluginRegistry(plugins: readonly Plugin[], options: PluginRegistryOptions = {}): PluginRegistry {
+export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[], options: PluginRegistryOptions = {}): PluginRegistry {
   const reserved = new Set(options.reservedSettingKeys ?? []);
   const report =
     options.report ??
@@ -225,6 +239,64 @@ export function createPluginRegistry(plugins: readonly Plugin[], options: Plugin
 
   const allRegistrations = (): Registrations[] => entries.map((e) => e.regs);
 
+  /**
+   * コマンドを登録する（段 3 は activate の中、段 2 は Worker からの登録の通知）。id の形、ショートカットの形、
+   * コマンドの id とショートカットの重なり（段 3 のコマンドとも検査する）を見て、満たさなければ例外。
+   */
+  const addCommand = (
+    entry: Entry,
+    { id, title, shortcut, ignoreInTextEntry }: { id: unknown; title: unknown; shortcut?: unknown; ignoreInTextEntry?: unknown },
+    run: RegisteredCommand['run'],
+  ): void => {
+    if (typeof id !== 'string' || id === '') throw new Error('コマンドの id がありません');
+    if (typeof title !== 'string' || title === '') throw new Error(`コマンド「${id}」の title がありません`);
+    const qualified = `${entry.id}.${id}`;
+    const parsed = shortcut === undefined ? null : parseShortcut(shortcut as string);
+    for (const r of allRegistrations()) {
+      if (r.commands.some((c) => c.id === qualified)) throw new Error(`コマンド「${qualified}」は登録済みです`);
+      const clash = parsed && r.commands.find((c) => c.shortcut?.text === parsed.text);
+      if (clash) throw new Error(`ショートカット ${parsed.text} は「${clash.id}」が使っています`);
+    }
+    entry.regs.commands.push({
+      pluginId: entry.id,
+      id: qualified,
+      title,
+      shortcut: parsed,
+      ignoreInTextEntry: ignoreInTextEntry === true,
+      run,
+    });
+  };
+
+  /**
+   * 隔離した操作（段 2）の部品を動かし始める。コマンドは、Worker の中の最初の実行の間に、非同期に届く。
+   * 登録の検査（id、ショートカット、重なり）に通らなければ、その部品を止める（Worker は terminate される）。
+   * 実行（run）は結果を待たない。時間切れ、例外、不正なメッセージは、ホスト（src/plugin-host/）が部品を止めて onStopped で知らせる。
+   */
+  const startIsolated = (entry: Entry, host: IsolatedPluginHost, source: string): void => {
+    entry.cleanup = () => host.stop(entry.id);
+    try {
+      host.start(entry.id, source, {
+        onCommand: (command: IsolatedCommandInfo) => {
+          if (entry.status !== 'active') return;
+          try {
+            addCommand(entry, command, guard(entry, () => host.run(entry.id, command.id), () => undefined));
+          } catch (error) {
+            stop(entry, error);
+          }
+        },
+        onReady: () => {},
+        onStopped: (reason: string) => {
+          if (entry.status !== 'active') return;
+          entry.regs = emptyRegistrations();
+          stop(entry, new Error(reason));
+        },
+      });
+    } catch (error) {
+      entry.regs = emptyRegistrations();
+      stop(entry, error);
+    }
+  };
+
   const contextFor = (entry: Entry): PluginContext => {
     const own = (setting: SettingHandle<unknown>): void => {
       if (!entry.regs.settings.some((s) => s.key === setting.key)) {
@@ -269,23 +341,7 @@ export function createPluginRegistry(plugins: readonly Plugin[], options: Plugin
       },
 
       registerCommand({ id, title, shortcut, ignoreInTextEntry, run }): void {
-        if (typeof id !== 'string' || id === '') throw new Error('コマンドの id がありません');
-        if (typeof title !== 'string' || title === '') throw new Error(`コマンド「${id}」の title がありません`);
-        const qualified = `${entry.id}.${id}`;
-        const parsed = shortcut === undefined ? null : parseShortcut(shortcut);
-        for (const r of allRegistrations()) {
-          if (r.commands.some((c) => c.id === qualified)) throw new Error(`コマンド「${qualified}」は登録済みです`);
-          const clash = parsed && r.commands.find((c) => c.shortcut?.text === parsed.text);
-          if (clash) throw new Error(`ショートカット ${parsed.text} は「${clash.id}」が使っています`);
-        }
-        entry.regs.commands.push({
-          pluginId: entry.id,
-          id: qualified,
-          title,
-          shortcut: parsed,
-          ignoreInTextEntry: ignoreInTextEntry === true,
-          run: guard(entry, (ctx: CommandContext) => run(isolateUpdates(entry, ctx)), () => undefined),
-        });
+        addCommand(entry, { id, title, shortcut, ignoreInTextEntry }, guard(entry, (ctx: CommandContext) => run(isolateUpdates(entry, ctx)), () => undefined));
       },
 
       registerSettingsItem(item): void {
@@ -357,8 +413,28 @@ export function createPluginRegistry(plugins: readonly Plugin[], options: Plugin
       report('warn', `[plugin] 部品「${entry.id}」を読み込みません: ${rejection}`);
       continue;
     }
+    if (m.tier === 'action') {
+      const source = (plugin as ActionPlugin).source;
+      const host = options.isolation;
+      const unusable =
+        typeof source !== 'string' || source.trim() === ''
+          ? 'source（Worker で動くコードの文字列）がありません'
+          : source.length > MAX_ACTION_SOURCE
+            ? 'source が大きすぎます'
+            : host === undefined
+              ? '隔離した操作の段は、この環境では使えません'
+              : null;
+      if (unusable !== null || host === undefined) {
+        entry.status = 'incompatible';
+        entry.reason = unusable;
+        report('warn', `[plugin] 部品「${entry.id}」を読み込みません: ${unusable}`);
+      } else {
+        startIsolated(entry, host, source);
+      }
+      continue;
+    }
     try {
-      const cleanup = plugin.activate(contextFor(entry));
+      const cleanup = (plugin as Plugin).activate(contextFor(entry));
       if (typeof cleanup === 'function') entry.cleanup = cleanup;
     } catch (error) {
       // 途中までの登録は全部外す（半端な部品を残さない）。

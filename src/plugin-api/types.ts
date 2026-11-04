@@ -1,7 +1,11 @@
 import type { Extension } from '@codemirror/state';
 
-/** 部品の段。R1 では 'editor'（エディタの中の拡張。ホストと同じ JavaScript の空間で動く）だけ。 */
-export type PluginTier = 'editor';
+/**
+ * 部品の段（ADR-005 の 3 段のうち、実装済みのもの）。
+ * - 'editor'（段 3）: エディタの中の拡張。ホストと同じ JavaScript の空間で動く。同梱の部品と、信頼した部品だけ。
+ * - 'action'（段 2）: 隔離した操作。sandbox の iframe の中の Worker で動き、ホストの空間には届かない。コマンドとショートカットだけ。
+ */
+export type PluginTier = 'editor' | 'action';
 
 /** 部品の宣言。 */
 export interface PluginManifest {
@@ -23,6 +27,53 @@ export interface PluginManifest {
 export interface Plugin {
   readonly manifest: PluginManifest;
   activate(ctx: PluginContext): void | (() => void);
+}
+
+/**
+ * 隔離した操作（段 2）の部品。`{ manifest, source }`。manifest.tier は 'action'。
+ * source は、Worker の中で動くコードの文字列（クラシックスクリプト）。Worker のグローバルに、公開 API `api` がある
+ * （R5 は `api.registerCommand` だけ）。登録は、source の最初の実行の間（トップレベル）に行う。
+ * ホストの空間では評価されない。例:
+ *
+ *     api.registerCommand({ id: 'say-hello', title: 'あいさつ', shortcut: 'Mod+Shift+H', run: async () => { ... } });
+ */
+export interface ActionPlugin {
+  readonly manifest: PluginManifest;
+  readonly source: string;
+}
+
+/** Worker の中の部品が registerCommand で登録した内容（ホストが形を検査して渡す）。 */
+export interface IsolatedCommandInfo {
+  /** 部品の中で一意（小文字の英数字とハイフン、64 文字まで）。 */
+  readonly id: string;
+  readonly title: string;
+  readonly shortcut?: string;
+  readonly ignoreInTextEntry?: boolean;
+}
+
+/** 隔離した部品の出来事の受け口。レジストリが実装する。 */
+export interface IsolatedPluginListener {
+  /** 部品のコードの最初の実行の間に、コマンドが登録された。例外を出すと、その部品は止まる。 */
+  onCommand(command: IsolatedCommandInfo): void;
+  /** 部品のコードの最初の実行が、時間内に終わった。 */
+  onReady(): void;
+  /** ホストがその部品を止めた（例外、時間切れ、不正なメッセージ）。Worker はもう止まっている。理由は利用者向けの文。 */
+  onStopped(reason: string): void;
+}
+
+/**
+ * 隔離した部品を動かす仕組み（src/plugin-host/）が実装する口。レジストリは、この型だけを知る。
+ * 実装は、最初の start までは iframe も Worker も作らない。
+ */
+export interface IsolatedPluginHost {
+  /** 部品の Worker を作って動かす。出来事は listener に届く。 */
+  start(id: string, source: string, listener: IsolatedPluginListener): void;
+  /** 登録済みのコマンドを実行させる。結果は待たない（時間切れなら部品を止める）。止まった部品、登録のないコマンドは何もしない。 */
+  run(id: string, commandId: string): void;
+  /** 部品の Worker を terminate し、以降は何も通さない。何度呼んでもよい。listener.onStopped は呼ばない。 */
+  stop(id: string): void;
+  /** 全部の部品を止め、iframe を外す。 */
+  dispose(): void;
 }
 
 /** 設定の定義。値は、設定ファイル（preferences.json）の最上位のキーとして、これまでと同じ形で保存される。 */

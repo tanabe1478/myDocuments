@@ -26,6 +26,10 @@ base64 = "0.23"
 notify = "8"
 trash = "5.2.9"
 
+[features]
+# 隔離の検証用（ADR-005 の R5）。既定では無効。有効にしたビルドにだけ、記録用のコマンド（src/probe.rs）が入る。
+isolation-probe = []
+
 [profile.release]
 lto = true
 codegen-units = 1

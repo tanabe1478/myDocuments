@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <!-- 隔離の検証用（Cargo の feature isolation-probe のビルドだけが、plug: から返す）。仲介のページ（host.html）と同じ条件の文脈: -->
+    <!-- 同じ独自プロトコル、同じ CSP のヘッダー、sandbox="allow-scripts"。スクリプトだけが検証用。 -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src plug: 'self'; worker-src blob:" />
+    <title>__mdeIsolationProbe frame</title>
+  </head>
+  <body>
+    <script src="probe-frame.js"></script>
+  </body>
+</html>

@@ -13,6 +13,9 @@ export const ROOT = path.resolve(here, '..', '..', '..', '..');
 export const ARTIFACTS = path.join(ROOT, 'artifacts', 'verify-mydocuments');
 /** Tauri の debug ビルドの実行ファイル。 */
 export const TAURI_BIN = path.join(ROOT, 'src-tauri', 'target', 'debug', 'immersive-markdown-editor');
+/** 隔離の検証用（Cargo の feature isolation-probe）の debug ビルド。通常の実行ファイルを上書きしないよう、別の target ディレクトリに作る。 */
+export const PROBE_TARGET_DIR = path.join(ROOT, 'src-tauri', 'target', 'isolation-probe');
+export const PROBE_BIN = path.join(PROBE_TARGET_DIR, 'debug', 'immersive-markdown-editor');
 
 /** `--key value` と `--flag` を読む。位置引数は _ に入る。 */
 export function parseArgs(argv) {

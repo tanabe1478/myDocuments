@@ -1,0 +1,237 @@
+import { PLUGIN_API_VERSION, type ActionPlugin, type PluginRegistry } from '../plugin-api';
+import type { HostTrace } from '../plugin-host';
+
+/**
+ * 隔離の検証用（ADR-005 の R5「R5 で確かめた隔離」）。VITE_ISOLATION_PROBE=1 のビルドと、Cargo の feature isolation-probe を
+ * 両方有効にしたビルドだけで動く。本番のビルドからは import ごと取り除かれる（印の文字列 __mdeIsolationProbe が dist に出ないことを CI が見る）。
+ *
+ * 起動するとすぐに、次を実際の Tauri の窓の中で試す（OS のキー入力・クリックは送らない）:
+ *  (1) Worker の中のグローバル（__TAURI_INTERNALS__ など）。
+ *  (2) Worker からの ipc://localhost と http://ipc.localhost への fetch と XHR（鍵なし）。
+ *  (3) Worker から 127.0.0.1 の受け口への fetch、XHR、WebSocket、importScripts、入れ子の Worker。
+ *  (4) Worker から仲介への、決めていない形のメッセージ（仲介が止める）。
+ *  (5) 鍵が漏れたと仮定して、本体が鍵を部品に渡した場合の (2) と (3)。
+ *  (6) 仲介の iframe と同じ条件の文脈（probe-frame）から、鍵ありの webkit.messageHandlers.ipc.postMessage などが届くか。
+ * 届いたかの判定は、ネイティブ側の記録（canary.log）と 127.0.0.1 の受け口の記録で行う（このファイルが送る自己申告は参考）。
+ * 比較のために、本体（鍵を持つ側）からの呼び出しも記録する（対照）。
+ */
+const MARK = '__mdeIsolationProbe';
+
+interface Internals {
+  invoke(command: string, args?: Record<string, unknown>): Promise<unknown>;
+}
+const internals = (): Internals => (window as unknown as { __TAURI_INTERNALS__: Internals }).__TAURI_INTERNALS__;
+
+/** 本体が、IPC の鍵を持つ側として、1 回 invoke して鍵を取り出す（検証のための、鍵の漏れの模擬。製品のコードでは行わない）。 */
+async function captureKeyAndConfig(): Promise<{ key: string | null; net: string }> {
+  let key: string | null = null;
+  const original = window.fetch;
+  window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const headers = init?.headers;
+    const value = headers instanceof Headers ? headers.get('Tauri-Invoke-Key') : headers && !Array.isArray(headers) ? (headers as Record<string, string>)['Tauri-Invoke-Key'] : null;
+    if (value) key = value;
+    return original.call(window, input, init);
+  }) as typeof window.fetch;
+  try {
+    const config = (await internals().invoke('isolation_probe_config')) as { net: string };
+    return { key, net: config.net };
+  } finally {
+    window.fetch = original;
+  }
+}
+
+/** Worker の中で動く、検証のコードの部品。どれも、結果を短い文字列にして、まとめて 1 つの記録にする。 */
+const WORKER_LIB = `
+const R = {};
+const csp = [];
+self.addEventListener('securitypolicyviolation', (e) => csp.push(e.violatedDirective + ':' + String(e.blockedURI).slice(0, 30)));
+const t = (name, fn) => Promise.race([Promise.resolve().then(fn), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000))]).then(
+  (v) => { R[name] = String(v).slice(0, 40); },
+  (e) => { R[name] = 'ERR:' + ((e && e.name) || '') + ':' + String((e && e.message) || e).slice(0, 24); },
+);
+const ipcFetch = (url, who, key) => {
+  const headers = { 'Content-Type': 'application/json', 'Tauri-Callback': '1', 'Tauri-Error': '2' };
+  if (key) headers['Tauri-Invoke-Key'] = key;
+  return fetch(url, { method: 'POST', headers, body: JSON.stringify({ who }) }).then(async (r) => r.status + ' ' + (r.headers.get('Tauri-Response') || '-') + ' ' + (await r.text()).slice(0, 20));
+};
+const ipcXhr = (url, who, key) => new Promise((resolve, reject) => {
+  const q = new XMLHttpRequest();
+  q.open('POST', url);
+  q.setRequestHeader('Content-Type', 'application/json'); q.setRequestHeader('Tauri-Callback', '1'); q.setRequestHeader('Tauri-Error', '2');
+  if (key) q.setRequestHeader('Tauri-Invoke-Key', key);
+  q.onload = () => resolve(q.status + ' ' + q.responseText.slice(0, 20));
+  q.onerror = () => reject(new Error('xhr network error'));
+  q.send(JSON.stringify({ who }));
+});
+const globals = () => { R.g = [typeof self.__TAURI_INTERNALS__, typeof self.__TAURI__, typeof self.isTauri, typeof (self.webkit && self.webkit.messageHandlers), typeof self.ipc, String(self.origin)].join(','); };
+const ipcNoKey = (c) => [
+  t('f-ipc', () => ipcFetch('ipc://localhost/isolation_probe_canary', c + ':fetch-ipc-nokey', null)),
+  t('x-ipc', () => ipcXhr('ipc://localhost/isolation_probe_canary', c + ':xhr-ipc-nokey', null)),
+  t('f-http', () => ipcFetch('http://ipc.localhost/isolation_probe_canary', c + ':fetch-ipchttp-nokey', null)),
+];
+const ipcKey = (c, key) => [
+  t('kf-ipc', () => ipcFetch('ipc://localhost/isolation_probe_canary', c + ':fetch-ipc-key', key)),
+  t('kx-ipc', () => ipcXhr('ipc://localhost/isolation_probe_canary', c + ':xhr-ipc-key', key)),
+  t('kf-http', () => ipcFetch('http://ipc.localhost/isolation_probe_canary', c + ':fetch-ipchttp-key', key)),
+  t('k-real', () => ipcFetch('ipc://localhost/load_preferences', c + ':real', key)),
+];
+const net = (c, base) => [
+  t('n-fetch', () => fetch(base + '/fetch?ctx=' + c + '-fetch', { mode: 'no-cors' }).then(() => 'resolved')),
+  t('n-xhr', () => new Promise((res, rej) => { const q = new XMLHttpRequest(); q.open('GET', base + '/xhr?ctx=' + c + '-xhr'); q.onload = () => res('loaded'); q.onerror = () => rej(new Error('xhr network error')); q.send(); })),
+  t('n-ws', () => new Promise((res) => { const w = new WebSocket('ws://' + base.replace('http://', '') + '/ws?ctx=' + c + '-ws'); w.onopen = () => { res('open'); w.close(); }; w.onerror = () => res('error'); setTimeout(() => res('timeout'), 1500); })),
+  t('n-import', () => { importScripts(base + '/script.js?ctx=' + c + '-importscripts'); return 'ran'; }),
+  t('n-sse', () => typeof EventSource === 'undefined' ? 'n/a' : new Promise((res) => { const s = new EventSource(base + '/sse?ctx=' + c + '-sse'); s.onopen = () => { res('open'); s.close(); }; s.onerror = () => { res('error'); s.close(); }; setTimeout(() => res('timeout'), 1500); })),
+  t('n-nested', () => new Promise((res) => {
+    const code = 'fetch(' + JSON.stringify(base + '/fetch?ctx=' + c + '-nested-worker-fetch') + ',{mode:"no-cors"}).then(()=>postMessage("resolved"),(e)=>postMessage("ERR:"+e.name))';
+    const w = new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' })));
+    w.onmessage = (e) => res(e.data); w.onerror = () => res('worker-error'); setTimeout(() => res('timeout'), 3000);
+  })),
+];
+// 結果を、部品の report コマンドの例外の理由（300 文字まで）に載せる。ホストは、この理由を止めた記録として本体に残す。
+const registerReport = (done) => api.registerCommand({ id: 'report', title: 'report', run: async () => { await done; throw new Error(JSON.stringify({ R, csp }).slice(0, 290)); } });
+`;
+
+interface ProbePart {
+  readonly id: string;
+  readonly source: (c: { net: string; key: string | null }) => string;
+}
+
+const PARTS: readonly ProbePart[] = [
+  // (1) グローバル
+  { id: 'probe-globals', source: () => `${WORKER_LIB}\nglobals();\nregisterReport(Promise.resolve());` },
+  // (2) 鍵なしの IPC
+  { id: 'probe-ipc', source: () => `${WORKER_LIB}\nglobals();\nregisterReport(Promise.all(ipcNoKey('worker')));` },
+  // (3) ネットワーク
+  { id: 'probe-net', source: ({ net }) => `${WORKER_LIB}\nregisterReport(Promise.all(net('worker', ${JSON.stringify(net)})));` },
+  // (5) 鍵が漏れたと仮定（本体が鍵を部品に渡した）。(2) と (3) を、鍵ありで
+  {
+    id: 'probe-leaked',
+    source: ({ net, key }) =>
+      `${WORKER_LIB}\nregisterReport(Promise.all([...ipcKey('worker-leaked', ${JSON.stringify(key)}), ...net('worker-leaked', ${JSON.stringify(net)})]));`,
+  },
+  // (4) 仲介への、決めていない形のメッセージ（仲介が部品を止める）
+  { id: 'probe-post-unknown', source: () => `api.registerCommand({ id: 'report', title: 'report', run: async () => {} });\nself.postMessage({ kind: 'steal', what: 'everything' });` },
+  { id: 'probe-post-forged', source: () => `api.registerCommand({ id: 'report', title: 'report', run: async () => {} });\nself.postMessage({ kind: 'done', req: 1 });` },
+  {
+    id: 'probe-post-invoke',
+    source: ({ key }) =>
+      `api.registerCommand({ id: 'report', title: 'report', run: async () => {} });\nself.postMessage({ kind: 'invoke', cmd: 'isolation_probe_canary', payload: { who: 'worker:postmessage-invoke' }, __TAURI_INVOKE_KEY__: ${JSON.stringify(key)} });`,
+  },
+  // (4) 本体と同じ名前の BroadcastChannel（origin が違うので、本体には届かないはず）。本体の側が listen して、聞こえたら記録する
+  {
+    id: 'probe-broadcast',
+    source: () => `${WORKER_LIB}\nregisterReport(t('bc', () => { const b = new BroadcastChannel('${MARK}-bc'); b.postMessage('hello from the worker'); b.close(); return 'posted'; }));`,
+  },
+];
+
+export const probePlugins: readonly ActionPlugin[] = PARTS.map(({ id }) => ({
+  manifest: { id, name: `${MARK} ${id}`, version: '0.0.0', apiVersion: PLUGIN_API_VERSION, tier: 'action' },
+  // source は、起動のときに鍵と受け口の URL を決めてから作る（createProbe）。ここは宣言だけ。
+  source: '/* replaced in createProbe */',
+}));
+
+export interface ProbeSetup {
+  readonly plugins: readonly ActionPlugin[];
+  readonly trace: (event: HostTrace) => void;
+  readonly afterBoot: (registry: PluginRegistry) => void;
+}
+
+export async function createProbe(): Promise<ProbeSetup> {
+  const invoke = internals().invoke.bind(internals());
+  const report = (data: Record<string, unknown>) => invoke('isolation_probe_report', { line: JSON.stringify(data) }).catch(() => undefined);
+  const { key, net } = await captureKeyAndConfig();
+
+  // 対照: 本体（鍵を持つ側）からの呼び出しは、ネイティブ側の記録に届く。記録の仕組みが動いていることの確認。
+  await invoke('isolation_probe_canary', { who: 'main:control-invoke' });
+  const control: Record<string, string> = {};
+  try {
+    const handler = (window as unknown as { webkit?: { messageHandlers?: { ipc?: { postMessage(m: string): void } } } }).webkit?.messageHandlers?.ipc;
+    if (handler && key) {
+      handler.postMessage(JSON.stringify({ cmd: 'isolation_probe_canary', callback: 1, error: 2, options: {}, payload: { who: 'main:control-postmessage-key' }, __TAURI_INVOKE_KEY__: key }));
+      control.postMessage = 'posted';
+    } else control.postMessage = handler ? 'no-key' : 'no-handler';
+  } catch (e) {
+    control.postMessage = `ERR:${String(e)}`;
+  }
+  const hear: string[] = [];
+  const bc = new BroadcastChannel(`${MARK}-bc`);
+  bc.onmessage = (e) => hear.push(String(e.data));
+  await report({ ev: 'control', keyCaptured: key !== null, net, ua: navigator.userAgent, origin: location.origin, control });
+
+  const plugins: ActionPlugin[] = probePlugins.map((p, i) => ({ ...p, source: PARTS[i]!.source({ net, key }) }));
+  const stops = new Map<string, string>();
+  const waiting = new Map<string, () => void>();
+  const trace = (event: HostTrace): void => {
+    if (event.type !== 'stopped') return;
+    stops.set(event.plugin, event.reason);
+    waiting.get(event.plugin)?.();
+  };
+
+  const runFrame = (): Promise<unknown[]> =>
+    new Promise((resolve) => {
+      const results: unknown[] = [];
+      const frame = document.createElement('iframe');
+      frame.setAttribute('sandbox', 'allow-scripts');
+      frame.style.cssText = 'position:absolute;width:0;height:0;border:0;left:-9999px';
+      const finish = () => {
+        window.removeEventListener('message', onMessage);
+        frame.remove();
+        resolve(results);
+      };
+      const timer = setTimeout(() => {
+        results.push({ error: 'timeout' });
+        finish();
+      }, 25000);
+      const onMessage = (e: MessageEvent) => {
+        if (e.source !== frame.contentWindow) return;
+        const d = e.data as { kind?: string; phase?: number };
+        if (d?.kind === 'probe-hello') frame.contentWindow!.postMessage({ kind: 'probe-phase1', net }, '*');
+        else if (d?.kind === 'probe-result') {
+          results.push(d);
+          if (d.phase === 1) frame.contentWindow!.postMessage({ kind: 'probe-phase2', key }, '*'); // 鍵の漏れの模擬（本体が鍵を渡す）
+          else {
+            clearTimeout(timer);
+            finish();
+          }
+        }
+      };
+      window.addEventListener('message', onMessage);
+      frame.src = pluginHostFrameUrl();
+      document.body.appendChild(frame);
+    });
+
+  const afterBoot = (registry: PluginRegistry): void => {
+    void (async () => {
+      // 部品の Worker を 1 つずつ。report のコマンドを実行して、結果の自己申告を止めた理由として受け取る。
+      for (const { manifest } of plugins) {
+        const id = manifest.id;
+        const stopped = new Promise<void>((resolve) => {
+          waiting.set(id, resolve);
+          setTimeout(resolve, 15000);
+        });
+        for (let i = 0; i < 100 && !registry.commands.some((c) => c.id === `${id}.report`); i++) {
+          if (stops.has(id)) break;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        const command = registry.commands.find((c) => c.id === `${id}.report`);
+        if (command && !stops.has(id)) command.run({} as never);
+        await stopped;
+        await report({ ev: 'worker', plugin: id, stopped: stops.get(id) ?? null, status: registry.records.find((r) => r.id === id)?.status ?? null });
+      }
+      await new Promise((r) => setTimeout(r, 500));
+      await report({ ev: 'broadcast', heardInMainPage: hear });
+      // 仲介の iframe と同じ条件の文脈（probe-frame）から。
+      const frameResults = await runFrame();
+      await report({ ev: 'relay-context', results: frameResults });
+      await new Promise((r) => setTimeout(r, 1500));
+      await report({ ev: 'done' });
+    })();
+  };
+
+  return { plugins, trace, afterBoot };
+}
+
+/** 仲介の iframe と同じ条件の、検証用のページ（plug.rs が feature のときだけ返す）。 */
+function pluginHostFrameUrl(): string {
+  return /Windows/i.test(navigator.userAgent) ? 'http://plug.localhost/probe-frame.html' : 'plug://localhost/probe-frame.html';
+}

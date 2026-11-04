@@ -5,7 +5,10 @@ mod entries;
 mod error;
 mod external;
 mod folders;
+mod plug;
 mod preferences;
+#[cfg(feature = "isolation-probe")]
+mod probe;
 mod session;
 mod watcher;
 
@@ -307,18 +310,10 @@ fn show_main_window(app: &AppHandle) {
     }
 }
 
-pub fn run() {
-    let app = tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
-        // リンクを開くための Rust 側の API（OpenerExt）だけを使う。JavaScript 向けのコマンドは capabilities で許可せず、
-        // <a> のクリックを横取りする注入スクリプトも無効にする（開く入口は open_external_url だけ）。
-        .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build())
-        .manage(KnownPaths::default())
-        .manage(OpenFolders::default())
-        .manage(DocumentWatcher::default())
-        .manage(FolderWatcher::default())
-        .manage(CloseGuard::default())
-        .invoke_handler(tauri::generate_handler![
+/// フロントエンドから呼べるコマンドの一覧。`isolation-probe` の feature のときだけ、記録用のコマンドが加わる（probe.rs）。
+macro_rules! app_commands {
+    ($($extra:path),* $(,)?) => {
+        tauri::generate_handler![
             open_document,
             save_document,
             save_document_as,
@@ -342,8 +337,34 @@ pub fn run() {
             load_preferences,
             save_preferences,
             import_background_image,
-            read_background_image
-        ])
+            read_background_image,
+            $($extra),*
+        ]
+    };
+}
+
+pub fn run() {
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        // リンクを開くための Rust 側の API（OpenerExt）だけを使う。JavaScript 向けのコマンドは capabilities で許可せず、
+        // <a> のクリックを横取りする注入スクリプトも無効にする（開く入口は open_external_url だけ）。
+        .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build())
+        // 隔離した操作の段（段 2）の Worker のホスト。決めた 2 つのファイルだけを返す（plug.rs）。
+        .register_uri_scheme_protocol("plug", |_ctx, request| plug::respond(&request))
+        .manage(KnownPaths::default())
+        .manage(OpenFolders::default())
+        .manage(DocumentWatcher::default())
+        .manage(FolderWatcher::default())
+        .manage(CloseGuard::default());
+    #[cfg(not(feature = "isolation-probe"))]
+    let builder = builder.invoke_handler(app_commands!());
+    #[cfg(feature = "isolation-probe")]
+    let builder = builder.invoke_handler(app_commands!(
+        probe::isolation_probe_canary,
+        probe::isolation_probe_config,
+        probe::isolation_probe_report
+    ));
+    let app = builder
         .on_window_event(|window, event| {
             // 窓の閉じるボタン。UI が準備できているときは止めて、UI に未保存の確認を任せる。
             if let WindowEvent::CloseRequested { api, .. } = event {
@@ -355,6 +376,10 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            // 隔離の検証用のコマンドの許可。feature のときだけ足す。
+            #[cfg(feature = "isolation-probe")]
+            probe::grant(app)?;
+
             let handle = app.handle().clone();
             app.listen("frontend-ready", move |_| {
                 handle.state::<CloseGuard>().ready.store(true, Ordering::SeqCst);
@@ -388,4 +413,50 @@ pub fn run() {
             }
         }
     });
+}
+
+/// 隔離の検証用のコマンド（feature `isolation-probe`）が、feature のときだけ含まれることの検査。
+/// tauri-build が出力した ACL の生成物（コマンドの許可の一覧、capability）を読む。
+#[cfg(test)]
+mod probe_gate_tests {
+    use std::path::Path;
+
+    fn generated_text() -> String {
+        let out = Path::new(env!("OUT_DIR"));
+        ["acl-manifests.json", "capabilities.json", "app-manifest/__app__-permission-files"]
+            .iter()
+            .map(|name| std::fs::read_to_string(out.join(name)).unwrap_or_else(|e| panic!("{name}: {e}")))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn the_app_commands_are_in_the_generated_acl() {
+        // 対照: 生成物の読み方が合っていること（自前のコマンドは、どのビルドでも載る）。
+        let text = generated_text();
+        assert!(text.contains("open_external_url") && text.contains("allow-open-external-url"));
+    }
+
+    #[cfg(not(feature = "isolation-probe"))]
+    #[test]
+    fn without_the_feature_no_probe_command_or_permission_exists() {
+        assert!(!cfg!(feature = "isolation-probe"));
+        let text = generated_text();
+        assert!(!text.contains("isolation_probe") && !text.contains("isolation-probe"), "the probe commands leaked into the default build");
+        // 許可（capabilities/default.json）にも、記録用のコマンドはない。
+        let caps = include_str!("../capabilities/default.json");
+        assert!(!caps.contains("probe"));
+    }
+
+    #[cfg(feature = "isolation-probe")]
+    #[test]
+    fn with_the_feature_the_probe_commands_exist_and_the_default_capability_does_not_grant_them() {
+        let text = generated_text();
+        for name in crate::probe::COMMANDS {
+            assert!(text.contains(name), "{name}");
+            assert!(text.contains(&format!("allow-{}", name.replace('_', "-"))), "{name}");
+        }
+        // 許可は実行時に足す（probe::grant）。ファイルの capability には書かない。
+        assert!(!include_str!("../capabilities/default.json").contains("probe"));
+    }
 }

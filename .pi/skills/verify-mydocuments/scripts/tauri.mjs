@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // macOS の Tauri デスクトップアプリ（debug ビルド）を、観測だけの範囲で扱う。OS へのキー入力・マウス操作は送らない。
 // 使い方（いずれも --run-id は launch.mjs の出力）:
-//   node .pi/skills/verify-mydocuments/scripts/tauri.mjs build                       debug ビルド（数分かかる）。実行ファイルを作る
-//   node .pi/skills/verify-mydocuments/scripts/tauri.mjs start --run-id <id> [--doc <markdown>] [--prefs <preferences.json>] [--folder <dir>]
+//   node .pi/skills/verify-mydocuments/scripts/tauri.mjs build [--probe]             debug ビルド（数分かかる）。実行ファイルを作る。--probe は隔離の検証用（feature isolation-probe と VITE_ISOLATION_PROBE=1。別の target ディレクトリ）
+//   node .pi/skills/verify-mydocuments/scripts/tauri.mjs start --run-id <id> [--doc <markdown>] [--prefs <preferences.json>] [--folder <dir>] [--probe --probe-out <dir> --probe-net <url>]
 //   node .pi/skills/verify-mydocuments/scripts/tauri.mjs windows --run-id <id>        この run の窓の一覧（CGWindowList）
 //   node .pi/skills/verify-mydocuments/scripts/tauri.mjs shot --run-id <id> --name <name>   窓 1 枚を screencapture -l で撮る
 //   node .pi/skills/verify-mydocuments/scripts/tauri.mjs stop --run-id <id>           この run が起動した pid だけを止める
@@ -15,13 +15,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ROOT, TAURI_BIN, appCreatedUnder, fail, homeEnvOf, isAlive, parseArgs, readState, rel, resolveRun, sleep, treeSignature, verifyOwnership, writeState } from './lib.mjs';
+import { PROBE_BIN, PROBE_TARGET_DIR, ROOT, TAURI_BIN, appCreatedUnder, fail, homeEnvOf, isAlive, parseArgs, readState, rel, resolveRun, sleep, treeSignature, verifyOwnership, writeState } from './lib.mjs';
 
 if (process.platform !== 'darwin') fail('tauri.mjs は macOS 専用です（窓の特定に CGWindowList、撮影に screencapture を使います）。');
 const here = path.dirname(fileURLToPath(import.meta.url));
 const args = parseArgs(process.argv.slice(2));
 const sub = args._[0];
-const BIN = TAURI_BIN;
+// stop、shot は、start が記録した実行ファイルを使う（通常のビルドか、隔離の検証用のビルドか）。
+const BIN = args.probe ? PROBE_BIN : TAURI_BIN;
+const binOf = (state) => (state.tauri?.bin ? path.join(ROOT, state.tauri.bin) : TAURI_BIN);
 const conf = JSON.parse(fs.readFileSync(path.join(ROOT, 'src-tauri', 'tauri.conf.json'), 'utf8'));
 const IDENTIFIER = conf.identifier;
 // HOME を付け替えても、実ユーザーのホームに作られうる場所（識別子またはバイナリ名で決まるもの）。start と stop で中身の署名を比べる。
@@ -52,8 +54,12 @@ function tauriOf(statePath) {
 }
 
 if (sub === 'build') {
-  console.log('npx tauri build --debug --no-bundle ...（フロントエンドは repo の dist/ に出力されます）');
-  const r = spawnSync('npx', ['tauri', 'build', '--debug', '--no-bundle'], { cwd: ROOT, stdio: 'inherit', timeout: 600_000 });
+  // --probe: 隔離の検証用。VITE_ISOLATION_PROBE=1 でフロントエンドを作り（beforeBuildCommand が環境変数を引き継ぐ）、feature isolation-probe を有効にする。
+  // 通常の実行ファイル（target/debug）は上書きしない。repo の dist/ は、検証用のコード入りになる（通常のビルドをし直すと戻る）。
+  const probeArgs = args.probe ? ['--features', 'isolation-probe'] : [];
+  console.log(`npx tauri build --debug --no-bundle ${probeArgs.join(' ')}...（フロントエンドは repo の dist/ に出力されます）`);
+  const env = args.probe ? { ...process.env, VITE_ISOLATION_PROBE: '1', CARGO_TARGET_DIR: PROBE_TARGET_DIR } : process.env;
+  const r = spawnSync('npx', ['tauri', 'build', '--debug', '--no-bundle', ...probeArgs], { cwd: ROOT, stdio: 'inherit', timeout: 900_000, env });
   if (r.status !== 0) fail(`tauri build に失敗しました（exit ${r.status}）`);
   console.log(`BIN=${rel(BIN)}`);
 } else if (sub === 'start') {
@@ -76,9 +82,11 @@ if (sub === 'build') {
   if (typeof args.prefs === 'string') fs.copyFileSync(path.resolve(args.prefs), path.join(appDir, 'preferences.json'));
   const realBefore = realSignatures();
   const log = fs.openSync(path.join(runDir, 'tauri.log'), 'w');
-  const child = spawn(BIN, [], { cwd: ROOT, detached: true, stdio: ['ignore', log, log], env: { ...process.env, HOME: home, CFFIXED_USER_HOME: home } });
+  // 隔離の検証用の環境変数: ネイティブ側の記録を書くディレクトリと、127.0.0.1 の受け口の URL（feature isolation-probe のビルドだけが読む）。
+  const probeEnv = args.probe ? { MDE_PROBE_OUT: path.resolve(String(args['probe-out'])), MDE_PROBE_NET: String(args['probe-net']) } : {};
+  const child = spawn(BIN, [], { cwd: ROOT, detached: true, stdio: ['ignore', log, log], env: { ...process.env, ...probeEnv, HOME: home, CFFIXED_USER_HOME: home } });
   child.unref();
-  state.tauri = { pid: child.pid, home: rel(home), docPath: rel(docPath).startsWith('..') ? docPath : rel(docPath), startedAt: new Date().toISOString(), realSignaturesBefore: realBefore };
+  state.tauri = { pid: child.pid, bin: rel(BIN), probe: Boolean(args.probe), home: rel(home), docPath: rel(docPath).startsWith('..') ? docPath : rel(docPath), startedAt: new Date().toISOString(), realSignaturesBefore: realBefore };
   writeState(statePath, state);
   await sleep(1500);
   console.log(isAlive(child.pid) ? `TAURI_PID=${child.pid}` : 'Tauri がすぐに終了しました。tauri.log を見てください。');
@@ -124,7 +132,7 @@ if (sub === 'build') {
   const envIsRunHome = stopped ? null : homeEnvOf(pid, home);
   if (!stopped) {
     // この run が起動した pid かを確かめてから止める（ps が使えなければ lsof で確かめる）。確認できなければ止めない。
-    const owner = verifyOwnership({ pid, kind: 'tauri', bin: BIN });
+    const owner = verifyOwnership({ pid, kind: 'tauri', bin: binOf(state) });
     if (!owner.ok) fail(`pid ${pid} を止めません（${owner.method}: ${owner.detail}）。手動で確認して止めてください。`);
     process.kill(pid, 'SIGTERM');
     for (let i = 0; i < 20 && isAlive(pid); i++) await sleep(250);

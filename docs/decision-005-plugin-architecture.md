@@ -4,7 +4,7 @@
 
 Proposed（2026-11-03、R0）。この時点では案で、実装の Run で確定する。アプリのコードは変えていない。仕様 §7.2 の「編集エンジンを差し替えても UI は変えない」は、この ADR が確定したとき、エディタに関わる部品の範囲で改める（改め方は「未決のこと」）。仕様の文書そのもの（`docs/spec/`）は書き換えない。
 
-R1（2026-11-03）で、段 3 の同梱の部品に限って API v0 を実装した。細部は「R1 で決めた細部」。R2（2026-11-03）で、フォーカスモードを 2 つ目の同梱の部品にした。細部は「R2 で決めた細部」。R3（2026-11-03）で、リストの継続を 3 つ目の同梱の部品にし、設定画面の選択肢の項目と「編集」の置き場所を足した。細部は「R3 で決めた細部」。R4（2026-11-04）で、Markdown の見た目（装飾、記号の表示、チェックボックスのクリック、リンクを開く操作）を 4 つ目の同梱の部品にし、本体が部品に貸す機能（外部の URL を開く、OS の判定）と、設定画面の「外観」の置き場所を足した。細部は「R4 で決めた細部」。
+R1（2026-11-03）で、段 3 の同梱の部品に限って API v0 を実装した。細部は「R1 で決めた細部」。R2（2026-11-03）で、フォーカスモードを 2 つ目の同梱の部品にした。細部は「R2 で決めた細部」。R3（2026-11-03）で、リストの継続を 3 つ目の同梱の部品にし、設定画面の選択肢の項目と「編集」の置き場所を足した。細部は「R3 で決めた細部」。R4（2026-11-04）で、Markdown の見た目（装飾、記号の表示、チェックボックスのクリック、リンクを開く操作）を 4 つ目の同梱の部品にし、本体が部品に貸す機能（外部の URL を開く、OS の判定）と、設定画面の「外観」の置き場所を足した。細部は「R4 で決めた細部」。R5（2026-11-04）で、隔離した操作の段（段 2）の土台（独自プロトコル `plug:`、sandbox の iframe の中の blob の Worker、postMessage の仲介）を作り、実際の Tauri の窓で隔離を確かめた。段 2 の部品は配布物に 1 つも入れていない。細部は「R5 で決めた細部」と「R5 で確かめた隔離」。
 
 実験（K1〜K3）は、macOS（WKWebView）の Tauri debug ビルドだけで確かめた。Windows（WebView2）と Linux（WebKitGTK）は未確認。
 
@@ -527,6 +527,148 @@ R1・R2 と同じく、部品のテーマは CodeMirror が自動で付ける cl
 - 利用者の操作のときだけ呼ぶ、という規則は、段 3 では強制していない（呼ぶ側の規則）。
 - Windows と Linux の実機で、リンクを開く修飾キーの判定を確かめていない（偽装した navigator での e2e のみ。変更前と同じ）。
 
+## R5 で決めた細部
+
+R5（2026-11-04）で、隔離した操作の段（段 2）の土台を作った（案 2a）。配布物に入るのは仕組みだけで、段 2 の部品は 1 つも入れていない（利用者に見える機能は足していない。最初の部品 S2 と、権限の確認の画面は R6）。API の版は 0 のまま。
+
+### plug: の形と、返すファイル
+
+Rust 側（`src-tauri/src/plug.rs`）が、独自プロトコル `plug` を `register_uri_scheme_protocol` で登録する。返すのは、ビルド時に `include_str!` で埋め込んだ 2 つのファイルだけ。ファイルシステムから読まない。
+
+- `/host.html`: Worker のホストのページ（`text/html; charset=utf-8`）。
+- `/relay.js`: 仲介のコード（`text/javascript; charset=utf-8`）。
+
+名前の解釈（`..`、パーセントエンコード、大文字小文字、先頭の `/` の補完）はしない。決めた文字列と完全に一致するパスだけが 200、それ以外はすべて 404（空、`/`、`..`、`%2e%2e`、`%2f`、絶対パス、`//`、大文字違い、末尾の `/`、`;` を含む）。クエリは名前の判定に使わない。GET と HEAD 以外は 405。単体テストは `plug.rs`（9 件）。
+
+応答のヘッダー（200 も 404 も同じ）: `Content-Security-Policy: default-src 'none'; script-src plug:; worker-src blob:`、`X-Content-Type-Options: nosniff`、`Content-Type`（200 のみ `Cache-Control: no-store`）。CSP は K2 の結果どおり `'self'` ではなく `plug:` と書いた。そのまま動いた（変更は不要だった）。
+
+本体の CSP に足したのは `frame-src plug:` だけ（`script-src` などは変えていない）。`architecture` の単体テストが、本体の CSP の全指令を列挙して縛っている。新しい crate は足していない（`Cargo.lock` は変わらない）。
+
+### 元は 1 か所、配信は 2 通り
+
+ホストのページと仲介のコードの元は `src/plugin-host/`（`host.html`、`relay.js`）の 1 か所。vite を通さず、元のバイト列のまま配信する。
+
+- Tauri 版: `plug.rs` が埋め込んで返す。
+- ブラウザ版（e2e のビルドと dev サーバー）: `vite.config.ts` の小さな plugin が、同じファイルを同じオリジンの `/plug/` から返す。ビルドでは `VITE_E2E=1` のときだけ `plug/` に書き出す（本番の `dist` には出さない。CI が見る）。
+- 同じ中身であることの縛り: Rust のテスト（埋め込んだ文字列とディスクのファイルが一致）、e2e（配信されたバイト列と元のファイルが一致）、`architecture` の単体テスト（`plug.rs` と `vite.config.ts` が同じ元と名前を指す）。
+
+ブラウザ版はヘッダーがないので、`host.html` の `meta` で CSP を指定する。meta の CSP は `default-src 'none'; script-src plug: 'self'; worker-src blob:`。ヘッダー（Tauri 版）との違いは `script-src` の `'self'` だけで、理由は、ブラウザ版の `relay.js` が http のオリジンから読まれるため（`plug:` は一致しない）。Tauri 版は、同じ meta も効くが、ヘッダーの `script-src plug:` との積になるので、`plug:` だけが通る。`worker-src blob:` と `script-src` が meta で効くことは、e2e（Chromium）で、Worker が動くことと、本体の origin へのネットワークが止まることから確かめた。
+
+### 構造
+
+本体は `sandbox="allow-scripts"` の iframe（`allow-same-origin` なし）を 1 つ作る。iframe の中で、`relay.js` が、部品ごとに、部品のコードの文字列から blob の Worker を作る。`relay.js`（iframe の主の文脈）は部品のコードを評価しない（`eval`、`new Function`、script の挿入、`importScripts` をしない。`architecture` が `relay.js` を読んで確かめる）。部品のコードは、Blob にして Worker に渡すだけで、Worker の中でだけ動く。iframe は、最初の段 2 の部品を起動するときに作る。段 2 の部品がないときは、iframe も `message` の受け口も作らない（`main.tsx` は、部品が 1 つもなければホストを作らない）。
+
+部品の Worker は 1 部品 1 Worker。iframe は共有する（部品の隔離は Worker の境界で、iframe は仲介のコードの置き場）。
+
+### メッセージの形（postMessage だけ）
+
+すべてのメッセージに版 `v: 0` が付く。決めた種類と形（項目の集合、型、長さ）だけを通す。形の検査は、`relay.js`（Worker からのもの）と本体の `protocol.ts`（iframe からのもの）の両方でする（`relay.js` が壊されたときに備え、本体は iframe を信用しない）。
+
+| 向き | 種類 | 項目 |
+|---|---|---|
+| 本体 → 仲介 | `start` | `plugin`、`source` |
+| 本体 → 仲介 | `run` | `plugin`、`req`（1 から増える整数）、`command` |
+| 本体 → 仲介 | `stop` | `plugin` |
+| 仲介 → 本体 | `hello` | なし（仲介のコードの準備ができた合図。本体は、これを受けるまで `start` を送らず溜める） |
+| 仲介 → 本体 | `command` | `plugin`、`id`、`title`、`shortcut?`、`ignoreInTextEntry?` |
+| 仲介 → 本体 | `ready` | `plugin`（部品のコードの最初の実行が終わった） |
+| 仲介 → 本体 | `done` | `plugin`、`req` |
+| 仲介 → 本体 | `failed` | `plugin`、`req`、`reason`（実行が例外を出した） |
+| 仲介 → 本体 | `stopped` | `plugin`、`reason`（仲介が Worker を止めた） |
+| 仲介 ↔ Worker | `init`、`run` / `command`、`ready`、`done`、`failed` | 上の `command` などから `plugin` と `v` を除いたもの |
+
+上限: 1 部品のコマンドは 32 個まで、`id` は 64 文字（小文字の英数字とハイフン）、`title` は 200 文字、`shortcut` は 32 文字、`reason` は 300 文字、`source` は 1 MiB、結果待ちの実行は 1 部品 16 個まで（超えた要求は捨てる。キーの連打で積み上げない）。
+
+状態機械（部品ごと。仲介と本体の両方で見る）: `starting` → `ready` → `stopped`。`command` は `starting` の間だけ。`ready` は 1 回だけ。`done` と `failed` は、本体が `run` で要求した番号のものだけ。外れたメッセージは不正として、その部品を止める。要求の番号は、本体が付ける。
+
+送り元の確認: 本体は、受けた `message` イベントの `event.source` が、その iframe の `contentWindow` と同一であることを確かめる（`origin` は `'null'` になるので、判定に使わない）。仲介も、`event.source` が `window.parent` であることを確かめる。e2e で、本体の窓自身から送った偽のメッセージ（`stopped`、`command`）が無視されることを確かめた。
+
+MessageChannel は使わない。理由: iframe の中の仲介のコードは、本体が書いた信頼するコードで、部品ごとの分離は Worker の境界が受け持つ。ポートを部品ごとに渡しても、本体と仲介の間は、最初の受け渡し（`hello` と、ポートの移譲）に `event.source` の確認が要り、それ以後の検査（形、状態機械）は同じ。ポートごとに分けても、`relay.js` が壊されたときの上限は変わらない。取らなかった案であり、部品ごとの iframe に分けるときに、あらためて検討する。
+
+### 時間切れと止め方
+
+- 部品のコードの最初の実行（トップレベル）が `ready` を返すまで: 既定 5000 ms（`start` から。iframe の読み込みを含む）。
+- コマンドの実行が `done` を返すまで: 既定 5000 ms。本体は結果を待たない（`run` は戻り値なしで返り、本体の入力は止まらない）。
+- どちらも、e2e のビルドは seed で短くできる。
+
+止める契機は、(1) 部品の例外（トップレベルの例外は Worker の `error` イベント、実行の例外は `failed`）、(2) 時間切れ（無限ループ）、(3) 不正なメッセージ、(4) 登録の検査（ショートカットの形、コマンドの id の重なり、ショートカットの重なり。段 3 のコマンドとも検査する）に通らない。止めるときは、仲介に `stop` を送って Worker を `terminate` し、Blob の URL を取り消し、以降その部品のメッセージは何も通さない（仲介も本体も捨てる）。レジストリは、その部品の登録を全部外し、状態を `stopped`、`reason` に理由を残し、`console.error` に `[plugin] 部品「<id>」を止めました: <理由>` を出す（段 3 の部品と同じ記録）。ほかの部品とアプリは動き続ける。
+
+限界: 無限ループの部品は、時間切れまでの間（既定 5 秒）、Worker の中で CPU を使い続ける（別スレッドなので、本体の入力は止まらない）。その間に出した別の実行の要求は、Worker の中で順番待ちになり、それぞれが時間切れで部品を止める。仲介の iframe 自体が応答しなくなった場合の検出（`terminate` が届かない場合に iframe ごと作り直す）は、していない。
+
+### 段 2 の部品の渡し方と API
+
+形は `{ manifest, source }`（`ActionPlugin`）。R1 の `Plugin`（`{ manifest, activate }`）の隣に並べ、`manifest.tier` で分ける（`'editor'` は `activate`、`'action'` は `source`）。レジストリは `Plugin | ActionPlugin` の一覧を受け取る。`source` は、Worker で動くクラシックスクリプトの文字列。Worker のグローバルに `api`（凍結したオブジェクト）があり、R5 の API は `api.registerCommand({ id, title, shortcut?, ignoreInTextEntry?, run })` だけ。登録は `source` の最初の実行の間（トップレベル）だけ。`run` は非同期でよく、引数も戻り値もない（R5 は、本体のデータを読む API も、結果を返す API もない）。ショートカットの判定と重なりの検査は、段 3 のコマンドと同じ規則（`parseShortcut` と `matchesShortcut`。登録されたコマンドは、同じ `findCommandByKey` で引かれる）。ショートカットは、CodeMirror の既定のキー（`Mod+Shift+K` の行削除など）と重なると、先にエディタが処理する（段 3 のコマンドと同じ。R5 で見つけたこと。e2e の部品は、重ならないキーを使う）。
+
+`manifest.permissions` は R5 では宣言できない（空の配列以外は読み込まない。`incompatible`）。権限の確認の画面と一緒に R6 で足す。段 2 は、権限の表の「宣言だけで使える」もののうち、R5 ではコマンドとショートカットだけが使える。
+
+レジストリは、`IsolatedPluginHost`（`plugin-api` が型だけ持つ口）を、オプションで受け取る。実装は `src/plugin-host/` で、レジストリはこれを import しない。ホストを渡さずに段 2 の部品を渡すと、その部品は `incompatible`（「この環境では使えません」）になる。
+
+### 鍵の縛り
+
+段 2 の仕組みのコード（`src/plugin-host/` のテストを除く全部と、`src/isolated-plugins/index.ts`、`src/plugin-api/registry.ts`、`src/plugin-api/types.ts`、`src/main.tsx`）に、`Tauri-Invoke-Key`、`__TAURI_INTERNALS__`、`__TAURI__`、`invoke`、`ipc:` の文字列が出てこないことを、`src/plugin-host/architecture.test.ts` が縛る（コメントを含む）。除くのは検証用のコードだけ: `src/isolated-plugins/e2eFixtures.ts`（本体への到達を試す e2e 用の部品）と `src/isolated-plugins/probe.ts`（隔離の検証用。鍵を扱う）。どちらも本番のビルドに入らない。除外が空振りしていないこと（除いたファイルに、実際にそれらの文字列があること）も同じテストで確かめる。`src/plugin-host/` は、`src/plugin-api/` と自分のファイルだけを import する（`features`、`platform`、`bridge` を import しない）。
+
+### 検証用のコードが配布物に入らない縛り
+
+- フロントエンド: `VITE_ISOLATION_PROBE=1` の define（`__ISOLATION_PROBE__`）と `__E2E__` の中だけで `import()` する。本番の `dist` に、印 `__mdeIsolationProbe`、記録用のコマンド名 `isolation_probe_`、段 2 のテスト用の部品の印 `__mdeE2EActionFixture` が出ないことを、`.github/workflows/ci.yml`（既存の grep の検査に足した）と、`check-probe-absent.mjs` が見る。`dist/plug/` が出ないことも見る。
+- Rust: Cargo の feature `isolation-probe`（既定では無効）。記録用のコマンド（`src/probe.rs`）、検証用のページを返す `plug.rs` の項目、`build.rs` のコマンドの一覧、`lib.rs` の `generate_handler` への追加、`main` 窓への許可（実行時に `add_capability`。`capabilities/` のファイルには書かない）は、すべて feature のときだけ。feature 付きのビルドが書く許可のファイル（`permissions/autogenerated/isolation_probe_*.toml`）は、`build.rs` が、ビルドの前と後に消す（残ると feature なしのビルドにも許可が入る。実際に起きたので、そのテストを足した）。
+- 検査: `lib.rs` の `probe_gate_tests` が、ビルドが出力した ACL の生成物（`OUT_DIR`）に、feature なしのときは記録用のコマンドも許可もなく、feature のときはある（対照）ことを確かめる。feature なしの `plug.rs` が検証用のページに 404 を返すことも、テストで確かめる。実行ファイルについては、`check-probe-absent.mjs` が、通常の debug ビルドに印がなく、検証用のビルドにはある（対照）ことを確かめた。
+
+## R5 で確かめた隔離
+
+方法: Cargo の feature `isolation-probe` と `VITE_ISOLATION_PROBE=1` の両方を有効にした debug ビルド（`tauri.mjs build --probe`。通常の実行ファイルとは別の target ディレクトリ）を、macOS の実際の Tauri の窓として、run 専用の HOME で起動した（`isolation-probe.mjs`。OS のキー入力・マウス操作は送らない）。起動すると、検証用の段 2 の部品（`src/isolated-plugins/probe.ts`）が、本物の `plug:` と本物の `relay.js` の上で動く。Tauri 2.12.5、wry 0.57.1、WKWebView、macOS のみ。release ビルド、Windows（WebView2）、Linux（WebKitGTK）は未確認。
+
+届いたかの判定は、webview 側の自己申告ではなく、2 つの記録による:
+
+- ネイティブ側: 記録用のコマンド `isolation_probe_canary` が、呼ばれるたびに、環境変数 `MDE_PROBE_OUT` のディレクトリの `canary.log` に 1 行（`<文脈>:<経路>`）を書く。
+- ネットワーク: 127.0.0.1 の受け口（`isolation-probe.mjs` が run のあいだだけ立てて止める。宛先は 127.0.0.1 だけ）の `net.log`。
+
+対照（届くはずの経路が、実際に届くこと）: 本体の `invoke`、本体の `webkit.messageHandlers.ipc.postMessage`（鍵あり）、`isolation-probe.mjs` 自身から受け口への接続。3 つとも記録に出た。したがって、記録の仕組みと、呼び方の形は正しい。
+
+結果（判定は `PASS`: 鍵なしで届く経路は、なかった）:
+
+| 文脈 | 経路 | 鍵 | 記録 | 届いたか |
+|---|---|---|---|---|
+| Worker（部品のコード） | `fetch` と XHR で `ipc://localhost`、`fetch` で `http://ipc.localhost` | なし | `canary.log` | 届かない（3 経路とも） |
+| Worker | 同じ 3 経路 | 漏れたと仮定（本体が部品に渡した） | `canary.log` | 届かない（3 経路とも） |
+| Worker | `fetch`、XHR、WebSocket、`importScripts`、`EventSource`、入れ子の blob の Worker から 127.0.0.1 | 鍵なし／あり | `net.log` | 届かない（6 経路 × 2） |
+| Worker | `postMessage` で決めていない 3 つの形（未知の種類、要求していない `done`、鍵つきの `invoke` の形）を仲介へ | あり（1 つ） | `canary.log` と本体の記録 | 届かない。仲介が Worker を止め、本体の記録に「不正なメッセージ」と出た（3 つとも） |
+| Worker | 本体と同じ名前の BroadcastChannel | - | 本体のページが聞いたか | 聞こえない |
+| Worker | `__TAURI_INTERNALS__`、`__TAURI__`、`isTauri`、`webkit`、`ipc`、`origin`（自己申告） | - | - | `undefined` が 5 つ、`origin` は `null` |
+| 仲介と同じ条件の文脈（`plug:` の sandbox の iframe、同じ CSP のヘッダー。仲介のコードが壊された場合の上限） | `fetch` と XHR で `ipc://localhost`、`fetch` で `http://ipc.localhost` | なし／あり | `canary.log` | 届かない（6 経路） |
+| 同上 | `webkit.messageHandlers.ipc.postMessage` | なし | `canary.log` | 届かない（`posted` は返るが、記録なし） |
+| 同上 | `webkit.messageHandlers.ipc.postMessage` | 漏れたと仮定 | `canary.log` | 届いた（1 行） |
+| 同上 | `window.ipc.postMessage` | 漏れたと仮定 | - | 存在しない（`window.ipc` は `undefined`） |
+| 同上 | `fetch`、XHR、画像、`sendBeacon`、WebSocket、入れ子の blob の Worker から 127.0.0.1 | - | `net.log` | 届かない（6 経路） |
+| 同上 | `parent.document`、`parent.__TAURI_INTERNALS__`、`top.location` | - | - | 3 つとも `SecurityError`（自己申告） |
+
+読み方:
+
+- 鍵なしで届く経路は、Worker にも、仲介と同じ条件の文脈にも、見つからなかった。鍵ありで届いたのは、1 つだけ: 仲介と同じ条件の文脈からの `webkit.messageHandlers.ipc.postMessage`。これは、R0 の K1 の「独自プロトコルの iframe は `postMessage` の経路で破られる」を、製品の構成（`plug:`、sandbox、同じ CSP のヘッダー）で再確認したもの。K1 の未検証の項目だった「鍵が漏れたときの `postMessage` の経路を、ネイティブ側で塞げるか」は、この構成では塞がっていない（鍵が漏れた場合）、が答え。
+- Worker は、鍵を渡しても届かなかった。`webkit` が Worker にない（`undefined`）ので、`postMessage` の経路がない。`ipc://` と `http://ipc.localhost` は、鍵があっても記録に出なかった。止めている層は、Worker では特定できていない: iframe の CSP（`default-src 'none'` の `connect-src`）と、`Origin` が `null` であることによる、ネイティブ側の拒否の両方が考えられる。WebKit の Worker は `securitypolicyviolation` を出さず（自己申告の `csp` が空）、CSP だけを外した対照は取っていない。仲介と同じ条件の文脈では、`securitypolicyviolation` で、`ipc://`、`http://ipc.localhost`、127.0.0.1 の接続が CSP の `connect-src` と `img-src` に止められたことが見えた。
+- 仲介のコードが壊されても、鍵がなければ届かない。鍵は、本体（メインフレーム）の定数で、段 1・段 2 の文脈には存在しない。この検証で鍵を渡したのは、検証用のビルドだけの模擬。製品のコードは、鍵を取り出さず、渡さない（architecture の縛り）。
+
+鍵が漏れた場合に塞ぐ手立ての提案（R5 では直さない。どれも未検証）:
+
+1. 鍵の秘匿を、今のとおりコードの規則と単体テストで守る（鍵を扱う文字列が、段 2 の仕組みのコードに出ない）。仲介のコードが壊されるには、`relay.js`（固定の約 249 行。コメントを含む）の不具合が要る。
+2. 案 1b / 2a の変形: 仲介のページを `plug:` ではなく `srcdoc` の iframe にする。K1 では、`srcdoc` の iframe は、鍵ありの `postMessage` も届かなかった（原因は未確認）。代償は、`srcdoc` が本体の CSP を継承するので、`relay.js` を読む `script-src` と、Worker を作る `worker-src blob:` を、本体の CSP に足す必要があること（本体の空間の CSP が広がる）。この構成での `postMessage` と、本体の CSP の広がりを、実装して確かめてから決める。
+3. ネイティブ側で、`postMessage` の経路を、送り元のフレームの URL で拒否する。Tauri と wry が、メッセージの送り元のフレームを判別できるか、`plug:` を「ローカルでない」と扱えるかを、ソース（`webview/mod.rs` の鍵と origin の検査）で調べる。判別できないなら、上流への提案になる。
+4. 検証用のページの、鍵ありの `postMessage` が届いた記録を、R6 の前に、2 の構成でも取る（R6 で最初の部品を入れる前に決める）。
+
+未検証のまま残るもの:
+
+- Windows（WebView2。`http://plug.localhost/` と IPC の経路が違う）、Linux（WebKitGTK）、release ビルドでの同じ確認。`hostUrl.ts` の Windows の URL は、書いただけで動かしていない。Windows では独自プロトコルが `http://plug.localhost/` になるので、本体の CSP の `frame-src plug:` と、ホストのページの CSP の `script-src plug:` が、そのままでは一致しない可能性がある（未確認。Windows に対応するときに、CSP の書き方を決め直す）。
+- 窓の中でのショートカットの実行（OS のキー入力を送らない方針）。ショートカットから部品のコマンドを実行する経路は、Chromium の e2e だけ。Tauri の窓では、検証用の部品が、`start`、`command`、`ready`、`run`（`report` の実行）、`failed`、不正なメッセージの停止まで、本物の `plug:` と `relay.js` の上で動くことを確かめた。
+- Worker の中で、`ipc://` と `http://ipc.localhost` を止めている層（CSP か `Origin` の検査か）。
+- Worker の自己申告は、止めた理由（300 文字まで）に載せるので、鍵ありの部品の報告の末尾は切れた。判定には使っていない。
+- 画像: Worker には `Image` がないので、Worker からの画像の読み込みは試していない（仲介と同じ条件の文脈では試した）。
+
+## R5 の限界
+
+- 段 2 の API は `registerCommand` だけ。本体のデータを読む API、設定、クリップボード、リンクを開く、は R6 以降。権限の宣言（`manifest.permissions`）と、確認の画面は R6。
+- 1 つの iframe を全部の部品で共有する。仲介のコードが壊されたときの上限は、全部の段 2 の部品に及ぶ。
+- Worker を止めても、実行中の `fetch` などは Worker とともに消えるが、本体の側の副作用の取り消しはない（R5 は副作用のある API がない）。
+- ショートカットの重なりは、起動した順（Worker が `command` を送った順）で決まる。段 3 のコマンドは、同期の起動で先に登録されるので、段 3 が常に先。
+
 ## 未決のこと
 
 - 部品が新しいファイルの種類（`.org` など）を足せるか。開くダイアログ、エクスプローラー、ネイティブ側の検査（`fileKinds.ts` と Rust 側の拡張子の判定）の両方に関わる。足せるなら、ネイティブの検査の変更が要る。
@@ -535,5 +677,5 @@ R1・R2 と同じく、部品のテーマは CodeMirror が自動で付ける cl
 - 仕様 §7.2 の改め方（エディタに関わる部品の範囲で、CodeMirror への依存を認める書き方）。
 - 段 1 の中で、エディタの中に CodeMirror を持つ部品（1 節だけ広げて書く、S1）を、段 1 と段 3 のどちらで作るか。
 - Windows（WebView2）と Linux（WebKitGTK）での K1〜K3 の確認。独自プロトコルと IPC の経路が違う（Windows は `http://<プロトコル>.localhost`）ので、結果が同じとは限らない。
-- 鍵が漏れたときの `postMessage` の経路を、ネイティブ側で塞げるか（K1 の未検証）。
+- 鍵が漏れたときの `postMessage` の経路を、ネイティブ側で塞げるか。R5 で、この構成（`plug:` の sandbox の iframe）では塞がっていないことを確かめた（「R5 で確かめた隔離」）。塞ぐ手立ては、その節の提案（未検証）。
 - セーフモードへの入り方（起動の引数だけか、異常終了の後の確認か）。

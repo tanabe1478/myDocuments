@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      Worker のホストのページ（ADR-005 の案 2a）。本体の sandbox="allow-scripts" の iframe の中身。
+      Tauri 版は独自プロトコル plug: が、同じ CSP をヘッダーでも付けて返す。ブラウザ版（e2e と dev）は同じオリジンから配信され、
+      ヘッダーがないので、この meta の CSP が効く。ブラウザ版は http のオリジンのスクリプトを読むので 'self' を足してある
+      （plug: の origin は不透明で 'self' が一致しないため、Tauri 版は plug: のほうだけが効く）。
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src plug: 'self'; worker-src blob:" />
+    <title>plugin host</title>
+  </head>
+  <body>
+    <script src="relay.js"></script>
+  </body>
+</html>

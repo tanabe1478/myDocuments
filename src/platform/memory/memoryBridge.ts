@@ -57,6 +57,11 @@ export interface E2ESeed {
   bulkFolders?: Array<{ path: string; count: number }>;
   /** 読もうとすると権限エラー（permission-denied）になるフォルダ。 */
   unreadableFolders?: string[];
+  /**
+   * 隔離した操作（段 2）のテスト用の部品（src/isolated-plugins/e2eFixtures.ts）。plugins に書いた名前の部品を読み込む。
+   * 書かなければ、段 2 の部品はなく、iframe も Worker も作られない。時間切れ（ミリ秒）は、テストを早く終わらせるために短くできる。
+   */
+  isolated?: { plugins: string[]; activateTimeoutMs?: number; runTimeoutMs?: number };
 }
 
 /** テストが window.__mdeE2E 経由で観測・操作するもの。 */
@@ -139,6 +144,8 @@ declare global {
   interface Window {
     __E2E_SEED__?: E2ESeed;
     __mdeE2E?: E2EState;
+    /** 段 2（隔離した操作）のテスト用の部品を読み込んだときだけ。本体の側で見えた、部品の出来事の記録（src/plugin-host/ の HostTrace）。 */
+    __mdeE2EIsolatedTrace?: Array<{ readonly type: string; readonly plugin: string } & Record<string, unknown>>;
   }
 }
 

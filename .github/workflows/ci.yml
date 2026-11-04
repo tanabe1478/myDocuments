@@ -48,6 +48,11 @@ jobs:
           # 本物のゴミ箱へ移すテストは、CI でだけ動かす（手元のゴミ箱を汚さないため）。
           IME_TEST_REAL_TRASH: '1'
 
+      - name: cargo test (src-tauri, isolation-probe feature)
+        run: cargo test --manifest-path src-tauri/Cargo.toml --features isolation-probe
+        env:
+          IME_TEST_REAL_TRASH: '1'
+
       - name: Install Playwright chromium
         run: npx playwright install --with-deps chromium
 
@@ -60,6 +65,19 @@ jobs:
         run: |
           if grep -rlE "__mdeE2E|__E2E_SEED__" dist; then
             echo "e2e code found in the production bundle" >&2
+            exit 1
+          fi
+
+      # 隔離の検証用のコード（VITE_ISOLATION_PROBE=1 のビルドだけ）、段 2 のテスト用の部品（__mdeE2EActionFixture は上の検査でも見る）、
+      # ブラウザ版だけが配信する Worker のホストのファイル（Tauri 版は plug: から返す）は、本番の dist に入らない。
+      - name: Production bundle must not contain the isolation probe or the test action plugins
+        run: |
+          if grep -rlE "__mdeIsolationProbe|isolation_probe_|__mdeE2EActionFixture" dist; then
+            echo "isolation probe or test plugin code found in the production bundle" >&2
+            exit 1
+          fi
+          if [ -e dist/plug ]; then
+            echo "plug/ must not be emitted in the production bundle" >&2
             exit 1
           fi
 
