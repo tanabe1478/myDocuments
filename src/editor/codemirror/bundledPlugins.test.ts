@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { history, undo } from '@codemirror/commands';
+import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { ensureSyntaxTree } from '@codemirror/language';
 import { EditorState } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
@@ -8,9 +9,7 @@ import { bundledPlugins } from '../../features';
 import { createPluginRegistry, ownsCaretScroll, skipCaretFollow } from '../../plugin-api';
 import type { EditorAdapter } from '../EditorAdapter';
 import { createCodeMirrorAdapter } from './CodeMirrorAdapter';
-import { markdownDecorations } from './markdownDecorations';
 import { readingPositionExtension } from './readingPosition';
-import { taskToggleExtension } from './taskToggle';
 
 // 同梱の部品が、ホスト（CodeMirrorAdapter など）を通して、これまでと同じに働くことの確認。
 beforeAll(() => {
@@ -283,8 +282,8 @@ describe('bundled plugins together', () => {
     ]);
   });
 
-  it('keeps the extension order of the list (focus mode, list continuation, typewriter mode), and the shortcuts apart', () => {
-    expect(registry.editorExtensions.map((e) => e.settingKey)).toEqual(['focusMode', 'listContinuation', 'typewriterMode']);
+  it('keeps the extension order of the list (Markdown display, focus mode, list continuation, typewriter mode), and the shortcuts apart', () => {
+    expect(registry.editorExtensions.map((e) => e.settingKey)).toEqual(['markupDisplay', 'focusMode', 'listContinuation', 'typewriterMode']);
     expect(registry.commands.map((c) => [c.id, c.shortcut?.text])).toEqual([
       ['focus.toggle', 'Mod+Shift+F'],
       ['typewriter.toggle', 'Mod+Shift+T'],
@@ -311,8 +310,9 @@ describe('shared conventions', () => {
       state: EditorState.create({
         doc: 'first\n\n- [ ] todo\n',
         extensions: [
-          markdownDecorations(),
-          taskToggleExtension(),
+          // 本体が Markdown の言語を入れ、Markdown の見た目の部品（チェックボックスの切り替えを含む）の拡張を足す。
+          markdown({ base: markdownLanguage }),
+          registry.editorExtensions.find((e) => e.pluginId === 'markdown')!.create('cursorLine', { textKind: 'markdown', openExternalUrl: () => {}, isMacPlatform: () => false }),
           history(),
           EditorView.updateListener.of((u) => {
             for (const tr of u.transactions) {

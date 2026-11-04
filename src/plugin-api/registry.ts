@@ -205,6 +205,24 @@ export function createPluginRegistry(plugins: readonly Plugin[], options: Plugin
     },
   });
 
+  /**
+   * 部品に渡す環境。本体が貸す機能は、部品が止まったあと（例外で止めた、または解除した）に呼ばれても何もしない形に包む
+   * （止める前に作った拡張が、エディタに残っていることがある）。本体の側の例外は、部品のせいではないので、部品は止めず記録だけする。
+   */
+  const serviceEnvironment = (entry: Entry, env: EditorExtensionEnvironment): EditorExtensionEnvironment => ({
+    textKind: env.textKind,
+    isMacPlatform: () => env.isMacPlatform(),
+    openExternalUrl: (url) => {
+      if (entry.status !== 'active') return;
+      if (typeof url !== 'string') throw new Error('openExternalUrl には、文字列の URL を渡してください');
+      try {
+        env.openExternalUrl(url);
+      } catch (error) {
+        report('error', `[plugin] 部品「${entry.id}」が呼んだ『外部の URL を開く』で、本体の側が例外を出しました`, error);
+      }
+    },
+  });
+
   const allRegistrations = (): Registrations[] => entries.map((e) => e.regs);
 
   const contextFor = (entry: Entry): PluginContext => {
@@ -240,7 +258,7 @@ export function createPluginRegistry(plugins: readonly Plugin[], options: Plugin
           create: guard(
             entry,
             (value: unknown, env: EditorExtensionEnvironment) => {
-              const extension = create(value as T, env);
+              const extension = create(value as T, serviceEnvironment(entry, env));
               // 拡張の形が不正なら、state を作るときに例外になり、文書の読み込みごと失敗する。ここで試して止める。
               EditorState.create({ extensions: extension });
               return extension;

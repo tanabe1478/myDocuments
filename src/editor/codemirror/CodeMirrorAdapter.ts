@@ -2,16 +2,13 @@ import { defaultKeymap, history } from '@codemirror/commands';
 import { search, searchKeymap } from '@codemirror/search';
 import { Compartment, EditorState, type Extension, type StateEffect } from '@codemirror/state';
 import { EditorView, drawSelection, keymap } from '@codemirror/view';
-import type { RegisteredEditorExtension, TextKind } from '../../plugin-api';
-import type { MarkupDisplay } from '../../preferences/preferences';
+import type { HostServices, RegisteredEditorExtension, TextKind } from '../../plugin-api';
 import type { EditorAdapter, EditorSelection } from '../EditorAdapter';
 import { historyKeymap } from './historyKeymap';
 import { indentKeymap } from './indentKeymap';
 import { keepCursorVisibleExtension } from './keepCursorVisible';
-import { linkOpenExtension } from './linkOpen';
-import { markdownDecorations, markupDisplayFacet, plainTextDecorations } from './markdownDecorations';
 import { readingPositionExtension } from './readingPosition';
-import { taskToggleExtension } from './taskToggle';
+import { textKindExtension } from './textKind';
 import { editorTheme } from './theme';
 import { verticalMotionExtension } from './verticalMotion';
 
@@ -37,19 +34,22 @@ export class CodeMirrorAdapter implements EditorAdapter {
   private readonly changeListeners = new Set<(text: string) => void>();
   private readonly selectionListeners = new Set<(selection: EditorSelection) => void>();
   private textKind: TextKind = 'markdown';
-  private markupDisplay: MarkupDisplay = 'cursorLine';
-  /** リンクを開く操作（⌘/Ctrl+クリック）の通知先。 */
-  private readonly linkListeners = new Set<(url: string) => void>();
   /** 本文の下側を覆う要素（トースト）の高さ。scrollMargins の下側に使う（レイアウトは変えない）。 */
   private bottomInset = 0;
   // setText は state を作り直すので、モードは Compartment で持ち、作り直しても現在の値で始める。
   private readonly kindCompartment = new Compartment();
-  private readonly markupCompartment = new Compartment();
 
   /** 部品の拡張。部品の一覧（PluginRegistry）の順。 */
   private readonly pluginSlots: readonly PluginSlot[];
 
-  constructor(pluginExtensions: readonly RegisteredEditorExtension[] = []) {
+  /**
+   * @param pluginExtensions 部品の拡張。
+   * @param services 本体が部品に貸す機能（外部の URL を開く、OS の判定）。部品の拡張を作るときに渡す。
+   */
+  constructor(
+    pluginExtensions: readonly RegisteredEditorExtension[] = [],
+    private readonly services: HostServices = DEFAULT_SERVICES,
+  ) {
     this.pluginSlots = pluginExtensions.map((registration) => ({
       registration,
       compartment: new Compartment(),
@@ -117,17 +117,6 @@ export class CodeMirrorAdapter implements EditorAdapter {
     });
   }
 
-  setMarkupDisplay(mode: MarkupDisplay): void {
-    if (this.markupDisplay === mode) return;
-    this.markupDisplay = mode;
-    this.view?.dispatch({ effects: this.markupCompartment.reconfigure(markupDisplayFacet.of(mode)) });
-  }
-
-  onOpenLink(cb: (url: string) => void): () => void {
-    this.linkListeners.add(cb);
-    return () => this.linkListeners.delete(cb);
-  }
-
   setBottomInset(px: number): void {
     const previous = this.bottomInset;
     this.bottomInset = Math.max(0, px);
@@ -153,7 +142,6 @@ export class CodeMirrorAdapter implements EditorAdapter {
     this.view = null;
     this.changeListeners.clear();
     this.selectionListeners.clear();
-    this.linkListeners.clear();
   }
 
   /** 別の文書として読み込む。state を作り直すので、Undo/Redo の履歴は空になる。 */
@@ -177,11 +165,11 @@ export class CodeMirrorAdapter implements EditorAdapter {
   }
 
   private kindExtension(): Extension {
-    return this.textKind === 'plain' ? plainTextDecorations() : markdownDecorations();
+    return textKindExtension(this.textKind);
   }
 
   private pluginExtension(slot: PluginSlot): Extension {
-    return slot.registration.create(slot.value, { textKind: this.textKind });
+    return slot.registration.create(slot.value, { textKind: this.textKind, ...this.services });
   }
 
   private createState(doc: string): EditorState {
@@ -198,9 +186,6 @@ export class CodeMirrorAdapter implements EditorAdapter {
       EditorView.lineWrapping,
       this.kindCompartment.of(this.kindExtension()),
       ...this.pluginSlots.map((slot) => slot.compartment.of(this.pluginExtension(slot))),
-      this.markupCompartment.of(markupDisplayFacet.of(this.markupDisplay)),
-      linkOpenExtension((url) => this.linkListeners.forEach((cb) => cb(url))),
-      taskToggleExtension(),
       search({ top: true }),
       readingPositionExtension(),
       keepCursorVisibleExtension(),
@@ -231,6 +216,12 @@ export class CodeMirrorAdapter implements EditorAdapter {
   }
 }
 
-export function createCodeMirrorAdapter(pluginExtensions: readonly RegisteredEditorExtension[] = []): EditorAdapter {
-  return new CodeMirrorAdapter(pluginExtensions);
+/** 本体が貸す機能が渡されなかったとき（部品を使わないテストなど）。何もしない。 */
+const DEFAULT_SERVICES: HostServices = { openExternalUrl: () => {}, isMacPlatform: () => false };
+
+export function createCodeMirrorAdapter(
+  pluginExtensions: readonly RegisteredEditorExtension[] = [],
+  services: HostServices = DEFAULT_SERVICES,
+): EditorAdapter {
+  return new CodeMirrorAdapter(pluginExtensions, services);
 }

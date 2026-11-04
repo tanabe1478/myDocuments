@@ -2,7 +2,7 @@
 
 Run 11 でリストの継続、Run 12 で記号の表示とリンクを開く操作（ADR-004）を足した。
 
-仕様の原則 1「書くことが主役」、UI-01、UI-02、UI-05、ED-02、ED-03、ED-07 に沿って決めた挙動をまとめる。実装は `src/editor/` と `src/styles.css`。
+仕様の原則 1「書くことが主役」、UI-01、UI-02、UI-05、ED-02、ED-03、ED-07 に沿って決めた挙動をまとめる。実装は `src/editor/`、`src/features/`（同梱の部品。Markdown の見た目は `src/features/markdown/`）と `src/styles.css`。
 
 ## 視線の位置
 
@@ -45,7 +45,7 @@ Run 11 でリストの継続、Run 12 で記号の表示とリンクを開く操
 - `tight`（既定、設定画面「編集」の「空行を入れない」）: loose list でも空行を入れず、改行と記号だけを入れる。tight list の空の 2 項目目でも、空行を入れない（下記）。
 - `preserve`（「リストの形に合わせる」）: lang-markdown の既定のまま、loose list では次の項目の前にも空行を入れる。
 
-- 実装は `src/editor/codemirror/listContinuation.ts`。`tight` のときだけ、lang-markdown のコマンドを実行して得た transaction から、継続のために足された空行だけを取り除く（「改行、空行、改行、記号」の 3 行の挿入だけが対象）。空の項目での終了、番号の付け直し、引用の継続、複数カーソルはそのまま通す。`preserve` は lang-markdown 自身の Enter に任せるので、挙動は変えない。
+- 実装は `src/features/list-continuation/listContinuation.ts`。`tight` のときだけ、lang-markdown のコマンドを実行して得た transaction から、継続のために足された空行だけを取り除く（「改行、空行、改行、記号」の 3 行の挿入だけが対象）。空の項目での終了、番号の付け直し、引用の継続、複数カーソルはそのまま通す。`preserve` は lang-markdown 自身の Enter に任せるので、挙動は変えない。
 - tight list（空行のないリスト）の空の 2 項目目で Enter を押したとき、lang-markdown の既定は、空の項目の前に空行を入れて、リストを loose にする。`tight` では、これも止める（`insertNewlineContinueMarkupCommand({ nonTightLists: false })`）。止めたときは、空の項目の記号を取り除いて、リストを終える（1 項目目や 3 項目目以降の空の項目と同じ。入れ子は 1 段戻る）。例: `- a` の次の `- ` で Enter を押すと、`- a` と、記号のない空の行（カーソルがある）になる。`preserve` は、これまでどおり空行を入れる（Run 12、N4）。
 - 変更はすぐ編集中の文書に効く。Compartment で切り替えるので、文書を開き直す必要はなく、`setText` で state を作り直しても今の値で始まる。
 - IME の変換中の Enter は、今までどおり何もしない（`insertNewlineContinueMarkup` と同じキー割り当ての経路）。Undo は 1 回で Enter の前に戻る。

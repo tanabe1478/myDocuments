@@ -1,4 +1,3 @@
-import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { HighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirror/language';
 import { Facet, RangeSetBuilder, StateEffect, type Extension, type Line } from '@codemirror/state';
 import {
@@ -10,9 +9,8 @@ import {
   type ViewUpdate,
 } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
-import { AFTER_COMPOSITION_MS } from '../../plugin-api';
-import type { MarkupDisplay } from '../../preferences/preferences';
-import { fallbackPrefixWidthEm, hangPrefix, isBlankLine, measurableText } from '../lineKinds';
+import { AFTER_COMPOSITION_MS, isBlankLine } from '../../plugin-api';
+import { fallbackPrefixWidthEm, hangPrefix, measurableText } from './lineKinds';
 import {
   MARKER_WIDGET_EM,
   activeLines,
@@ -23,7 +21,8 @@ import {
   type ActiveLines,
   type LinkRange,
   type MarkupSpan,
-} from '../liveMarkup';
+} from './liveMarkup';
+import { DEFAULT_MARKUP_DISPLAY, type MarkupDisplay } from './markupDisplay';
 
 /**
  * Markdown の見た目。表示だけを変え、本文には何も加えない。
@@ -111,9 +110,9 @@ class PrefixMeter {
   }
 }
 
-/** 記号の見せ方（設定）。Compartment で差し替える（CodeMirrorAdapter.ts）。 */
+/** 記号の見せ方（設定）。値が変わると、ホストが部品の拡張を差し替える（index.ts）。 */
 export const markupDisplayFacet = Facet.define<MarkupDisplay, MarkupDisplay>({
-  combine: (values) => values[0] ?? 'cursorLine',
+  combine: (values) => values[0] ?? DEFAULT_MARKUP_DISPLAY,
 });
 
 /** 隠した行の • とチェックボックス。幅は固定の箱（MARKER_WIDGET_EM）なので、ぶら下げの幅を計算で決められる。 */
@@ -431,44 +430,10 @@ export function visibleLinks(view: EditorView): readonly LinkRange[] {
   return plugin.links;
 }
 
-export function markdownDecorations(): Extension {
-  return [markdown({ base: markdownLanguage }), syntaxHighlighting(markdownHighlightStyle), blockLineDecorations];
-}
-
-const blankLine = Decoration.line({ class: 'cm-md-blank' });
-
-function plainBlankLines(view: EditorView): DecorationSet {
-  const { doc } = view.state;
-  const builder = new RangeSetBuilder<Decoration>();
-  let lastFrom = -1;
-  for (const { from, to } of view.visibleRanges) {
-    let pos = from;
-    while (pos <= to) {
-      const line = doc.lineAt(pos);
-      if (line.from > lastFrom && isBlankLine(line.text)) builder.add(line.from, line.from, blankLine);
-      lastFrom = Math.max(lastFrom, line.from);
-      pos = line.to + 1;
-    }
-  }
-  return builder.finish();
-}
-
-class PlainBlankLinePlugin {
-  decorations: DecorationSet;
-
-  constructor(view: EditorView) {
-    this.decorations = plainBlankLines(view);
-  }
-
-  update(update: ViewUpdate) {
-    if (update.docChanged || update.viewportChanged) this.decorations = plainBlankLines(update.view);
-  }
-}
-
 /**
- * 素のテキスト（.txt、.text）の見た目。Markdown の言語・色・見出し・ぶら下げインデント・コードフェンスの帯は付けない。
- * 空行の高さ（段落間隔の設定）は Markdown の記法ではないので、Markdown と同じにする。
+ * Markdown の装飾の拡張一式（色、行の装飾、記号の隠し方）。記号の見せ方 display を、この拡張の中の Facet として持つ。
+ * Markdown の言語（構文木）は、本体が文書の種類に応じて入れる。この拡張はその構文木を読む。
  */
-export function plainTextDecorations(): Extension {
-  return ViewPlugin.fromClass(PlainBlankLinePlugin, { decorations: (plugin) => plugin.decorations });
+export function markdownDecorations(display: MarkupDisplay): Extension {
+  return [syntaxHighlighting(markdownHighlightStyle), blockLineDecorations, markupDisplayFacet.of(display)];
 }

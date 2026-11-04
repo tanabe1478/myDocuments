@@ -37,8 +37,9 @@ describe('src/features/: what a bundled plugin may import', () => {
   const files = listFiles(FEATURES);
   const pluginDirs = readdirSync(FEATURES).filter((d) => statSync(path.join(FEATURES, d)).isDirectory());
 
-  it('has the bundled plugins (typewriter, focus, list-continuation), each in its own folder', () => {
+  it('has the bundled plugins (typewriter, focus, list-continuation, markdown), each in its own folder', () => {
     expect(pluginDirs).toContain('typewriter');
+    expect(pluginDirs).toContain('markdown');
     expect(pluginDirs).toContain('focus');
     expect(pluginDirs).toContain('list-continuation');
     expect(files.length).toBeGreaterThan(0);
@@ -73,6 +74,33 @@ describe('src/features/: what a bundled plugin may import', () => {
     // ホストの設定の型（src/preferences/）を import しない（部品が自分の型を持つ）。
     for (const f of files.filter((f) => isInside(f, path.join(FEATURES, 'list-continuation')))) {
       expect(specifiers(f).filter((spec) => spec.includes('preferences')), rel(f)).toEqual([]);
+    }
+  });
+
+  it('the files of the markdown plugin are covered by the import rule (checked on their own, so the rule cannot silently skip them)', () => {
+    const own = files.filter((f) => isInside(f, path.join(FEATURES, 'markdown'))).map(rel);
+    expect(own).toEqual(
+      expect.arrayContaining([
+        'features/markdown/index.ts',
+        'features/markdown/markdownDecorations.ts',
+        'features/markdown/liveMarkup.ts',
+        'features/markdown/lineKinds.ts',
+        'features/markdown/taskToggle.ts',
+        'features/markdown/linkOpen.ts',
+        'features/markdown/theme.ts',
+        'features/markdown/liveMarkup.test.ts',
+        'features/markdown/lineKinds.test.ts',
+        'features/markdown/taskToggle.test.ts',
+        'features/markdown/plugin.test.ts',
+      ]),
+    );
+    expect(specifiers(path.join(FEATURES, 'markdown', 'index.ts'))).toEqual(
+      expect.arrayContaining(['../../plugin-api', './linkOpen', './markdownDecorations', './markupDisplay', './taskToggle', './theme']),
+    );
+    // 本体の設定・OS の判定・ネイティブへの入口（bridge）を、部品は直接 import しない。本体が貸す機能（plugin-api の HostServices）だけを使う。
+    for (const f of files.filter((f) => isInside(f, path.join(FEATURES, 'markdown')))) {
+      const bad = specifiers(f).filter((spec) => /preferences|shortcuts|platform|bridge|\/ui\/|\/editor\//.test(spec));
+      expect(bad, rel(f)).toEqual([]);
     }
   });
 
@@ -131,9 +159,10 @@ describe('the host does not know any plugin by name', () => {
     'editor/codemirror/keepCursorVisible.ts',
     'editor/codemirror/readingPosition.ts',
     'editor/codemirror/theme.ts',
-    'editor/codemirror/taskToggle.ts',
+    'editor/codemirror/textKind.ts',
     'ui/EditingSettings.tsx',
     'ui/SettingsDialog.tsx',
+    'ui/RadioSettingsItem.tsx',
   ];
 
   it('lists files that exist', () => {
@@ -151,14 +180,30 @@ describe('the host does not know any plugin by name', () => {
     /ListContinuation/i,
     /insertNewlineContinue/i,
     /setListContinuation/i,
+    // R4: Markdown の見た目（記法の隠し方、チェックボックス、リンクを開く操作）。素のテキストの空行の class（cm-md-blank）だけは本体のもの。
+    /markupDisplay/i,
+    /liveMarkup/i,
+    /taskToggle/i,
+    /linkOpen/i,
+    /markdownDecorations/i,
+    /lineKinds/i,
+    /cm-md-(?!blank\b)/i,
   ];
 
-  it('has no plugin names in the host files (typewriter, focusMode, focusRange, cm-md-dim, setFocusMode, listContinuation, insertNewlineContinue, setListContinuation; any case, comments included)', () => {
+  it('has no plugin names in the host files (typewriter, focusMode, focusRange, cm-md-dim, setFocusMode, listContinuation, insertNewlineContinue, setListContinuation, markupDisplay, liveMarkup, taskToggle, linkOpen, markdownDecorations, lineKinds, cm-md-* except cm-md-blank; any case, comments included)', () => {
     const hits = HOST.flatMap((f) => {
       const text = readFileSync(path.join(SRC, f), 'utf8');
       return NAMES.filter((n) => n.test(text)).map((n) => `${f}: ${n.source}`);
     });
     expect(hits).toEqual([]);
+  });
+
+  it('cm-md-blank (the blank line of plain text, owned by the host) is the only cm-md- name the host may have', () => {
+    const blank = NAMES.find((n) => n.source.includes('cm-md-(?!'))!;
+    expect(blank.test('.cm-md-blank')).toBe(false);
+    expect(blank.test("'.cm-md-blank': {")).toBe(false);
+    expect(blank.test('cm-md-blankish')).toBe(true);
+    expect(blank.test('cm-md-bullet')).toBe(true);
   });
 
   it('the name check itself catches each name (guards against a pattern that silently matches nothing)', () => {
@@ -173,6 +218,15 @@ describe('the host does not know any plugin by name', () => {
       'LISTCONTINUATION',
       'insertNewlineContinueTight',
       'adapter.setListContinuation(mode)',
+      'prefs.markupDisplay',
+      'type MarkupDisplay',
+      'import { collectMarkup } from ./liveMarkup',
+      'TaskToggle',
+      'LINKOPEN',
+      "from './markdownDecorations'",
+      'lineKinds',
+      "'.cm-md-h1'",
+      "'cm-md-task-done'",
     ]) {
       expect(NAMES.some((n) => n.test(sample)), sample).toBe(true);
     }

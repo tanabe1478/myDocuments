@@ -17,7 +17,7 @@ import { ExplorerController, type TrashTarget } from './explorer/controller';
 import type { EditorAdapter } from './editor/EditorAdapter';
 import { createCodeMirrorAdapter } from './editor/codemirror/CodeMirrorAdapter';
 import { BridgeError, type DocumentBridge, type DraftSummary } from './platform';
-import { isOpenableExternalUrl } from './platform/externalUrl';
+import { createHostServices } from './platform/hostServices';
 import type { PluginRegistry } from './plugin-api';
 import { applyPreferences } from './preferences/apply';
 import { createCommandContext } from './preferences/commandContext';
@@ -160,7 +160,8 @@ export function App({
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    const adapter = createCodeMirrorAdapter(plugins.editorExtensions);
+    // 本体が部品に貸す機能（外部の URL を開く、OS の判定）。部品は bridge を直接使わない。
+    const adapter = createCodeMirrorAdapter(plugins.editorExtensions, createHostServices({ bridge, notify, isMacPlatform }));
     adapter.mount(host);
     adapter.focus();
     adapterRef.current = adapter;
@@ -168,18 +169,9 @@ export function App({
     for (const extension of plugins.editorExtensions) {
       adapter.setPluginSetting(extension.settingKey, prefsRef.current[extension.settingKey]);
     }
-    adapter.setMarkupDisplay(prefsRef.current.markupDisplay);
     const off = adapter.onChange((text) => {
       controller.handleEdit(text);
       setTyping(true);
-    });
-    // ⌘/Ctrl+クリックしたリンク。http / https だけを既定のブラウザで開く（ネイティブ側でも検査する）。
-    const offLink = adapter.onOpenLink((url) => {
-      if (!isOpenableExternalUrl(url)) {
-        notify({ kind: 'info', message: 'このリンクは開けません' });
-        return;
-      }
-      bridge.openExternalUrl(url).catch(() => notify({ kind: 'info', message: 'このリンクは開けません' }));
     });
     if (__E2E__ && window.__mdeE2E) window.__mdeE2E.editor = adapter;
 
@@ -211,7 +203,6 @@ export function App({
       window.removeEventListener('focus', onWindowFocus);
       void subscriptions.then((offs) => offs.forEach((o) => o()));
       off();
-      offLink();
       adapter.destroy();
       adapterRef.current = null;
     };
@@ -244,7 +235,6 @@ export function App({
       adapterRef.current?.setPluginSetting(extension.settingKey, prefs[extension.settingKey]);
     }
   }, [plugins, prefs]);
-  useEffect(() => adapterRef.current?.setMarkupDisplay(prefs.markupDisplay), [prefs.markupDisplay]);
 
   // 設定を CSS 変数と data-theme に反映する（即時）。
   useEffect(() => applyPreferences(prefs), [prefs]);

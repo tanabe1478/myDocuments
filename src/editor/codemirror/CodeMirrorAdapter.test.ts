@@ -1,14 +1,25 @@
 // @vitest-environment jsdom
 import { history, redo, undo } from '@codemirror/commands';
+import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { ensureSyntaxTree } from '@codemirror/language';
 import { EditorSelection, EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { bundledPlugins } from '../../features';
+import { PLUGIN_API_VERSION, createPluginRegistry, type EditorExtensionEnvironment } from '../../plugin-api';
 import type { EditorAdapter } from '../EditorAdapter';
-import { PLUGIN_API_VERSION, createPluginRegistry } from '../../plugin-api';
 import { createCodeMirrorAdapter } from './CodeMirrorAdapter';
-import { markdownDecorations } from './markdownDecorations';
-import { taskToggleExtension } from './taskToggle';
+
+/**
+ * Markdown の見た目は、同梱の部品（Markdown の見た目）が付ける。これらのテストは、その部品だけを読み込んだ部品の一覧（レジストリ）から
+ * 作った拡張を、本体のエディタに載せて確かめる（本体は Markdown の言語だけを入れる）。記号の見せ方の切り替えは、設定の値の変更として渡す。
+ */
+const markdownRegistry = createPluginRegistry(bundledPlugins.filter((p) => p.manifest.id === 'markdown'));
+const markdownExtensions = markdownRegistry.editorExtensions;
+const SERVICES = { openExternalUrl: () => {}, isMacPlatform: () => false };
+const markdownEnv: EditorExtensionEnvironment = { textKind: 'markdown', ...SERVICES };
+/** 部品の拡張（Markdown の見た目）を、素の EditorView の拡張として使う（Markdown の言語は本体が入れるので、足す）。 */
+const markdownViewExtensions = () => [markdown({ base: markdownLanguage }), markdownExtensions[0]!.create('cursorLine', markdownEnv)];
 
 // jsdom には、CodeMirror が測定に使う矩形取得 API がない。
 beforeAll(() => {
@@ -50,7 +61,7 @@ function typeAtEnd(text: string): void {
 beforeEach(() => {
   host = document.createElement('div');
   document.body.append(host);
-  adapter = createCodeMirrorAdapter();
+  adapter = createCodeMirrorAdapter(markdownExtensions, SERVICES);
 });
 
 afterEach(() => {
@@ -135,7 +146,7 @@ describe('history', () => {
 describe('markdown decoration', () => {
   it('assigns heading size classes per line, and styles emphasis and marks (markup shown always)', () => {
     adapter.mount(host);
-    adapter.setMarkupDisplay('always');
+    adapter.setPluginSetting('markupDisplay', 'always');
     adapter.setText('# H1\n\n## H2\n\ntext **bold** and *it* and [l](http://x)\n\nSetext\n======');
     settleSyntax(viewOf());
     // 記法記号（# など）は、「常に表示」では隠さず、行のテキストに残る。
@@ -146,6 +157,40 @@ describe('markdown decoration', () => {
     // 見出し以外の行には見出しクラスが付かない。
     const body = Array.from(host.querySelectorAll('.cm-line')).find((n) => n.textContent?.startsWith('text '));
     expect(body?.className).not.toContain('cm-md-h');
+  });
+});
+
+describe('the host alone (without the Markdown plugin) is a plain text editor with the Markdown language', () => {
+  const DOC = '# H1\n\n- [ ] todo\n\n```\ncode\n\ncode\n```\n\n[l](http://x) **b**';
+
+  it('shows a Markdown document as written: no decoration classes, no hidden markup, no blank-line height', () => {
+    const bare = createCodeMirrorAdapter();
+    bare.mount(host);
+    bare.setText(DOC);
+    expect(Array.from(host.querySelectorAll('.cm-line')).map((n) => n.textContent)).toEqual(DOC.split('\n'));
+    expect(host.querySelector('[class*="cm-md-"]')).toBeNull();
+    bare.destroy();
+  });
+
+  it('still puts the Markdown language in a Markdown document (the syntax tree exists), and not in plain text', () => {
+    const bare = createCodeMirrorAdapter();
+    bare.mount(host);
+    bare.setText(DOC);
+    const tree = ensureSyntaxTree(viewOf().state, viewOf().state.doc.length, 10_000);
+    expect(tree?.topNode.name).toBe('Document');
+    expect(tree?.topNode.firstChild?.name).toBe('ATXHeading1');
+    bare.setTextKind('plain');
+    expect(ensureSyntaxTree(viewOf().state, viewOf().state.doc.length, 10_000)).toBeNull();
+    bare.destroy();
+  });
+
+  it('puts the blank-line class on blank lines of plain text only (the host owns that one)', () => {
+    const bare = createCodeMirrorAdapter();
+    bare.mount(host);
+    bare.setTextKind('plain');
+    bare.setText('a\n\nb\n   \nc');
+    expect(host.querySelectorAll('.cm-md-blank')).toHaveLength(2);
+    bare.destroy();
   });
 });
 
@@ -196,15 +241,15 @@ describe('live markup (ADR-004)', () => {
     adapter.mount(host);
     adapter.setText(DOC);
     settleSyntax(viewOf());
-    adapter.setMarkupDisplay('always');
+    adapter.setPluginSetting('markupDisplay', 'always');
     expect(renderedLines()).toEqual(DOC.split('\n'));
-    adapter.setMarkupDisplay('cursorLine');
+    adapter.setPluginSetting('markupDisplay', 'cursorLine');
     expect(renderedLines()[2]).toBe('H2');
   });
 
   it('keeps the setting when a new document is set', () => {
     adapter.mount(host);
-    adapter.setMarkupDisplay('always');
+    adapter.setPluginSetting('markupDisplay', 'always');
     adapter.setText(DOC);
     expect(renderedLines()).toEqual(DOC.split('\n'));
   });
@@ -510,8 +555,7 @@ describe('task toggle (click on the checkbox of a hidden line)', () => {
         doc: TASKS,
         extensions: [
           EditorState.allowMultipleSelections.of(true),
-          markdownDecorations(),
-          taskToggleExtension(),
+          ...markdownViewExtensions(),
           history(),
         ],
       }),
@@ -590,7 +634,7 @@ describe('task toggle (click on the checkbox of a hidden line)', () => {
 
   it('does not toggle when the markup is always shown', () => {
     setup();
-    adapter.setMarkupDisplay('always');
+    adapter.setPluginSetting('markupDisplay', 'always');
     expect(boxes()).toHaveLength(0);
     const line = host.querySelectorAll('.cm-line')[2]!;
     mousedown(line);

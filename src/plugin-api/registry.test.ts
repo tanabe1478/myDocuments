@@ -4,12 +4,13 @@ import {
   PLUGIN_API_VERSION,
   createPluginRegistry,
   type CommandContext,
+  type EditorExtensionEnvironment,
   type Plugin,
   type PluginManifest,
   type PluginRegistryOptions,
 } from '.';
 
-const ENV = { textKind: 'markdown' } as const;
+const ENV = { textKind: 'markdown', openExternalUrl: () => {}, isMacPlatform: () => false } as const;
 
 const manifest = (over: Partial<PluginManifest> = {}): PluginManifest => ({
   id: 'demo',
@@ -172,8 +173,8 @@ describe('isolation of exceptions', () => {
     const [kindy, other] = registry.editorExtensions;
     expect(kindy?.dependsOnTextKind).toBe(true);
     expect(other?.dependsOnTextKind).toBe(false);
-    kindy?.create(true, { textKind: 'plain' });
-    kindy?.create(true, { textKind: 'markdown' });
+    kindy?.create(true, { ...ENV, textKind: 'plain' });
+    kindy?.create(true, { ...ENV, textKind: 'markdown' });
     expect(seen).toEqual(['plain', 'markdown']);
   });
 
@@ -577,6 +578,169 @@ describe('settings.update: an exception in next (N-R2-1)', () => {
     );
     registry.findCommandByKey(keyEvent('r'), false)?.run(deferredHost(9).ctx);
     expect(seen).toBe(9);
+  });
+});
+
+describe('services the host lends to a plugin (R4: open an external URL, OS check)', () => {
+  /** 拡張を作る関数で、本体が貸す機能（env）を取り出して返す部品。 */
+  function capturing(captured: EditorExtensionEnvironment[], id = 'demo'): Plugin {
+    return plugin(
+      (ctx) => {
+        const flag = ctx.registerSetting<boolean>({ key: `${id}Flag`, defaultValue: false, normalize: (r) => r === true });
+        ctx.registerEditorExtension({
+          setting: flag,
+          create: (_value, env) => {
+            captured.push(env);
+            return [];
+          },
+        });
+      },
+      { id },
+    );
+  }
+  const hostEnv = (over: Partial<EditorExtensionEnvironment> = {}): EditorExtensionEnvironment => ({ ...ENV, ...over });
+
+  it('passes the call to the host function with the same URL (the host decides what can be opened)', () => {
+    const captured: EditorExtensionEnvironment[] = [];
+    const registry = createPluginRegistry([capturing(captured)], quiet().options);
+    const opened: string[] = [];
+    registry.editorExtensions[0]?.create(false, hostEnv({ openExternalUrl: (url) => opened.push(url) }));
+    captured[0]?.openExternalUrl('https://example.com/a');
+    captured[0]?.openExternalUrl('javascript:alert(1)');
+    expect(opened).toEqual(['https://example.com/a', 'javascript:alert(1)']);
+  });
+
+  it('answers the OS check from the host, at the time of the call (not a value fixed when the extension was made)', () => {
+    const captured: EditorExtensionEnvironment[] = [];
+    const registry = createPluginRegistry([capturing(captured)], quiet().options);
+    let mac = false;
+    registry.editorExtensions[0]?.create(false, hostEnv({ isMacPlatform: () => mac }));
+    expect(captured[0]?.isMacPlatform()).toBe(false);
+    mac = true;
+    expect(captured[0]?.isMacPlatform()).toBe(true);
+  });
+
+  it('does nothing after the plugin is stopped by an exception (an extension made earlier keeps the function)', () => {
+    const captured: EditorExtensionEnvironment[] = [];
+    const stopper = plugin(
+      (ctx) => {
+        const flag = ctx.registerSetting<boolean>({ key: 'stopperFlag', defaultValue: false, normalize: (r) => r === true });
+        ctx.registerEditorExtension({
+          setting: flag,
+          create: (value, env) => {
+            if (value) throw new Error('boom');
+            captured.push(env);
+            return [];
+          },
+        });
+      },
+      { id: 'stopper' },
+    );
+    const { options } = quiet();
+    const registry = createPluginRegistry([stopper], options);
+    const opened: string[] = [];
+    const [ext] = registry.editorExtensions;
+    ext?.create(false, hostEnv({ openExternalUrl: (url) => opened.push(url) }));
+    captured[0]?.openExternalUrl('https://example.com/before');
+    ext?.create(true, hostEnv());
+    expect(registry.records[0]?.status).toBe('stopped');
+    captured[0]?.openExternalUrl('https://example.com/after');
+    expect(opened).toEqual(['https://example.com/before']);
+  });
+
+  it('does nothing after dispose', () => {
+    const captured: EditorExtensionEnvironment[] = [];
+    const registry = createPluginRegistry([capturing(captured)], quiet().options);
+    const opened: string[] = [];
+    registry.editorExtensions[0]?.create(false, hostEnv({ openExternalUrl: (url) => opened.push(url) }));
+    registry.dispose();
+    captured[0]?.openExternalUrl('https://example.com/a');
+    expect(opened).toEqual([]);
+  });
+
+  it('refuses a non-string URL by throwing to the caller, without calling the host', () => {
+    const captured: EditorExtensionEnvironment[] = [];
+    const registry = createPluginRegistry([capturing(captured)], quiet().options);
+    const opened: unknown[] = [];
+    registry.editorExtensions[0]?.create(false, hostEnv({ openExternalUrl: (url) => opened.push(url) }));
+    for (const bad of [undefined, null, 1, {}, ['https://example.com']]) {
+      expect(() => captured[0]?.openExternalUrl(bad as never), String(bad)).toThrow(/文字列/);
+    }
+    expect(opened).toEqual([]);
+  });
+
+  it('does not stop the plugin when the host side throws (it is the host that failed); it is recorded', () => {
+    const captured: EditorExtensionEnvironment[] = [];
+    const { report, options } = quiet();
+    const registry = createPluginRegistry([capturing(captured)], options);
+    registry.editorExtensions[0]?.create(
+      false,
+      hostEnv({
+        openExternalUrl: () => {
+          throw new Error('host failure');
+        },
+      }),
+    );
+    expect(() => captured[0]?.openExternalUrl('https://example.com/a')).not.toThrow();
+    expect(registry.records[0]?.status).toBe('active');
+    expect(report).toHaveBeenCalledWith('error', expect.stringContaining('外部の URL を開く'), expect.any(Error));
+  });
+
+  it('keeps the other plugins working when one of them is stopped', () => {
+    const a: EditorExtensionEnvironment[] = [];
+    const b: EditorExtensionEnvironment[] = [];
+    const registry = createPluginRegistry([capturing(a, 'one'), capturing(b, 'two')], quiet().options);
+    const opened: string[] = [];
+    const host = hostEnv({ openExternalUrl: (url) => opened.push(url) });
+    for (const ext of registry.editorExtensions) ext.create(false, host);
+    registry.dispose();
+    expect(registry.records.map((r) => r.status)).toEqual(['stopped', 'stopped']);
+    a[0]?.openExternalUrl('https://example.com/one');
+    b[0]?.openExternalUrl('https://example.com/two');
+    expect(opened).toEqual([]);
+  });
+});
+
+describe('settings item: radio in appearance.body (R4)', () => {
+  const radio = (placement: string, id = 'demo', key = 'demoMode'): Plugin =>
+    plugin(
+      (ctx) => {
+        const mode = ctx.registerSetting<string>({ key, defaultValue: 'a', normalize: (r) => (r === 'b' ? 'b' : 'a') });
+        ctx.registerSettingsItem({
+          placement,
+          order: 350,
+          kind: 'radio',
+          setting: mode,
+          legend: '見出し',
+          options: [
+            { value: 'a', label: 'エー' },
+            { value: 'b', label: 'ビー' },
+          ],
+        } as never);
+      },
+      { id },
+    );
+
+  it('accepts a radio in appearance.body and lists it by order, with the radio name made from the key', () => {
+    const registry = createPluginRegistry([radio('appearance.body')], quiet().options);
+    expect(registry.records[0]?.status).toBe('active');
+    expect(registry.settingsItems('appearance.body')).toMatchObject([{ kind: 'radio', order: 350, name: 'demo-mode', settingKey: 'demoMode' }]);
+    expect(registry.settingsItems('editing.body')).toEqual([]);
+  });
+
+  it('rejects a checkbox in appearance.body (the host draws only radios there)', () => {
+    const checkbox = plugin((ctx) => {
+      const flag = ctx.registerSetting<boolean>({ key: 'flag', defaultValue: false, normalize: (r) => r === true });
+      ctx.registerSettingsItem({ placement: 'appearance.body', order: 1, kind: 'checkbox', setting: flag, label: 'x' } as never);
+    });
+    const registry = createPluginRegistry([checkbox], quiet().options);
+    expect(registry.records[0]?.status).toBe('stopped');
+    expect(registry.records[0]?.reason).toContain('appearance.body');
+  });
+
+  it('sorts items by order and keeps registration order for equal numbers', () => {
+    const registry = createPluginRegistry([radio('appearance.body', 'one', 'oneMode'), radio('appearance.body', 'two', 'twoMode')], quiet().options);
+    expect(registry.settingsItems('appearance.body').map((i) => i.pluginId)).toEqual(['one', 'two']);
   });
 });
 

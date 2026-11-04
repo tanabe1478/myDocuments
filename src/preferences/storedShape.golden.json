@@ -342,5 +342,138 @@
       "focusMode": true
     },
     "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 22,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"tight\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "markup-display-cursor-line",
+    "input": {
+      "theme": "dark",
+      "fontSizePx": 22,
+      "focusMode": true,
+      "listContinuation": "preserve",
+      "markupDisplay": "cursorLine"
+    },
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 22,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"preserve\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "markup-display-always",
+    "input": {
+      "theme": "dark",
+      "fontSizePx": 22,
+      "focusMode": true,
+      "listContinuation": "preserve",
+      "markupDisplay": "always"
+    },
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 22,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"preserve\",\n  \"markupDisplay\": \"always\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "markup-display-out-of-range",
+    "input": {
+      "theme": "dark",
+      "fontSizePx": 22,
+      "focusMode": true,
+      "listContinuation": "preserve",
+      "markupDisplay": "hidden"
+    },
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 22,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"preserve\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "markup-display-wrong-case",
+    "input": {
+      "theme": "dark",
+      "fontSizePx": 22,
+      "focusMode": true,
+      "listContinuation": "preserve",
+      "markupDisplay": "Always"
+    },
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 22,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"preserve\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "markup-display-empty-string",
+    "input": {
+      "theme": "dark",
+      "fontSizePx": 22,
+      "focusMode": true,
+      "listContinuation": "preserve",
+      "markupDisplay": ""
+    },
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 22,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"preserve\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "markup-display-number",
+    "input": {
+      "theme": "dark",
+      "fontSizePx": 22,
+      "focusMode": true,
+      "listContinuation": "preserve",
+      "markupDisplay": 1
+    },
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 22,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"preserve\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "markup-display-boolean",
+    "input": {
+      "theme": "dark",
+      "fontSizePx": 22,
+      "focusMode": true,
+      "listContinuation": "preserve",
+      "markupDisplay": true
+    },
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 22,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"preserve\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "markup-display-null",
+    "input": {
+      "theme": "dark",
+      "fontSizePx": 22,
+      "focusMode": true,
+      "listContinuation": "preserve",
+      "markupDisplay": null
+    },
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 22,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"preserve\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "markup-display-array",
+    "input": {
+      "theme": "dark",
+      "fontSizePx": 22,
+      "focusMode": true,
+      "listContinuation": "preserve",
+      "markupDisplay": [
+        "always"
+      ]
+    },
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 22,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"preserve\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "markup-display-object",
+    "input": {
+      "theme": "dark",
+      "fontSizePx": 22,
+      "focusMode": true,
+      "listContinuation": "preserve",
+      "markupDisplay": {}
+    },
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 22,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"preserve\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "markup-display-missing",
+    "input": {
+      "theme": "dark",
+      "fontSizePx": 22,
+      "focusMode": true,
+      "listContinuation": "preserve"
+    },
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": true,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 22,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"preserve\",\n  \"markupDisplay\": \"cursorLine\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"dark\",\n  \"typewriterMode\": false\n}\n"
+  },
+  {
+    "name": "markup-display-always-others-out-of-range",
+    "input": {
+      "markupDisplay": "always",
+      "fontSizePx": 4,
+      "lineHeight": 99,
+      "theme": "blue",
+      "maxWidthPx": 100000
+    },
+    "expected": "{\n  \"autoHideChrome\": true,\n  \"background\": {\n    \"color\": \"#e9e4d4\",\n    \"gradientId\": \"paper\",\n    \"imageId\": null,\n    \"kind\": \"gradient\"\n  },\n  \"focusMode\": false,\n  \"fontFamily\": \"system-ui, -apple-system, \\\"Hiragino Sans\\\", \\\"Hiragino Kaku Gothic ProN\\\", \\\"Yu Gothic UI\\\", \\\"Noto Sans CJK JP\\\", \\\"Noto Sans JP\\\", sans-serif\",\n  \"fontSizePx\": 18,\n  \"hideBackground\": false,\n  \"imageBrightness\": 0.8,\n  \"letterSpacing\": 0.02,\n  \"lineHeight\": 1.9,\n  \"listContinuation\": \"tight\",\n  \"markupDisplay\": \"always\",\n  \"maxWidthPx\": 680,\n  \"overlayOpacity\": 0.35,\n  \"paragraphSpacing\": 0.6,\n  \"sidebarOpen\": false,\n  \"surfaceOpacity\": 0.85,\n  \"surfaceWidth\": \"fill\",\n  \"theme\": \"system\",\n  \"typewriterMode\": false\n}\n"
   }
 ]

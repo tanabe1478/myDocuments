@@ -203,6 +203,25 @@ src/platform/memory/ と src/platform/index.ts は除外していない。メモ
 | historyKeymap.ts | 100% / - | Undo と Redo のキー割り当て（historyKeymap.test.ts） | 実際のキー入力。document.spec.ts（Undo / Redo (d)） |
 | theme.ts | 100% / - | 組み込みの実行（CSS の見た目そのものは単体では見ない） | 見た目（色、余白、記号を隠した行の幅）は e2e の画面で確認する。canvas.spec.ts、live-markup.spec.ts、document.spec.ts（Markdown の見た目） |
 
+## その後のファイルの移動
+
+上の表と各節は B0 の時点の記録で、数字とパスは書き換えていない。部品化（ADR-005）でファイルが移ったので、古い場所と新しい場所を並べる。同じコマンドで測り直すときは、この対応で読み替える。中身は、移したとき以外は変えていない（R4 では `markdownDecorations.ts` から素のテキストの空行の部分と Markdown の言語の設定を本体へ分け、`lineKinds.ts` から `isBlankLine` を公開 API へ移した）。
+
+| Run | 古い場所 | 新しい場所 |
+|---|---|---|
+| R1（タイプライターモード） | `src/editor/typewriter.ts`、`typewriter.test.ts` | `src/features/typewriter/typewriter.ts`、`typewriter.test.ts` |
+| R1 | `src/editor/codemirror/typewriterMode.ts` | `src/features/typewriter/typewriterMode.ts` |
+| R2（フォーカスモード） | `src/editor/codemirror/focusMode.ts` | `src/features/focus/focusMode.ts` |
+| R2 | `src/editor/focusRange.ts`、`focusRange.test.ts` | `src/features/focus/focusRange.ts`、`focusRange.test.ts` |
+| R3（リストの継続） | `src/editor/codemirror/listContinuation.ts`、`listContinuation.test.ts` | `src/features/list-continuation/listContinuation.ts`、`listContinuation.test.ts` |
+| R4（Markdown の見た目） | `src/editor/liveMarkup.ts`、`liveMarkup.test.ts` | `src/features/markdown/liveMarkup.ts`、`liveMarkup.test.ts` |
+| R4 | `src/editor/lineKinds.ts`、`lineKinds.test.ts` | `src/features/markdown/lineKinds.ts`、`lineKinds.test.ts`（`isBlankLine` は `src/plugin-api/lines.ts` と `lines.test.ts`） |
+| R4 | `src/editor/codemirror/markdownDecorations.ts` | `src/features/markdown/markdownDecorations.ts`（素のテキストの空行と Markdown の言語は `src/editor/codemirror/textKind.ts`） |
+| R4 | `src/editor/codemirror/taskToggle.ts`、`taskToggle.test.ts` | `src/features/markdown/taskToggle.ts`、`taskToggle.test.ts` |
+| R4 | `src/editor/codemirror/linkOpen.ts` | `src/features/markdown/linkOpen.ts` |
+| R4 | `src/editor/codemirror/theme.ts` の Markdown の見た目（見出し、フェンス、引用、記号のウィジェット、リンクの準備） | `src/features/markdown/theme.ts`（空行の高さ `cm-md-blank` は `theme.ts` に残る） |
+| R4 | `src/preferences/preferences.ts` の `markupDisplay` と、`src/ui/AppearanceSettings.tsx` の「記号の表示」 | `src/features/markdown/markupDisplay.ts` と `index.ts`（設定画面の項目は部品が登録する） |
+
 ## 限界
 
 - e2e のカバレッジは測っていない。App.tsx、src/ui/ の画面、src/platform/（tauriBridge.ts と memoryBridge.ts）、src/canvas/ の画像まわり、src/editor/codemirror/ のキー入力まわりは、単体テストでは 0〜40% だが、e2e が守っている部分が多い。e2e の守りは、上の表のとおり spec の題名から読んだ対応で、実際に通る行は確認していない。

@@ -11,13 +11,6 @@ export type ThemeSetting = 'light' | 'dark' | 'system';
 /** 紙（本文面）の幅。fill: 本文領域（サイドバーを除いた領域）いっぱい。text: 本文の最大幅 + 左右の余白に合わせる。 */
 export type SurfaceWidth = 'fill' | 'text';
 
-/**
- * Markdown の記号（見出しの #、リンクの []() など）の見せ方。
- * cursorLine: カーソルのある行（と選択にかかる行）だけ記号を見せ、ほかの行は記号を隠して整形して見せる。
- * always: すべての行で記号を薄く表示する（隠さない）。
- */
-export type MarkupDisplay = 'cursorLine' | 'always';
-
 export type BackgroundKind = 'color' | 'gradient' | 'image';
 
 export interface BackgroundSetting {
@@ -59,8 +52,6 @@ export interface Preferences {
   readonly surfaceOpacity: number;
   /** 背景を描かず、テーマの既定配色だけにする（アクセシビリティ）。 */
   readonly hideBackground: boolean;
-  /** Markdown の記号の見せ方（.txt、.text には効かない）。 */
-  readonly markupDisplay: MarkupDisplay;
 }
 
 /**
@@ -86,7 +77,6 @@ export const DEFAULT_PREFERENCES: Preferences = {
   overlayOpacity: 0.35,
   surfaceOpacity: 0.85,
   hideBackground: false,
-  markupDisplay: 'cursorLine',
 };
 
 export const RANGES = {
@@ -102,7 +92,6 @@ export const RANGES = {
 
 const THEMES: readonly ThemeSetting[] = ['light', 'dark', 'system'];
 const SURFACE_WIDTHS: readonly SurfaceWidth[] = ['fill', 'text'];
-const MARKUP_DISPLAYS: readonly MarkupDisplay[] = ['cursorLine', 'always'];
 const BACKGROUND_KINDS: readonly BackgroundKind[] = ['color', 'gradient', 'image'];
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 const IMAGE_ID = /^[0-9a-f]{64}$/;
@@ -177,8 +166,5 @@ function normalizeCore(raw: unknown): Preferences {
     overlayOpacity: number(r.overlayOpacity, RANGES.overlayOpacity, d.overlayOpacity),
     surfaceOpacity: number(r.surfaceOpacity, RANGES.surfaceOpacity, d.surfaceOpacity),
     hideBackground: boolean(r.hideBackground, d.hideBackground),
-    markupDisplay: MARKUP_DISPLAYS.includes(r.markupDisplay as MarkupDisplay)
-      ? (r.markupDisplay as MarkupDisplay)
-      : d.markupDisplay,
   };
 }

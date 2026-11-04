@@ -11,7 +11,7 @@ const IMAGE_ID = 'ab12'.repeat(16);
 const pluginSettings = createPluginRegistry(bundledPlugins).settings;
 const normalizePreferences = (raw: unknown) => normalizeWith(raw, pluginSettings);
 /** 部品の設定が加わった既定値（これまで DEFAULT_PREFERENCES にあった項目を含む）。 */
-const DEFAULTS_WITH_PLUGINS = { ...DEFAULT_PREFERENCES, focusMode: false, typewriterMode: false, listContinuation: 'tight' };
+const DEFAULTS_WITH_PLUGINS = { ...DEFAULT_PREFERENCES, focusMode: false, typewriterMode: false, listContinuation: 'tight', markupDisplay: 'cursorLine' };
 
 describe('normalizePreferences', () => {
   it('uses the defaults for missing or non-object input', () => {
@@ -149,7 +149,7 @@ describe('background and accessibility fields (R3-1)', () => {
       // Run 11 で増えた項目。
       listContinuation: DEFAULTS_WITH_PLUGINS.listContinuation,
       // Run 12 で増えた項目。
-      markupDisplay: DEFAULT_PREFERENCES.markupDisplay,
+      markupDisplay: DEFAULTS_WITH_PLUGINS.markupDisplay,
     });
   });
 
@@ -225,6 +225,7 @@ describe('listContinuation (Run 11)', () => {
   it('defaults to tight', () => {
     expect(DEFAULTS_WITH_PLUGINS.listContinuation).toBe('tight');
     expect(Object.keys(DEFAULT_PREFERENCES)).not.toContain('listContinuation');
+    expect(Object.keys(DEFAULT_PREFERENCES)).not.toContain('markupDisplay');
     expect(normalizePreferences({}).listContinuation).toBe('tight');
     expect(normalizePreferences(null).listContinuation).toBe('tight');
   });
@@ -245,7 +246,7 @@ describe('listContinuation (Run 11)', () => {
 
 describe('markupDisplay (Run 12)', () => {
   it('defaults to cursorLine', () => {
-    expect(DEFAULT_PREFERENCES.markupDisplay).toBe('cursorLine');
+    expect(DEFAULTS_WITH_PLUGINS.markupDisplay).toBe('cursorLine');
     expect(normalizePreferences({}).markupDisplay).toBe('cursorLine');
     expect(normalizePreferences(null).markupDisplay).toBe('cursorLine');
   });
@@ -347,7 +348,7 @@ describe('paper width and sidebar (Run 8)', () => {
   });
 });
 
-describe('stored shape of plugin settings (R1: typewriter, R2: focus mode; both moved into plugins)', () => {
+describe('stored shape of plugin settings (R1: typewriter, R2: focus mode, R3: list continuation, R4: markup display; all moved into plugins)', () => {
   interface GoldenCase {
     name: string;
     input: unknown;
@@ -397,6 +398,7 @@ describe('stored shape of plugin settings (R1: typewriter, R2: focus mode; both 
     expect(Object.keys(DEFAULT_PREFERENCES)).not.toContain('focusMode');
     expect(Object.keys(DEFAULT_PREFERENCES)).not.toContain('typewriterMode');
     expect(Object.keys(DEFAULT_PREFERENCES)).not.toContain('listContinuation');
+    expect(Object.keys(DEFAULT_PREFERENCES)).not.toContain('markupDisplay');
   });
 
   it('drops keys that no loaded plugin defines (as before), and plugin keys when no plugin is loaded', () => {
@@ -404,6 +406,7 @@ describe('stored shape of plugin settings (R1: typewriter, R2: focus mode; both 
     expect(normalizeWith({ typewriterMode: true, focusMode: true })).not.toHaveProperty('typewriterMode');
     expect(normalizeWith({ typewriterMode: true, focusMode: true })).not.toHaveProperty('focusMode');
     expect(normalizeWith({ typewriterMode: true, focusMode: true, listContinuation: 'preserve' })).not.toHaveProperty('listContinuation');
+    expect(normalizeWith({ markupDisplay: 'always' })).not.toHaveProperty('markupDisplay');
     expect(normalizeWith({ typewriterMode: true, focusMode: true })).toEqual(DEFAULT_PREFERENCES);
   });
 

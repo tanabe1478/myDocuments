@@ -13,14 +13,14 @@ describe('AFTER_COMPOSITION_MS (N-R2-3: one shared wait after an IME composition
   });
 
   it('is defined once, in the public API (src/plugin-api/conventions.ts)', () => {
-    const definitions = ['plugin-api/conventions.ts', 'editor/codemirror/markdownDecorations.ts', 'features/focus/focusMode.ts'].filter((f) =>
+    const definitions = ['plugin-api/conventions.ts', 'features/markdown/markdownDecorations.ts', 'features/focus/focusMode.ts'].filter((f) =>
       /\b(?:const|let|var)\s+AFTER_COMPOSITION_MS\b/.test(read(f)),
     );
     expect(definitions).toEqual(['plugin-api/conventions.ts']);
   });
 
-  it('is used by the host (markup hiding) and by the focus plugin, both importing it from the public API', () => {
-    for (const file of ['editor/codemirror/markdownDecorations.ts', 'features/focus/focusMode.ts']) {
+  it('is used by the Markdown plugin (markup hiding) and by the focus plugin, both importing it from the public API', () => {
+    for (const file of ['features/markdown/markdownDecorations.ts', 'features/focus/focusMode.ts']) {
       const code = read(file);
       expect(code, file).toMatch(/import\s*\{[^}]*\bAFTER_COMPOSITION_MS\b[^}]*\}\s*from\s*'(?:\.\.\/)+plugin-api'/);
       expect(code, file).toMatch(/\},\s*AFTER_COMPOSITION_MS\s*\)/);
@@ -28,7 +28,7 @@ describe('AFTER_COMPOSITION_MS (N-R2-3: one shared wait after an IME composition
   });
 
   it('no other wait of 60 ms is left behind in the two files', () => {
-    for (const file of ['editor/codemirror/markdownDecorations.ts', 'features/focus/focusMode.ts']) {
+    for (const file of ['features/markdown/markdownDecorations.ts', 'features/focus/focusMode.ts']) {
       expect(read(file), file).not.toMatch(/\b60\b/);
     }
   });

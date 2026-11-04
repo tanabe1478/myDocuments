@@ -31,7 +31,7 @@ afterEach(() => {
 });
 
 const registry = () => createPluginRegistry([listContinuationPlugin]);
-const ENV = (textKind: TextKind = 'markdown') => ({ textKind });
+const ENV = (textKind: TextKind = 'markdown') => ({ textKind, openExternalUrl: () => {}, isMacPlatform: () => false });
 
 describe('list continuation plugin registration', () => {
   it('declares itself for the current API as an editor-tier plugin', () => {

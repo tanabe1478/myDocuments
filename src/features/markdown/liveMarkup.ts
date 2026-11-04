@@ -1,6 +1,6 @@
 /**
  * 記法の表示（ADR-004）。カーソルのない行で隠す記号を決める純関数。CodeMirror の EditorView には依存しない
- * （構文木と文書のテキストだけを読む）。装飾の付け方は codemirror/markdownDecorations.ts。
+ * （構文木と文書のテキストだけを読む）。装飾の付け方は markdownDecorations.ts。
  *
  * 隠す・置き換える対象（Markdown だけ。.txt には使わない）:
  * - 見出し（ATX）: 行頭の # と直後の空白。閉じる # と、Setext 見出しの下線（=== / ---）は隠さない
@@ -17,7 +17,7 @@
  */
 import type { Text } from '@codemirror/state';
 import type { syntaxTree } from '@codemirror/language';
-import { frontmatterEndLine } from '../plugin-api';
+import { frontmatterEndLine } from '../../plugin-api';
 import { hangPrefix } from './lineKinds';
 
 type Tree = ReturnType<typeof syntaxTree>;

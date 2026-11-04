@@ -43,8 +43,26 @@ export interface SettingHandle<T> {
 /** 本文の表示の種類。markdown は Markdown として扱う文書、plain は素のテキスト（.txt、.text）。 */
 export type TextKind = 'markdown' | 'plain';
 
-/** 拡張を作るときにホストが渡す、今の文書についての情報。 */
-export interface EditorExtensionEnvironment {
+/**
+ * 本体が部品に貸す機能。部品は、bridge（ネイティブへの入口）やブラウザの API を直接使わず、これを呼ぶ。
+ * 段 3（エディタの中の拡張。同梱の部品と、信頼した部品）だけに貸す。段 1・段 2 に貸すときは、権限の確認が要る（ADR-005 の R4）。
+ * 部品が止まったあと（例外で止めた、または解除した）は、呼んでも何もしない。
+ */
+export interface HostServices {
+  /**
+   * 外部の URL を、既定のブラウザで開く。本体の今の経路を通る: http と https だけを開き、ほかの URL や、開けなかったときは
+   * トースト「このリンクは開けません」で知らせる（ネイティブ側でも検査する）。戻り値はない（失敗は本体が利用者に知らせる）。
+   *
+   * 利用者の操作（リンクを ⌘/Ctrl+クリックしたとき、など）への応答としてだけ呼ぶ。起動時、タイマー、文書の変更への反応から
+   * 呼ばない。ネットワークの API ではない（本文を URL に入れて開けば外へ出せるので、段 1・段 2 に貸すなら操作のたびに URL を確かめる）。
+   */
+  openExternalUrl(url: string): void;
+  /** 使っている OS が macOS か（Cmd と Ctrl の使い分けなどに使う）。呼んだ時点の判定で、値を覚えてよい固定の値とは限らない。 */
+  isMacPlatform(): boolean;
+}
+
+/** 拡張を作るときにホストが渡す、今の文書についての情報と、本体が貸す機能。 */
+export interface EditorExtensionEnvironment extends HostServices {
   /** 今の文書の種類。dependsOnTextKind が true の登録だけ、この値が変わると拡張が作り直される。 */
   readonly textKind: TextKind;
 }
@@ -99,21 +117,38 @@ export interface CommandRegistration {
  * 設定画面で項目を置ける場所。名前は `<節>.<節の中の置き場>`。
  * - appearance.writingAids: 「外観」の節の「執筆の補助」の枠の中。チェックボックスの並び。
  * - editing.body: 「編集」の節の本文。節の見出しの下に、項目が並ぶ（枠はホストが持たず、項目が自分の枠を持つ）。
+ * - appearance.body: 「外観」の節の本文。ホストの枠（フォント、文字組み、紙の幅、テーマ、背景、コントラスト、執筆の補助）と
+ *   同じ並びの中に、項目が自分の枠を持って並ぶ。並びは order の数で決め、ホストの枠も同じ数の尺度で並ぶ（HOST_APPEARANCE_ORDER）。
  */
-export const SETTINGS_PLACEMENTS = ['appearance.writingAids', 'editing.body'] as const;
+export const SETTINGS_PLACEMENTS = ['appearance.writingAids', 'editing.body', 'appearance.body'] as const;
 export type SettingsPlacement = (typeof SETTINGS_PLACEMENTS)[number];
 
 /** 置き場所ごとに置ける項目の種類（ホストがその場所で描ける種類）。合わない登録は、登録の例外になる。 */
 export const SETTINGS_PLACEMENT_KINDS = {
   'appearance.writingAids': 'checkbox',
   'editing.body': 'radio',
+  'appearance.body': 'radio',
 } as const satisfies Record<SettingsPlacement, SettingsItemKind>;
+
+/**
+ * 「外観」の節（appearance.body）の、ホストの枠の order。部品の項目は、この間の数で並びを決める
+ * （例: 「紙の幅」と「テーマ」の間は 300 より大きく 400 より小さい数）。同じ数のときは、ホストの枠が先。
+ */
+export const HOST_APPEARANCE_ORDER = {
+  font: 100,
+  typography: 200,
+  surfaceWidth: 300,
+  theme: 400,
+  background: 500,
+  contrast: 600,
+  writingAids: 700,
+} as const;
 
 export type SettingsItemKind = 'checkbox' | 'radio';
 
 interface SettingsItemBase {
   readonly placement: SettingsPlacement;
-  /** 場所の中の並び順（小さいほど上）。ホストの項目は 100 刻み。同じ値のときは、ホストの項目、登録の順。 */
+  /** 場所の中の並び順（小さいほど上）。ホストの項目は 100 刻み（appearance.body は HOST_APPEARANCE_ORDER）。同じ値のときは、ホストの項目、登録の順。 */
   readonly order: number;
 }
 

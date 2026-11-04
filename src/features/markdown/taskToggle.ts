@@ -3,7 +3,7 @@ import { syntaxTree } from '@codemirror/language';
 import type { Extension, Text } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { skipCaretFollow } from '../../plugin-api';
-import { activeLines, collectMarkup, isActiveLine } from '../liveMarkup';
+import { activeLines, collectMarkup, isActiveLine } from './liveMarkup';
 import { markupDisplayFacet } from './markdownDecorations';
 
 type Tree = ReturnType<typeof syntaxTree>;

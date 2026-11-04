@@ -6,7 +6,7 @@ import { createPluginRegistry, ownsCaretScroll, skipCaretFollow, type CommandCon
 import { TYPEWRITER_SETTING_KEY, typewriterPlugin } from '.';
 import { typewriterModeExtension } from './typewriterMode';
 
-const ENV = { textKind: 'markdown' } as const;
+const ENV = { textKind: 'markdown', openExternalUrl: () => {}, isMacPlatform: () => false } as const;
 
 // jsdom には、CodeMirror が測定に使う矩形取得 API がなく、要素の高さも 0。
 beforeAll(() => {

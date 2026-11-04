@@ -5,7 +5,9 @@
 export { PLUGIN_API_VERSION } from './version';
 export { AFTER_COMPOSITION_MS, ownsCaretScroll, skipCaretFollow } from './conventions';
 export { frontmatterEndLine } from './frontmatter';
+export { isBlankLine } from './lines';
 export {
+  HOST_APPEARANCE_ORDER,
   SETTINGS_PLACEMENTS,
   SETTINGS_PLACEMENT_KINDS,
   type CheckboxSettingsItem,
@@ -13,6 +15,7 @@ export {
   type CommandRegistration,
   type EditorExtensionEnvironment,
   type EditorExtensionRegistration,
+  type HostServices,
   type Plugin,
   type PluginContext,
   type PluginManifest,

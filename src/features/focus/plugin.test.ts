@@ -142,7 +142,7 @@ describe('focus mode extension', () => {
     const [ext] = registry().editorExtensions;
     view = new EditorView({
       parent: host,
-      state: EditorState.create({ doc: DOC, selection: { anchor: 0 }, extensions: ext?.create(on, { textKind: kind }) }),
+      state: EditorState.create({ doc: DOC, selection: { anchor: 0 }, extensions: ext?.create(on, { textKind: kind, openExternalUrl: () => {}, isMacPlatform: () => false }) }),
     });
     return view;
   }
