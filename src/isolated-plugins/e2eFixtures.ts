@@ -9,8 +9,8 @@ const MARK = '__mdeE2EActionFixture';
 /** 本体のページの origin。部品のコードが、同じ origin へのネットワークが止まっていることを確かめる。 */
 const PAGE = location.origin;
 
-const fixture = (id: string, source: string): ActionPlugin => ({
-  manifest: { id, name: `${MARK} ${id}`, version: '0.0.0', apiVersion: PLUGIN_API_VERSION, tier: 'action' },
+const fixture = (id: string, source: string, permissions?: readonly string[]): ActionPlugin => ({
+  manifest: { id, name: `${MARK} ${id}`, version: '0.0.0', apiVersion: PLUGIN_API_VERSION, tier: 'action', ...(permissions ? { permissions } : {}) } as ActionPlugin['manifest'],
   source,
 });
 
@@ -51,4 +51,24 @@ export const e2eActionPlugins: readonly ActionPlugin[] = [
       try { new Function('return 1')(); fail('eval'); } catch (e) { if (String(e.message).startsWith('reachable')) throw e; }
     } });`,
   ),
+  // R6: 権限を宣言していない部品が、権限の要る API を呼ぶ（確認の画面は出ず、呼び出しだけが reject される。部品は止まらない）。
+  fixture(
+    'e2e-undeclared',
+    `api.registerCommand({ id: 'try', title: 'try', shortcut: 'Mod+Shift+J', run: async () => {
+      for (const attempt of [() => api.clipboard.writeText('x'), () => api.document.currentPath()]) {
+        try { await attempt(); throw new Error('the call was not refused'); } catch (e) { if (String(e.message) === 'the call was not refused') throw e; }
+      }
+    } });`,
+  ),
+  // R6: 不正な形の呼び出し（決めていない method）。仲介が、その部品を止める。
+  fixture(
+    'e2e-bad-call',
+    `api.registerCommand({ id: 'bad', title: 'bad', shortcut: 'Mod+Shift+U', run: async () => {} });
+     self.postMessage({ kind: 'call', call: 1, method: 'readClipboard' });`,
+    ['clipboard.write'],
+  ),
+  // R6: paths.read を宣言せずに、メニューの項目を登録する（登録を拒否して、その部品を止める）。
+  fixture('e2e-menu-undeclared', `api.registerContextMenuItem({ id: 'x', title: 'x', where: 'tree', run: async () => {} });`, ['clipboard.write']),
+  // R6: 知らない権限を宣言する（その部品を読み込まない）。
+  fixture('e2e-unknown-permission', `api.registerCommand({ id: 'never', title: 'never', run: async () => {} });`, ['clipboard.write', 'network']),
 ];

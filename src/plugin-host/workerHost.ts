@@ -1,5 +1,5 @@
-import type { IsolatedPluginHost, IsolatedPluginListener } from '../plugin-api';
-import { LIMITS, parseRelayMessage, runMessage, startMessage, stopMessage, type MainMessage } from './protocol';
+import type { IsolatedCall, IsolatedCallResult, IsolatedPluginHost, IsolatedPluginListener, MenuTarget } from '../plugin-api';
+import { LIMITS, parseRelayMessage, resultMessage, runMenuMessage, runMessage, startMessage, stopMessage, type MainMessage } from './protocol';
 
 /** 本体が持つ、仲介の iframe への入口。DOM の実装は domFrame.ts。単体テストでは偽物を渡す。 */
 export interface FrameHandle {
@@ -14,7 +14,11 @@ export interface FrameHandle {
 export type HostTrace =
   | { readonly type: 'start'; readonly plugin: string }
   | { readonly type: 'command'; readonly plugin: string; readonly command: string }
+  | { readonly type: 'menu'; readonly plugin: string; readonly item: string }
   | { readonly type: 'ready'; readonly plugin: string }
+  /** 部品が本体の機能を呼んだ（method は clipboardWriteText か currentPath）と、その結果を返した。 */
+  | { readonly type: 'call'; readonly plugin: string; readonly method: IsolatedCall['method']; readonly call: number }
+  | { readonly type: 'result'; readonly plugin: string; readonly method: IsolatedCall['method']; readonly call: number; readonly ok: boolean }
   | { readonly type: 'run'; readonly plugin: string; readonly command: string; readonly req: number }
   | { readonly type: 'done'; readonly plugin: string; readonly command: string; readonly req: number }
   | { readonly type: 'stopped'; readonly plugin: string; readonly reason: string };
@@ -39,13 +43,29 @@ export const DEFAULT_RUN_TIMEOUT_MS = 5000;
 /** 結果待ちの実行の数の上限。超えた実行の要求は捨てる（キーの連打で積み上げない）。 */
 const MAX_PENDING_RUNS = 16;
 
+/**
+ * 止められる時間切れ。確認の画面を出しているあいだ（suspendTimeouts）は計測を止め、再開すると残りの時間から数え直す
+ * （確認の画面を何度も出させて、時間切れを先延ばしにできない）。
+ */
+interface Timeout {
+  readonly fire: () => void;
+  remaining: number;
+  startedAt: number | null;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
 interface Slot {
   readonly id: string;
   readonly listener: IsolatedPluginListener;
   state: 'starting' | 'ready' | 'stopped';
   readonly commands: Set<string>;
-  readonly pending: Map<number, { readonly command: string; readonly timer: ReturnType<typeof setTimeout> }>;
-  activateTimer: ReturnType<typeof setTimeout> | null;
+  readonly menus: Set<string>;
+  readonly pending: Map<number, { readonly command: string; readonly timeout: Timeout }>;
+  /** 結果待ちの呼び出し（部品の中の番号 → 呼び出しの種類）。 */
+  readonly calls: Map<number, IsolatedCall['method']>;
+  activate: Timeout | null;
+  /** suspendTimeouts を呼んで、まだ再開していない数。0 より大きい間、時間切れの計測は止まる。 */
+  suspended: number;
 }
 
 /**
@@ -86,11 +106,41 @@ export function createWorkerHost(options: WorkerHostOptions): IsolatedPluginHost
     }
   };
 
+  const runTimeout = (timeout: Timeout): void => {
+    timeout.startedAt = Date.now();
+    timeout.timer = setTimeout(() => {
+      timeout.timer = null;
+      timeout.startedAt = null;
+      timeout.remaining = 0;
+      timeout.fire();
+    }, Math.max(0, timeout.remaining));
+  };
+  const pauseTimeout = (timeout: Timeout): void => {
+    if (timeout.timer === null) return;
+    clearTimeout(timeout.timer);
+    timeout.timer = null;
+    if (timeout.startedAt !== null) timeout.remaining -= Date.now() - timeout.startedAt;
+    timeout.startedAt = null;
+  };
+  /** 時間切れを作る。確認の画面を出している間（suspended）に作ったものは、再開まで数え始めない。 */
+  const armTimeout = (slot: Slot, ms: number, fire: () => void): Timeout => {
+    const timeout: Timeout = { fire, remaining: ms, startedAt: null, timer: null };
+    if (slot.suspended === 0) runTimeout(timeout);
+    return timeout;
+  };
+  const cancelTimeout = (timeout: Timeout | null): void => {
+    if (timeout === null) return;
+    pauseTimeout(timeout);
+    timeout.remaining = Number.POSITIVE_INFINITY;
+  };
+  const timeoutsOf = (slot: Slot): Timeout[] => [...(slot.activate ? [slot.activate] : []), ...Array.from(slot.pending.values(), (p) => p.timeout)];
+
   const clearTimers = (slot: Slot): void => {
-    if (slot.activateTimer !== null) clearTimeout(slot.activateTimer);
-    slot.activateTimer = null;
-    for (const { timer } of slot.pending.values()) clearTimeout(timer);
+    cancelTimeout(slot.activate);
+    slot.activate = null;
+    for (const { timeout } of slot.pending.values()) cancelTimeout(timeout);
     slot.pending.clear();
+    slot.calls.clear();
   };
 
   /** 部品を止める。何度呼んでもよい。notify が true のときだけ、listener に知らせる。 */
@@ -108,6 +158,21 @@ export function createWorkerHost(options: WorkerHostOptions): IsolatedPluginHost
   };
 
   const violation = (slot: Slot, problem: string): void => stopSlot(slot, `不正なメッセージ: ${problem}`, true);
+
+  /** 呼び出しを本体の側（listener）に任せ、結果を Worker に返す。拒否や失敗は、結果の失敗として返す（部品は止めない）。 */
+  const answerCall = async (slot: Slot, call: number, request: IsolatedCall): Promise<void> => {
+    let result: IsolatedCallResult;
+    try {
+      result = slot.listener.onCall ? await slot.listener.onCall(request) : { ok: false, reason: 'この環境では使えません' };
+    } catch {
+      result = { ok: false, reason: '本体の側でエラーが起きました' };
+    }
+    // 待っている間に部品が止まったら、結果は返さない。
+    if (slot.state === 'stopped' || !slot.calls.has(call)) return;
+    slot.calls.delete(call);
+    trace({ type: 'result', plugin: slot.id, method: request.method, call, ok: result.ok });
+    post(resultMessage(slot.id, call, result));
+  };
 
   const handle = (event: { readonly source: unknown; readonly data: unknown }): void => {
     if (!frame || !frame.owns(event.source)) return;
@@ -152,12 +217,36 @@ export function createWorkerHost(options: WorkerHostOptions): IsolatedPluginHost
         }
         return;
       }
+      case 'menu': {
+        if (slot.state !== 'starting') return violation(slot, '部品のコードの最初の実行のあとに、メニューの項目を登録しようとしました');
+        if (slot.menus.has(message.id)) return violation(slot, `menu の id「${message.id}」が重なっています`);
+        if (slot.menus.size >= LIMITS.menuItemsPerPlugin) return violation(slot, 'メニューの項目が多すぎます');
+        if (!slot.listener.onMenuItem) return violation(slot, 'ツリーの右クリックの項目は、この環境では使えません');
+        slot.menus.add(message.id);
+        trace({ type: 'menu', plugin: slot.id, item: message.id });
+        try {
+          slot.listener.onMenuItem({ id: message.id, title: message.title, where: message.where });
+        } catch (error) {
+          stopSlot(slot, error instanceof Error ? error.message : String(error), true);
+        }
+        return;
+      }
+      case 'call': {
+        if (slot.calls.has(message.call)) return violation(slot, '結果待ちの番号と重なった call です');
+        if (slot.calls.size >= LIMITS.pendingCalls) return violation(slot, '結果待ちの呼び出しが多すぎます');
+        const call: IsolatedCall =
+          message.method === 'clipboardWriteText' ? { method: 'clipboardWriteText', text: message.text } : { method: 'currentPath' };
+        slot.calls.set(message.call, message.method);
+        trace({ type: 'call', plugin: slot.id, method: message.method, call: message.call });
+        void answerCall(slot, message.call, call);
+        return;
+      }
       case 'ready': {
         if (slot.state !== 'starting') return violation(slot, 'ready を 2 回送りました');
         slot.state = 'ready';
         trace({ type: 'ready', plugin: slot.id });
-        if (slot.activateTimer !== null) clearTimeout(slot.activateTimer);
-        slot.activateTimer = null;
+        cancelTimeout(slot.activate);
+        slot.activate = null;
         try {
           slot.listener.onReady();
         } catch (error) {
@@ -168,7 +257,7 @@ export function createWorkerHost(options: WorkerHostOptions): IsolatedPluginHost
       case 'done': {
         const run = slot.pending.get(message.req);
         if (!run) return violation(slot, '要求していない番号の done です');
-        clearTimeout(run.timer);
+        cancelTimeout(run.timeout);
         slot.pending.delete(message.req);
         trace({ type: 'done', plugin: slot.id, command: run.command, req: message.req });
         return;
@@ -199,12 +288,12 @@ export function createWorkerHost(options: WorkerHostOptions): IsolatedPluginHost
       if (slots.has(id)) throw new Error(`部品「${id}」は起動済みです`);
       if (source.length > LIMITS.sourceLength) throw new Error('部品のコードが大きすぎます');
       ensureFrame();
-      const slot: Slot = { id, listener, state: 'starting', commands: new Set(), pending: new Map(), activateTimer: null };
+      const slot: Slot = { id, listener, state: 'starting', commands: new Set(), menus: new Set(), pending: new Map(), calls: new Map(), activate: null, suspended: 0 };
       slots.set(id, slot);
-      slot.activateTimer = setTimeout(() => {
-        slot.activateTimer = null;
+      slot.activate = armTimeout(slot, activateTimeoutMs, () => {
+        slot.activate = null;
         stopSlot(slot, `部品のコードの最初の実行が ${activateTimeoutMs} ミリ秒で終わりませんでした`, true);
-      }, activateTimeoutMs);
+      });
       trace({ type: 'start', plugin: id });
       post(startMessage(id, source));
     },
@@ -214,12 +303,41 @@ export function createWorkerHost(options: WorkerHostOptions): IsolatedPluginHost
       if (!slot || slot.state !== 'ready' || !slot.commands.has(commandId)) return;
       if (slot.pending.size >= MAX_PENDING_RUNS) return;
       const req = nextReq++;
-      const timer = setTimeout(() => {
+      const timeout = armTimeout(slot, runTimeoutMs, () => {
         stopSlot(slot, `コマンド「${commandId}」が ${runTimeoutMs} ミリ秒で終わりませんでした`, true);
-      }, runTimeoutMs);
-      slot.pending.set(req, { command: commandId, timer });
+      });
+      slot.pending.set(req, { command: commandId, timeout });
       trace({ type: 'run', plugin: id, command: commandId, req });
       post(runMessage(id, req, commandId));
+    },
+
+    runMenu(id, itemId, target: MenuTarget) {
+      const slot = slots.get(id);
+      if (!slot || slot.state !== 'ready' || !slot.menus.has(itemId)) return;
+      if (slot.pending.size >= MAX_PENDING_RUNS) return;
+      if (target.path === '' || target.path.length > LIMITS.pathLength) return;
+      const req = nextReq++;
+      const label = `menu:${itemId}`;
+      const timeout = armTimeout(slot, runTimeoutMs, () => {
+        stopSlot(slot, `メニューの項目「${itemId}」が ${runTimeoutMs} ミリ秒で終わりませんでした`, true);
+      });
+      slot.pending.set(req, { command: label, timeout });
+      trace({ type: 'run', plugin: id, command: label, req });
+      post(runMenuMessage(id, req, itemId, target.path, target.kind));
+    },
+
+    suspendTimeouts(id) {
+      const slot = slots.get(id);
+      if (!slot || slot.state === 'stopped') return () => {};
+      slot.suspended++;
+      if (slot.suspended === 1) for (const t of timeoutsOf(slot)) pauseTimeout(t);
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        slot.suspended--;
+        if (slot.suspended === 0 && slot.state !== 'stopped') for (const t of timeoutsOf(slot)) if (t.timer === null && Number.isFinite(t.remaining)) runTimeout(t);
+      };
     },
 
     stop(id) {

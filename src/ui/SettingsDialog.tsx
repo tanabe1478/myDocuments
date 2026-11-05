@@ -1,9 +1,12 @@
 import { useEffect, useId, useRef } from 'react';
 import { AppearanceSettings, type AppearanceSettingsProps } from './AppearanceSettings';
 import { EditingSettings } from './EditingSettings';
+import { PluginPermissionsSettings, type PluginPermissionsSettingsProps } from './PluginPermissionsSettings';
 
 export interface SettingsDialogProps extends AppearanceSettingsProps {
   onClose(): void;
+  /** 「部品の権限」の節（段 2 の部品の、利用者が決めた権限）。渡さなければ、節を出さない。 */
+  pluginPermissions?: PluginPermissionsSettingsProps;
 }
 
 /** 開いたときにフォーカスする、最初の設定項目（閉じるボタンではなく）。 */
@@ -23,12 +26,12 @@ function tabStops(root: HTMLElement): HTMLElement[] {
 }
 
 /**
- * 設定画面。窓の中央に出るモーダルの dialog。いまの節は「外観」と「編集」（節は SettingsDialog の本文に並べて足す）。
+ * 設定画面。窓の中央に出るモーダルの dialog。いまの節は「外観」「編集」「部品の権限」（節は SettingsDialog の本文に並べて足す）。
  * 背景の幕は薄く、変更はすぐ本文に反映されるので、後ろの本文の変化が見える。
  * 開いたら最初の設定項目にフォーカスし、Tab は中で循環し、Esc・閉じるボタン・幕のクリックで閉じる。
  * フォーカスの戻り先は App が管理する。高さが窓に収まらないときは、本文（設定項目）の部分がスクロールする。
  */
-export function SettingsDialog({ onClose, ...appearance }: SettingsDialogProps) {
+export function SettingsDialog({ onClose, pluginPermissions, ...appearance }: SettingsDialogProps) {
   const rootRef = useRef<HTMLElement>(null);
   const titleId = useId();
   // 幕のクリックで閉じるのは、押したのも幕のときだけ（スライダーをドラッグして外で離しても閉じない）。
@@ -96,6 +99,7 @@ export function SettingsDialog({ onClose, ...appearance }: SettingsDialogProps) 
         <div className="settings-body" data-testid="settings-body">
           <AppearanceSettings {...appearance} />
           <EditingSettings prefs={appearance.prefs} onChange={appearance.onChange} settingsItems={appearance.settingsItems} />
+          {pluginPermissions && <PluginPermissionsSettings {...pluginPermissions} />}
         </div>
       </section>
     </div>

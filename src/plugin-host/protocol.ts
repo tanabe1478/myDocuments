@@ -15,7 +15,17 @@ export const LIMITS = {
   shortcutLength: 32,
   reasonLength: 300,
   sourceLength: 1024 * 1024,
+  /** R6: 1 部品のツリーの右クリックの項目の数。 */
+  menuItemsPerPlugin: 8,
+  /** R6: 結果待ちの呼び出し（api.clipboard.writeText など）の数。超えた呼び出しは、Worker の中で拒否する（仲介では不正として止める）。 */
+  pendingCalls: 16,
+  /** R6: api.clipboard.writeText の文字数（Unicode のスカラー値の数ではなく UTF-16 の長さ。ネイティブ側は文字数で 100,000 を検査する）。 */
+  clipboardTextLength: 100_000,
+  /** R6: パスの長さ。 */
+  pathLength: 4096,
 } as const;
+
+export type TargetKind = 'file' | 'folder';
 
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
@@ -23,12 +33,22 @@ const ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 export type MainMessage =
   | { readonly v: 0; readonly kind: 'start'; readonly plugin: string; readonly source: string }
   | { readonly v: 0; readonly kind: 'run'; readonly plugin: string; readonly req: number; readonly command: string }
+  /** ツリーの右クリックの項目を、対象つきで実行させる。結果は run と同じ done / failed（req で対応）。 */
+  | { readonly v: 0; readonly kind: 'runMenu'; readonly plugin: string; readonly req: number; readonly item: string; readonly path: string; readonly targetKind: TargetKind }
+  /** 呼び出し（call）の結果。成功は値（文字列か null）、失敗は理由。 */
+  | { readonly v: 0; readonly kind: 'result'; readonly plugin: string; readonly call: number; readonly ok: true; readonly value: string | null }
+  | { readonly v: 0; readonly kind: 'result'; readonly plugin: string; readonly call: number; readonly ok: false; readonly reason: string }
   | { readonly v: 0; readonly kind: 'stop'; readonly plugin: string };
 
 /** 仲介 → 本体。plugin は部品の id。 */
 export type RelayMessage =
   | { readonly kind: 'hello' }
   | { readonly kind: 'command'; readonly plugin: string; readonly id: string; readonly title: string; readonly shortcut?: string; readonly ignoreInTextEntry?: boolean }
+  /** ツリーの右クリックの項目の登録（部品のコードの最初の実行の間だけ）。 */
+  | { readonly kind: 'menu'; readonly plugin: string; readonly id: string; readonly title: string; readonly where: 'tree' }
+  /** 本体の機能の呼び出し。call は部品の中の番号（1 から。結果待ちの間は重ならない）。 */
+  | { readonly kind: 'call'; readonly plugin: string; readonly call: number; readonly method: 'clipboardWriteText'; readonly text: string }
+  | { readonly kind: 'call'; readonly plugin: string; readonly call: number; readonly method: 'currentPath' }
   | { readonly kind: 'ready'; readonly plugin: string }
   | { readonly kind: 'done'; readonly plugin: string; readonly req: number }
   /** 実行が例外を出した（Worker はまだ生きている。本体が止める）。 */
@@ -82,6 +102,28 @@ export function parseRelayMessage(data: unknown): ParseResult {
         },
       };
     }
+    case 'menu': {
+      if (!keysOk(data, ['v', 'kind', 'plugin', 'id', 'title', 'where'])) return fail('menu の項目が違います');
+      const { plugin, id, title, where } = data;
+      if (!isPluginId(plugin) || !isPluginId(id)) return fail('menu の plugin か id が不正です');
+      if (!isText(title, LIMITS.titleLength)) return fail('menu の title が不正です');
+      if (where !== 'tree') return fail('menu の where が不正です');
+      return { ok: true, message: { kind, plugin, id, title, where } };
+    }
+    case 'call': {
+      const { plugin, call, method } = data;
+      if (!isPluginId(plugin) || !isReq(call)) return fail('call の plugin か番号が不正です');
+      if (method === 'clipboardWriteText') {
+        if (!keysOk(data, ['v', 'kind', 'plugin', 'call', 'method', 'text'])) return fail('call の項目が違います');
+        if (!isText(data.text, LIMITS.clipboardTextLength)) return fail('call の text が不正です');
+        return { ok: true, message: { kind, plugin, call, method, text: data.text } };
+      }
+      if (method === 'currentPath') {
+        if (!keysOk(data, ['v', 'kind', 'plugin', 'call', 'method'])) return fail('call の項目が違います');
+        return { ok: true, message: { kind, plugin, call, method } };
+      }
+      return fail('call の method が決めたものではありません');
+    }
     case 'ready': {
       if (!keysOk(data, ['v', 'kind', 'plugin']) || !isPluginId(data.plugin)) return fail('ready の項目が違います');
       return { ok: true, message: { kind, plugin: data.plugin } };
@@ -108,5 +150,18 @@ export function parseRelayMessage(data: unknown): ParseResult {
 }
 
 export const startMessage = (plugin: string, source: string): MainMessage => ({ v: PROTOCOL_VERSION, kind: 'start', plugin, source });
+export const runMenuMessage = (plugin: string, req: number, item: string, path: string, targetKind: TargetKind): MainMessage => ({
+  v: PROTOCOL_VERSION,
+  kind: 'runMenu',
+  plugin,
+  req,
+  item,
+  path,
+  targetKind,
+});
+export const resultMessage = (plugin: string, call: number, result: { readonly ok: true; readonly value: string | null } | { readonly ok: false; readonly reason: string }): MainMessage =>
+  result.ok
+    ? { v: PROTOCOL_VERSION, kind: 'result', plugin, call, ok: true, value: result.value }
+    : { v: PROTOCOL_VERSION, kind: 'result', plugin, call, ok: false, reason: result.reason.slice(0, LIMITS.reasonLength) || 'error' };
 export const runMessage = (plugin: string, req: number, command: string): MainMessage => ({ v: PROTOCOL_VERSION, kind: 'run', plugin, req, command });
 export const stopMessage = (plugin: string): MainMessage => ({ v: PROTOCOL_VERSION, kind: 'stop', plugin });

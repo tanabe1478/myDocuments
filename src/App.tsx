@@ -17,7 +17,8 @@ import { ExplorerController, type TrashTarget } from './explorer/controller';
 import type { EditorAdapter } from './editor/EditorAdapter';
 import { createCodeMirrorAdapter } from './editor/codemirror/CodeMirrorAdapter';
 import { BridgeError, type DocumentBridge, type DraftSummary } from './platform';
-import { createHostServices } from './platform/hostServices';
+import { createHostServices, createIsolatedServices } from './platform/hostServices';
+import type { PermissionController } from './permissions/controller';
 import type { PluginRegistry } from './plugin-api';
 import { applyPreferences } from './preferences/apply';
 import { createCommandContext } from './preferences/commandContext';
@@ -29,6 +30,7 @@ import { ConfirmDiscardDialog } from './ui/ConfirmDiscardDialog';
 import { ConfirmRecreateDialog } from './ui/ConfirmRecreateDialog';
 import { ConfirmTrashDialog } from './ui/ConfirmTrashDialog';
 import { DiffDialog } from './ui/DiffDialog';
+import { PermissionDialog } from './ui/PermissionDialog';
 import { RecoveryDialog } from './ui/RecoveryDialog';
 import { SettingsDialog } from './ui/SettingsDialog';
 import { Sidebar, SIDEBAR_ID } from './ui/Sidebar';
@@ -65,11 +67,14 @@ export function App({
   bridge,
   initialPreferences,
   plugins,
+  permissions,
 }: {
   bridge: DocumentBridge;
   initialPreferences: StoredPreferences;
   /** 読み込み済みの部品の一覧。ホストはここに登録されたものだけを使う。 */
   plugins: PluginRegistry;
+  /** 段 2 の部品の権限の決定と確認の画面（レジストリが、権限を使うときに呼ぶ）。 */
+  permissions: PermissionController;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const topbarRef = useRef<HTMLElement>(null);
@@ -149,6 +154,9 @@ export function App({
     [bridge, notify, controller, openFromExplorer],
   );
   const explorerState = useSyncExternalStore(explorer.subscribe, explorer.getState);
+  const permissionState = useSyncExternalStore(permissions.subscribe, permissions.getState);
+  /** 部品（段 2）が足した、ツリーの右クリックの項目。部品が登録・停止するたびに変わる。 */
+  const pluginMenuItems = useSyncExternalStore(plugins.subscribe, () => plugins.menuItems);
 
   const state = useSyncExternalStore(controller.subscribe, controller.getState);
   const external = useSyncExternalStore(controller.subscribe, controller.getExternal);
@@ -193,8 +201,15 @@ export function App({
 
     // 窓は非表示で作られており、非表示の間は requestAnimationFrame が止まる。
     // rAF には頼らず、レイアウトが済む程度の短い待ちの後に知らせる。
+    // 段 2 の部品（iframe と Worker）は、最初の描画（窓の表示）のあとに動かし始める。文書を開いて入力できるまでを待たせない。
     const readyTimer = setTimeout(() => {
-      if (!cancelled) void subscriptions.then(() => bridge.notifyReady()).catch(() => {});
+      if (cancelled) return;
+      void subscriptions
+        .then(() => bridge.notifyReady())
+        .catch(() => {})
+        .then(() => {
+          if (!cancelled) setTimeout(() => plugins.startDeferred(), 0);
+        });
     }, 50);
 
     return () => {
@@ -207,6 +222,23 @@ export function App({
       adapterRef.current = null;
     };
   }, [bridge, controller, notify, plugins]);
+
+  // 段 2 の部品が使う本体の機能（クリップボード、開いている文書のパス）と、権限の保存に失敗したときのトースト。
+  useEffect(() => {
+    const unbindServices = plugins.bindServices(
+      createIsolatedServices({ bridge, notify, currentPath: () => controller.getState().path }),
+    );
+    const unbindNotify = permissions.bindNotify(notify);
+    return () => {
+      unbindServices();
+      unbindNotify();
+    };
+  }, [bridge, controller, notify, plugins, permissions]);
+
+  // 設定画面を開いたら、保存済みの権限の決定を読む（起動では読まない）。
+  useEffect(() => {
+    if (settingsOpen) void permissions.load();
+  }, [settingsOpen, permissions]);
 
   // .txt と .text は素のテキストとして表示する（別名保存で拡張子が変わったときも追従する）。描画の前に切り替える。
   const textKind = textKindOf(state.path);
@@ -465,6 +497,7 @@ export function App({
         currentPath={state.path}
         onOpenFile={(path) => void openFromExplorer(path)}
         onClose={closeSidebar}
+        pluginMenuItems={pluginMenuItems}
       />
       <div className="workspace" data-testid="workspace">
         <div className="canvas-surface" data-testid="canvas-surface" aria-hidden="true" style={{ opacity: canvas.surfaceOpacity }} />
@@ -535,12 +568,18 @@ export function App({
           onChange={updatePrefs}
           onPickImage={() => void pickImage()}
           onClose={closeSettings}
+          pluginPermissions={{
+            decisions: permissionState.decisions,
+            nameOf: (id) => plugins.records.find((r) => r.id === id)?.name ?? id,
+            onRevoke: permissions.revoke,
+          }}
         />
       )}
       {diskTextForDiff !== null && <DiffDialog mine={state.text} disk={diskTextForDiff} onClose={closeDiff} />}
       {confirm && <ConfirmDiscardDialog documentName={confirm.documentName} onChoose={choose} />}
       {recreate && <ConfirmRecreateDialog documentName={recreate.documentName} onChoose={chooseRecreate} />}
       {trash && <ConfirmTrashDialog target={trash.target} onChoose={chooseTrash} />}
+      {permissionState.prompt && <PermissionDialog prompt={permissionState.prompt} onChoose={permissions.answer} />}
       {recovery && (
         <RecoveryDialog
           documentName={draftTitle(recovery.draft, UNTITLED)}

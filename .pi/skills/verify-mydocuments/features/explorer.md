@@ -15,6 +15,7 @@
 - EXP-11: 名前の変更。F2 か右クリックの「名前を変更」。入力欄の選択は拡張子の前まで。自分自身の名前と大文字小文字だけの変更は通る。開いている文書（またはそれを含むフォルダ）の名前を変えると、文書は新しいパスへ移る（上部バーの名前、監視、前回の文書、草稿のパス）。本文と未保存の状態は残り、保存は新しいパスに書かれ、削除扱いにならない。失敗したら文書は古いパスのまま。展開状態と選択は新しいパスへ引き継ぐ。
 - EXP-12: ゴミ箱への移動。Delete（macOS は ⌘⌫ も）か右クリックの「ゴミ箱に移動」。毎回、確認（confirm-trash。role alertdialog。既定のフォーカスはキャンセル、Esc で取り消し）。確定するとツリーから消え、選択は隣へ移る。開いている文書（またはそれを含むフォルダ）を移すと、監視の通知を待たずに外部変更の確認が走り、未保存の変更がなければ「削除された」の表示、あれば競合バー。
 - EXP-13: 外部の変更の自動反映。ルートと展開中のフォルダは監視され、外部で項目が増減・名前の変更をされると、操作なしでツリーに反映される。展開状態と選択は保たれ、消えたフォルダは展開をやめる。通知の読み直しはトーストを出さない。
+- EXP-14: 同梱の段 2 の部品「パスをコピー」（ADR-005 の R6）。ファイルとフォルダの行の右クリックメニュー（と Shift+F10）に、本体の 4 項目のあと、区切り（role separator）を入れて「パスをコピー」が並ぶ（testId は menu-plugin-copy-path.copy-path）。空き領域のメニューには出ない。選ぶと、その行のパスがクリップボードに入り、トースト「クリップボードにコピーしました」が出る。Mod+Alt+C は開いている文書のパス（未保存の新規文書では何もしない）。初回は、確認の画面（permission-dialog。role dialog。部品の名前と権限ごとの説明、「許可しない」が既定のフォーカス、「許可する」）が出る。Esc と閉じるは今回だけ断る（保存せず、次の使用で再び聞く）。結果は設定画面の「部品の権限」（settings-plugin-permissions）に出て、「取り消す」で未決に戻る。部品が止まると、メニューの項目は消える。
 
 ## How to get to it (user POV)
 
@@ -26,6 +27,7 @@
 - 名前の変更: 項目にフォーカスして F2、右クリックの「名前を変更」。ゴミ箱: 項目にフォーカスして Delete（macOS は ⌘⌫）、右クリックの「ゴミ箱に移動」。
 - 前回のフォルダを開けなかったときの「再試行」（retry-folder）。
 - 起動時の自動処理: 前回のフォルダ（session.lastFolder）の復元。サイドバーが閉じていても読み込まれ、開くとすぐ見える。
+- 「パスをコピー」: ファイルまたはフォルダの行の右クリック、または行にフォーカスして Shift+F10 のあと、End と Enter。Mod+Alt+C（macOS は Cmd+Option+C）。初回の確認の画面の「許可する」「許可しない」、Esc、閉じるボタン。設定画面（Mod+,）の「部品の権限」と「取り消す」。
 
 ## Driving it with Playwright（メモリ bridge）
 
@@ -44,6 +46,7 @@ Preconditions: Launch 済みで Doctor が全 PASS。フォルダ構造は seed 
 | explorer-rename.json（-dark あり） | a.md を開いて追記、F2 で renamed.md、保存。docs を開いた guide.md を右クリックで docs の名前変更 | 選択が [0, 1]。上部バーが renamed.md、未保存マーク・本文・監視・lastPath・草稿のパスが新しいパス。保存は新しいパスだけに書かれる。フォルダの名前変更でも guide.md が追従。画像は 01-rename-input.png、02-after-rename.png、03-after-folder-rename.png |
 | explorer-trash.json（-dark あり） | b.txt で Delete、Esc、Delete して確定。未保存の guide.md を含む docs を右クリックで移す | 確認は alertdialog でフォーカスはキャンセル。Esc では何も起きない。確定で消え、選択は c.md。docs を移すと競合バーが出て本文が残る。画像は 01-confirm-trash.png、02-trashed-open-document.png |
 | explorer-external.json | docs を展開し、外部でファイル・フォルダを足す・消す、docs ごと消す | 操作なしでツリーに反映され、展開は保たれる。watchedFolders がルートと展開中のフォルダ。docs が消えると展開と監視も外れる。トーストなし。画像は 01-external-changes.png |
+| explorer-copy-path.json | 同梱の部品を読み込んで（seed の isolated に bundled: true）、a.md を開き、Mod+Alt+C、確認の画面で「許可する」。docs を右クリックして「パスをコピー」。設定画面で「取り消す」 | 初回は permission-dialog が出て、許可するまで clipboard は空。許可後に /work/notes/a.md が入り、トースト。メニューは 5 項目と区切り 1 つで、docs を選ぶと /work/notes/docs が入る。設定画面の「部品の権限」に結果が出て、取り消すと「決めた権限はありません。」になり、保存された決定が空になる。画像は 01-permission-dialog.png、02-copied-toast.png、03-context-menu.png、04-settings-permissions.png |
 | explorer-restore-retry.json（-dark あり） | 存在しない前回のフォルダで起動し、再試行、フォルダができた後に再試行 | restore-failure に「前回のフォルダ「notes」を開けませんでした」、retry-folder と open-folder。記録は残る。再試行でツリーが出る。画像は 01-restore-failed.png、02-retry-opened.png |
 
 ```
@@ -61,6 +64,7 @@ node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenari
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/explorer-trash.json
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/explorer-trash-dark.json
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/explorer-external.json
+node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/explorer-copy-path.json
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/explorer-restore-retry.json
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/explorer-restore-retry-dark.json
 ```
@@ -83,3 +87,7 @@ Tauri の窓（secondary）。作成・名前の変更・ゴミ箱は窓への�
 - 外部の変更の通知は、監視しているフォルダ（watchedFolders）のときだけ届く。展開していないフォルダへの externalWrite は、通知なし。
 - 名前の変更の直後は、開いている文書のディスクの確認が一度走る。直後の保存の操作は、その確認が終わるまで受け付けない（expect の timeout で待つ）。
 - 前回のフォルダの再試行は、memory bridge では files にそのフォルダの下のファイルを externalWrite で置くと「開けるようになった」状態になる。
+- 同梱の段 2 の部品は、e2e のビルドでは、seed の isolated に bundled: true を書いたときだけ読み込まれる（書かなければ、同梱の部品も iframe もなく、ほかのシナリオのメニューは本体の項目だけ）。isolated には plugins（テスト用の部品の名前。空の配列でよい）が要る。部品が動き出す（最初の描画のあと）まで、window.__mdeE2EIsolatedTrace に ready（plugin が copy-path）が出るのを待ってからキーを押す。
+- クリップボードはメモリ bridge の記録（window.__mdeE2E.clipboard）。実際の OS のクリップボードには書かない。権限の保存は window.__mdeE2E.savedPluginPermissions（再読み込みをまたいで保たれるのは sessionStorage の分。seed の pluginPermissions は、保存済みの決定の代わり）。
+- 確認の画面は、宣言した権限のうち決めていないものをまとめて 1 回聞く。「許可する」「許可しない」は聞いた権限すべてに保存される。許可後に部品が止まっていないことは、trace に stopped がないこと（コンソールの「部品「…」を止めました」もない）で確かめる。
+- Mod+Alt+C は、Playwright の press で Alt を付けて送る（macOS の Option の文字合成は再現しない。物理キー code で判定する経路は単体テストが正本）。AltGr の入力は、press では作れない（window へ KeyboardEvent を dispatch して確かめる。tests/e2e/copy-path.spec.ts）。

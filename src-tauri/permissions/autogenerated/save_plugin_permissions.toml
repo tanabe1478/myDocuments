@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-plugin-permissions"
+description = "Enables the save_plugin_permissions command without any pre-configured scope."
+commands.allow = ["save_plugin_permissions"]
+
+[[permission]]
+identifier = "deny-save-plugin-permissions"
+description = "Denies the save_plugin_permissions command without any pre-configured scope."
+commands.deny = ["save_plugin_permissions"]

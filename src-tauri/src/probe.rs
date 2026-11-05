@@ -67,6 +67,13 @@ pub fn isolation_probe_report(line: String) {
     append("report.jsonl", &line);
 }
 
+/// クリップボードへの書き込みの記録（`clipboard.log`）。この検証用のビルドは、OS のクリップボードには書かず、ここに 1 行（文字数と先頭の 40 文字）を
+/// 書くだけにする（利用者のクリップボードを上書きしない）。ADR-005 の R6。
+pub fn record_clipboard(text: &str) {
+    let head: String = text.chars().take(40).collect();
+    append("clipboard.log", &format!("{}:{}", text.chars().count(), head));
+}
+
 /// 記録用のコマンドを main 窓に許可する。この許可は実行時に足す（feature のときだけ。`capabilities/` のファイルには書かない）。
 pub fn grant(app: &App) -> tauri::Result<()> {
     let mut capability = CapabilityBuilder::new("isolation-probe").window("main");

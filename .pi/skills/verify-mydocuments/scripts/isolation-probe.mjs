@@ -11,6 +11,8 @@
 //   - ネイティブ側: 検証用のコマンド（isolation_probe_canary）が書く canary.log。1 行 = 1 回の呼び出しで、行の内容は <文脈>:<経路> の名前。
 //   - ネットワーク: この script が立てる 127.0.0.1 の受け口の net.log。1 行 = 1 回の接続要求（ctx= で文脈と経路を区別）。
 // webview 側の自己申告（report.jsonl）は、判定には使わず、表に並べる。
+// R6 で足した経路（権限の API。ADR-005 の「R6 で確かめた隔離」）は、ネイティブ側の記録 clipboard.log（検証用のビルドでは、クリップボードへの書き込みが
+// 記録に差し替わる。OS のクリップボードには書かない）と、アプリのデータ領域の plugin-permissions.json（権限が自動で許可されていない確認）で判定する。
 // 結果: <run-dir>/evidence/isolation-probe/{judgement.json, judgement.md, canary.log, net.log, report.jsonl, tauri.log}。
 // exit code: 0 = 鍵なしで届く経路がなく、対照も届いた / 2 = 鍵なしで届く経路があった（失敗）/ 3 = 検証が完了しなかった、または対照が届かなかった。
 import { spawnSync } from 'node:child_process';
@@ -21,6 +23,8 @@ import { fileURLToPath } from 'node:url';
 import { ARTIFACTS, PROBE_BIN, ROOT, fail, newRunId, parseArgs, rel, sleep, writeState } from './lib.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+/** アプリの識別子（アプリのデータ領域のディレクトリ名）。tauri.conf.json の identifier。 */
+const APP_IDENTIFIER = JSON.parse(fs.readFileSync(path.join(ROOT, 'src-tauri', 'tauri.conf.json'), 'utf8')).identifier;
 const TAURI = path.join(here, 'tauri.mjs');
 
 // ---- 判定の表（経路の一覧）----
@@ -57,8 +61,12 @@ function readLines(file) {
   return fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean) : [];
 }
 
-/** 記録（canary.log、net.log、report.jsonl）から、経路ごとの判定を作る。 */
-export function judge({ canary, net, report }) {
+// R6 の経路（クリップボードに書く権限の API）。対照は、本体（鍵を持つ側）の呼び出し main:control-clipboard が clipboard.log に出ること。
+// 対照以外の行が clipboard.log にあれば、権限（宣言、確認）なしで書けた経路があったので、失敗。
+const CLIPBOARD_CONTROL = 'main:control-clipboard';
+
+/** 記録（canary.log、net.log、report.jsonl、clipboard.log、権限の保存ファイル）から、経路ごとの判定を作る。 */
+export function judge({ canary, net, report, clipboard = [], permissionsFile = null }) {
   const reports = report.flatMap((l) => {
     try {
       return [JSON.parse(l)];
@@ -93,14 +101,82 @@ export function judge({ canary, net, report }) {
     return { plugin: id, stoppedReason: r?.stopped ?? null, status: r?.status ?? null, rejectedByRelay: rejected };
   });
   const broadcast = reports.find((r) => r.ev === 'broadcast');
-  const failures = rows.filter((r) => r.outcome.includes('失敗'));
+  // ---- R6: 権限の API ----
+  // 判定の根拠: clipboard.log（ネイティブ側）、plugin-permissions.json の有無。自己申告（report.jsonl）は、その経路が試されたことの確認に使う。
+  const parseStop = (r) => {
+    const m = r && typeof r.stopped === 'string' ? /例外を出しました: (\{.*\})\s*$/.exec(r.stopped) : null;
+    try {
+      return m ? JSON.parse(m[1]) : null;
+    } catch {
+      return null;
+    }
+  };
+  const undeclaredReport = parseStop(workerReports.find((x) => x.plugin === 'probe-undeclared'));
+  const undeclared = {
+    tried: Boolean(undeclaredReport),
+    // 仲介への直接の呼び出し（番号 11 と 12）と、API 経由の呼び出し（番号 1 と 2）の結果が、どれも拒否（宣言していません）だった。
+    rawCallsRefused: Boolean(undeclaredReport && [11, 12].every((n) => undeclaredReport.got.some((g) => g.call === n && g.ok === false && g.declaredMentioned === true))),
+    apiCallsRejected: Boolean(
+      undeclaredReport &&
+        undeclaredReport.viaApi.length === 2 &&
+        undeclaredReport.viaApi.every((v) => v === 'rejected:true') &&
+        [1, 2].every((n) => undeclaredReport.got.some((g) => g.call === n && g.ok === false && g.declaredMentioned === true)),
+    ),
+  };
+  const badCalls = ['probe-bad-call-method', 'probe-bad-call-extra', 'probe-bad-call-long', 'probe-bad-menu'].map((id) => {
+    const r = workerReports.find((x) => x.plugin === id);
+    return { plugin: id, stoppedReason: r?.stopped ?? null, stoppedByRelay: Boolean(r && typeof r.stopped === 'string' && r.stopped.includes('不正なメッセージ')) };
+  });
+  const undecidedReport = reports.find((r) => r.ev === 'undecided');
+  const undecided = {
+    tried: Boolean(undecidedReport && undecidedReport.ran),
+    dialogShown: Boolean(undecidedReport && undecidedReport.dialogShown),
+    dialogPlugin: undecidedReport?.dialogPlugin ?? null,
+    dialogPermissions: undecidedReport?.dialogPermissions ?? null,
+    partStillRunning: undecidedReport?.status === 'active',
+  };
+  const bundledReport = reports.find((r) => r.ev === 'bundled');
+  const bundled = {
+    ready: Boolean(bundledReport && bundledReport.events.includes('ready')),
+    commands: bundledReport?.commands ?? [],
+    menuItems: bundledReport?.menuItems ?? [],
+    status: bundledReport?.status ?? null,
+  };
+  const bundledOk = bundled.ready && bundled.commands.includes('copy-path.copy-current-path') && bundled.menuItems.includes('copy-path.copy-path') && bundled.status === 'active';
+  const clipboardControlReached = clipboard.some((l) => l.includes(CLIPBOARD_CONTROL));
+  const clipboardOther = clipboard.filter((l) => !l.includes(CLIPBOARD_CONTROL));
+  const r6 = {
+    clipboardLines: clipboard,
+    clipboardControlReached,
+    clipboardWritesWithoutPermission: clipboardOther,
+    permissionsFileExists: permissionsFile !== null,
+    permissionsFile,
+    undeclared,
+    badCalls,
+    undecided,
+    bundled,
+    bundledOk,
+  };
+  const r6Failures = [
+    ...clipboardOther.map((l) => `権限の確認なしに、クリップボードへの書き込みが記録された: ${l.slice(0, 60)}`),
+    ...(permissionsFile !== null ? ['確認の画面に答えていないのに、権限の保存ファイルができた（自動で許可された可能性）'] : []),
+  ];
+  const r6Incomplete = [
+    ...(!undeclared.tried ? ['宣言していない権限の API の試験が報告されていない'] : []),
+    ...(undeclared.tried && !(undeclared.rawCallsRefused && undeclared.apiCallsRejected) ? ['宣言していない権限の API の呼び出しが、拒否されたと確認できない'] : []),
+    ...badCalls.filter((b) => !b.stoppedByRelay).map((b) => `不正な形の呼び出し（${b.plugin}）が、部品を止めたと確認できない`),
+    ...(!undecided.tried || !undecided.dialogShown ? ['未決の権限の呼び出しで、確認の画面が出たと確認できない'] : []),
+    ...(!clipboardControlReached ? ['クリップボードの記録の対照（本体からの書き込み）が届いていない'] : []),
+    ...(!bundledOk ? ['同梱の部品が、本物の plug: の上で ready になり、コマンドとメニューの項目を登録したと確認できない'] : []),
+  ];
+  const failures = [...rows.filter((r) => r.outcome.includes('失敗')), ...r6Failures.map((m) => ({ context: 'R6', path: m }))];
   const controlFailures = rows.filter((r) => r.key === 'control' && r.reached === 0);
   const keyedReached = rows.filter((r) => r.outcome.includes('鍵ありで届く経路'));
   const postFailures = postRows.filter((r) => !r.rejectedByRelay);
   const broadcastHeard = broadcast ? broadcast.heardInMainPage : null;
   const complete = done && Boolean(control) && Boolean(control.keyCaptured) && broadcastHeard !== null;
-  const verdict = failures.length > 0 ? 'FAIL' : !complete || controlFailures.length > 0 ? 'INCOMPLETE' : 'PASS';
-  return { verdict, complete, keyCaptured: control?.keyCaptured ?? null, rows, postRows, postFailures: postFailures.length, broadcastHeardInMainPage: broadcastHeard, failures: failures.map((r) => `${r.context} / ${r.path}`), keyedReached: keyedReached.map((r) => `${r.context} / ${r.path}`), controlFailures: controlFailures.map((r) => r.path), selfReport: { control, workers: workerReports, relayContext: reports.find((r) => r.ev === 'relay-context') ?? null } };
+  const verdict = failures.length > 0 ? 'FAIL' : !complete || controlFailures.length > 0 || r6Incomplete.length > 0 ? 'INCOMPLETE' : 'PASS';
+  return { verdict, complete, keyCaptured: control?.keyCaptured ?? null, r6, r6Incomplete, rows, postRows, postFailures: postFailures.length, broadcastHeardInMainPage: broadcastHeard, failures: failures.map((r) => `${r.context} / ${r.path}`), keyedReached: keyedReached.map((r) => `${r.context} / ${r.path}`), controlFailures: controlFailures.map((r) => r.path), selfReport: { control, workers: workerReports, relayContext: reports.find((r) => r.ev === 'relay-context') ?? null } };
 }
 
 function markdown(j) {
@@ -109,6 +185,15 @@ function markdown(j) {
   lines.push('', '仲介が決めていない形のメッセージを受け付けず、部品を止めたか（本体の記録）:', '');
   for (const r of j.postRows) lines.push(`- ${r.plugin}: ${r.rejectedByRelay ? '止めた' : '止めていない'}（${r.stoppedReason ?? 'なし'}）`);
   lines.push('', `BroadcastChannel（Worker から本体へ）: 本体のページが聞いたメッセージ ${JSON.stringify(j.broadcastHeardInMainPage)}`, '');
+  const r6 = j.r6;
+  lines.push('## R6: 権限の API', '');
+  lines.push(`- クリップボードの記録（clipboard.log。検証用のビルドは OS のクリップボードに書かない）: ${r6.clipboardLines.length} 行。対照（本体からの書き込み）が届いた: ${r6.clipboardControlReached}。対照以外（権限なしで書けた経路）: ${r6.clipboardWritesWithoutPermission.length} 行`);
+  lines.push(`- 宣言していない権限の API: 仲介への直接の呼び出しが拒否された ${r6.undeclared.rawCallsRefused}、API 経由が reject された ${r6.undeclared.apiCallsRejected}`);
+  for (const b of r6.badCalls) lines.push(`- 不正な形の呼び出し（${b.plugin}）: ${b.stoppedByRelay ? '部品を止めた' : '止めていない'}（${b.stoppedReason ?? 'なし'}）`);
+  lines.push(`- 未決の権限の呼び出し: 確認の画面が出た ${r6.undecided.dialogShown}（部品 ${r6.undecided.dialogPlugin}、権限 ${JSON.stringify(r6.undecided.dialogPermissions)}）。権限の保存ファイル（plugin-permissions.json）: ${r6.permissionsFileExists ? 'できた（失敗）' : 'できていない（自動では許可されていない）'}`);
+  lines.push(`- 同梱の部品（本物の plug: と relay.js の上）: ready ${r6.bundled.ready}、コマンド ${JSON.stringify(r6.bundled.commands)}、メニューの項目 ${JSON.stringify(r6.bundled.menuItems)}、状態 ${r6.bundled.status}`);
+  if (j.r6Incomplete.length > 0) lines.push('', `未確認（INCOMPLETE の理由）: ${JSON.stringify(j.r6Incomplete)}`);
+  lines.push('');
   return `${lines.join('\n')}\n`;
 }
 
@@ -138,7 +223,13 @@ const args = parseArgs(process.argv.slice(2));
 
 if (typeof args['judge-only'] === 'string') {
   const dir = path.resolve(args['judge-only']);
-  const j = judge({ canary: readLines(path.join(dir, 'canary.log')), net: readLines(path.join(dir, 'net.log')), report: readLines(path.join(dir, 'report.jsonl')) });
+  const j = judge({
+    canary: readLines(path.join(dir, 'canary.log')),
+    net: readLines(path.join(dir, 'net.log')),
+    report: readLines(path.join(dir, 'report.jsonl')),
+    clipboard: readLines(path.join(dir, 'clipboard.log')),
+    permissionsFile: fs.existsSync(path.join(dir, 'plugin-permissions.json')) ? fs.readFileSync(path.join(dir, 'plugin-permissions.json'), 'utf8') : null,
+  });
   console.log(markdown(j));
   console.log(`VERDICT=${j.verdict}`);
   process.exit(j.verdict === 'PASS' ? 0 : j.verdict === 'FAIL' ? 2 : 3);
@@ -189,7 +280,16 @@ try {
 
 const tauriLog = path.join(runDir, 'tauri.log');
 if (fs.existsSync(tauriLog)) fs.copyFileSync(tauriLog, path.join(outDir, 'tauri.log'));
-const records = { canary: readLines(path.join(outDir, 'canary.log')), net: readLines(path.join(outDir, 'net.log')), report: readLines(path.join(outDir, 'report.jsonl')) };
+// 権限の保存ファイル（アプリのデータ領域。run 専用の HOME の下）。確認の画面に答えていないので、できていないはず。あれば、証跡へ写す。
+const permissionsPath = path.join(runDir, 'tauri-home', 'Library', 'Application Support', APP_IDENTIFIER, 'plugin-permissions.json');
+if (fs.existsSync(permissionsPath)) fs.copyFileSync(permissionsPath, path.join(outDir, 'plugin-permissions.json'));
+const records = {
+  canary: readLines(path.join(outDir, 'canary.log')),
+  net: readLines(path.join(outDir, 'net.log')),
+  report: readLines(path.join(outDir, 'report.jsonl')),
+  clipboard: readLines(path.join(outDir, 'clipboard.log')),
+  permissionsFile: fs.existsSync(permissionsPath) ? fs.readFileSync(permissionsPath, 'utf8') : null,
+};
 const j = judge(records);
 const nodeControl = records.net.some((l) => l.includes('ctx=node-control'));
 j.netControlReached = nodeControl;

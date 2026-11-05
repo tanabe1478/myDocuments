@@ -1,4 +1,5 @@
 mod backgrounds;
+mod clipboard;
 mod documents;
 mod drafts;
 mod entries;
@@ -6,6 +7,7 @@ mod error;
 mod external;
 mod folders;
 mod plug;
+mod plugin_permissions;
 mod preferences;
 #[cfg(feature = "isolation-probe")]
 mod probe;
@@ -17,6 +19,7 @@ use documents::{DiskStateDto, FormatDto, KnownPaths, OpenedDocument, SaveResultD
 use drafts::{Draft, DraftSummary};
 use error::{CommandError, ErrorKind};
 use folders::{FolderListingDto, OpenFolders};
+use plugin_permissions::PluginPermissions;
 use session::Session;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -269,6 +272,25 @@ async fn open_external_url(app: AppHandle, url: String) -> Result<(), CommandErr
     external::open(&app, &url)
 }
 
+/// クリップボードに文字列を書く（書くだけ。読む口はない）。空と、100,000 文字を超える文字列は InvalidInput。
+/// 部品の権限（clipboard.write）は、本体の UI が確かめてから呼ぶ。clipboard-manager の JavaScript 向けのコマンドは許可していない。
+#[tauri::command]
+async fn write_clipboard_text(app: AppHandle, text: String) -> Result<(), CommandError> {
+    clipboard::write(&app, &text)
+}
+
+/// 部品の権限の、利用者の決定（アプリのデータ領域の plugin-permissions.json）。壊れている・ないときは空。
+#[tauri::command]
+async fn load_plugin_permissions(app: AppHandle) -> Result<PluginPermissions, CommandError> {
+    plugin_permissions::load_from(&data_dir(&app)?)
+}
+
+/// 形（版、部品の id、権限の名前、granted / denied）と大きさを検査して保存する。
+#[tauri::command]
+async fn save_plugin_permissions(app: AppHandle, permissions: serde_json::Value) -> Result<(), CommandError> {
+    plugin_permissions::save_to(&data_dir(&app)?, &permissions)
+}
+
 /// UI が終了の確認を済ませた後に呼ぶ。アプリを終了する。
 #[tauri::command]
 async fn close_app(app: AppHandle, guard: State<'_, CloseGuard>) -> Result<(), CommandError> {
@@ -338,6 +360,9 @@ macro_rules! app_commands {
             save_preferences,
             import_background_image,
             read_background_image,
+            write_clipboard_text,
+            load_plugin_permissions,
+            save_plugin_permissions,
             $($extra),*
         ]
     };
@@ -356,6 +381,10 @@ pub fn run() {
         .manage(DocumentWatcher::default())
         .manage(FolderWatcher::default())
         .manage(CloseGuard::default());
+    // クリップボードに書くための Rust 側の API（ClipboardExt）だけを使う。JavaScript 向けのコマンドは capabilities で許可しない
+    // （書く入口は write_clipboard_text だけ）。隔離の検証用のビルドは、書き込みを記録に差し替えるので、プラグインを入れない。
+    #[cfg(not(feature = "isolation-probe"))]
+    let builder = builder.plugin(tauri_plugin_clipboard_manager::init());
     #[cfg(not(feature = "isolation-probe"))]
     let builder = builder.invoke_handler(app_commands!());
     #[cfg(feature = "isolation-probe")]
@@ -458,5 +487,33 @@ mod probe_gate_tests {
         }
         // 許可は実行時に足す（probe::grant）。ファイルの capability には書かない。
         assert!(!include_str!("../capabilities/default.json").contains("probe"));
+    }
+}
+
+/// クリップボードの許可は、自前のコマンドの許可だけであることの検査（ADR-005 の R6）。clipboard-manager の JavaScript 向けの許可は、
+/// 窓（capability）にも、ビルドが出力した ACL の生成物の capability にも入っていない。
+#[cfg(test)]
+mod clipboard_acl_tests {
+    #[test]
+    fn the_capability_grants_only_the_own_command_for_the_clipboard() {
+        let caps: serde_json::Value = serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
+        let permissions: Vec<&str> = caps["permissions"].as_array().unwrap().iter().filter_map(|p| p.as_str()).collect();
+        assert!(permissions.contains(&"allow-write-clipboard-text"));
+        assert!(permissions.contains(&"allow-load-plugin-permissions"));
+        assert!(permissions.contains(&"allow-save-plugin-permissions"));
+        assert!(
+            !permissions.iter().any(|p| p.contains("clipboard-manager") || p.starts_with("clipboard")),
+            "no JavaScript-facing clipboard-manager permission may be granted: {permissions:?}"
+        );
+        // 窓に許可するのは main だけ。
+        assert_eq!(caps["windows"], serde_json::json!(["main"]));
+    }
+
+    #[test]
+    fn the_generated_capability_has_no_clipboard_manager_permission() {
+        let out = std::path::Path::new(env!("OUT_DIR")).join("capabilities.json");
+        let text = std::fs::read_to_string(out).unwrap();
+        assert!(text.contains("allow-write-clipboard-text"));
+        assert!(!text.contains("clipboard-manager"), "a clipboard-manager permission is granted to a window");
     }
 }

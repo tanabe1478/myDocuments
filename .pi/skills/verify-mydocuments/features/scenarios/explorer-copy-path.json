@@ -1,0 +1,37 @@
+{
+  "seed": {
+    "files": {
+      "/work/notes/a.md": { "text": "# 見出しA\n\n本文A\n" },
+      "/work/notes/docs/guide.md": { "text": "# ガイド\n" }
+    },
+    "folderPath": "/work/notes",
+    "preferences": { "theme": "light", "autoHideChrome": false, "sidebarOpen": true },
+    "isolated": { "plugins": [], "bundled": true, "activateTimeoutMs": 8000, "runTimeoutMs": 8000 }
+  },
+  "steps": [
+    { "click": { "testId": "open-folder" } },
+    { "click": { "css": "[data-testid=file-tree] [role=treeitem][aria-label='a.md'] > .tree-row" } },
+    { "expect": { "testId": "doc-title", "equals": "a.md" } },
+    { "expect": { "eval": "window.__mdeE2EIsolatedTrace.some((e) => e.type === 'ready' && e.plugin === 'copy-path')", "equals": true, "note": "同梱の部品が動き出した（最初の描画のあと）" } },
+    { "press": "ControlOrMeta+Alt+c" },
+    { "expect": { "role": "dialog", "name": "部品の権限の確認", "read": "visible", "equals": true, "note": "初回は確認の画面" } },
+    { "expect": { "eval": "window.__mdeE2E.clipboard.length", "equals": 0, "note": "許可するまで書かれない" } },
+    { "screenshot": "01-permission-dialog" },
+    { "click": { "testId": "permission-allow" } },
+    { "expect": { "eval": "window.__mdeE2E.clipboard[0]", "equals": "/work/notes/a.md", "note": "開いている文書のパス" } },
+    { "expect": { "testId": "toast", "equals": "クリップボードにコピーしました" } },
+    { "screenshot": "02-copied-toast" },
+    { "click": { "css": "[data-testid=file-tree] [role=treeitem][aria-label='docs'] > .tree-row", "button": "right" } },
+    { "expect": { "css": "[data-testid=tree-context-menu] [role=menuitem]", "read": "count", "equals": 5, "note": "本体の 4 項目と、部品の「パスをコピー」" } },
+    { "expect": { "css": "[data-testid=tree-context-menu] [role=separator]", "read": "count", "equals": 1 } },
+    { "screenshot": "03-context-menu" },
+    { "click": { "testId": "menu-plugin-copy-path.copy-path" } },
+    { "expect": { "eval": "window.__mdeE2E.clipboard.at(-1)", "equals": "/work/notes/docs", "note": "右クリックした行（フォルダ）のパス" } },
+    { "press": "ControlOrMeta+," },
+    { "expect": { "testId": "plugin-permissions-copy-path", "read": "visible", "equals": true, "note": "設定画面の「部品の権限」に、決めた結果が出る" } },
+    { "screenshot": "04-settings-permissions" },
+    { "click": { "testId": "plugin-permissions-revoke-copy-path" } },
+    { "expect": { "testId": "plugin-permissions-empty", "equals": "決めた権限はありません。" } },
+    { "expect": { "eval": "JSON.stringify(window.__mdeE2E.savedPluginPermissions.at(-1))", "equals": "{\"version\":1,\"plugins\":{}}", "note": "取り消しが保存された" } }
+  ]
+}

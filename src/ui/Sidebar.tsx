@@ -4,6 +4,7 @@ import type { ExplorerController, ExplorerState } from '../explorer/controller';
 import { buildTree } from '../explorer/tree';
 import { FileTree } from './FileTree';
 import type { SidebarMode } from './sidebarLayout';
+import type { MenuTarget, RegisteredMenuItem } from '../plugin-api';
 import { TreeContextMenu, type MenuItem } from './TreeContextMenu';
 
 export const SIDEBAR_ID = 'app-sidebar';
@@ -18,6 +19,8 @@ interface Props {
   currentPath: string | null;
   onOpenFile(path: string): void;
   onClose(): void;
+  /** 部品（段 2）が、ツリーの右クリックに足した項目。ファイルとフォルダの行のメニューに、本体の項目のあと、区切りを入れて並ぶ。 */
+  pluginMenuItems?: readonly RegisteredMenuItem[];
 }
 
 /** 右クリックメニューの対象。path が null なら、ツリーの空き領域（作成先はルート）。 */
@@ -46,7 +49,7 @@ const ITEM_ITEMS: readonly MenuItem[] = [
  * 重ねて表示するとき（狭い窓）は、上部バーの開閉ボタンが隠れるので、中に閉じるボタンを置く。Esc でも閉じる。
  * 見出しの「新しいファイル」「新しいフォルダ」と、ツリーの右クリックメニューから、作成・名前の変更・ゴミ箱への移動ができる。
  */
-export function Sidebar({ open, mode, explorer, explorerState, currentPath, onOpenFile, onClose }: Props) {
+export function Sidebar({ open, mode, explorer, explorerState, currentPath, onOpenFile, onClose, pluginMenuItems = [] }: Props) {
   const { root, dirs, expanded, selected, edit, restoreFailure } = explorerState;
   const nodes = useMemo(() => (root === null ? [] : buildTree(root, dirs, expanded)), [root, dirs, expanded]);
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -76,6 +79,24 @@ export function Sidebar({ open, mode, explorer, explorerState, currentPath, onOp
     const path = rowEl?.dataset.kind !== 'note' ? (rowEl?.dataset.rowId ?? null) : null;
     explorer.select(path);
     openMenu(path, e.clientX, e.clientY);
+  };
+
+  /** 行のパスが、部品に渡せる対象（ファイルかフォルダ。補足の行、壊れたリンクなどは対象にしない）か。 */
+  const targetOf = (path: string | null): MenuTarget | null => {
+    const row = path === null ? undefined : nodes.find((n) => n.row.id === path)?.row;
+    if (!row || path === null) return null;
+    return row.kind === 'file' ? { path, kind: 'file' } : row.kind === 'dir' || row.kind === 'symlinkDir' ? { path, kind: 'folder' } : null;
+  };
+  const menuTarget = menu ? targetOf(menu.path) : null;
+  const visiblePluginItems = menuTarget ? pluginMenuItems.filter((i) => i.where === 'tree') : [];
+
+  const choosePlugin = (id: string) => {
+    const item = visiblePluginItems.find((i) => i.id === id);
+    const origin = menu?.origin;
+    setMenu(null);
+    // 権限の確認の画面が出ても、閉じたあとに行へ戻れるよう、先にフォーカスを戻す。
+    if (origin?.isConnected) origin.focus();
+    if (item && menuTarget) void item.run(menuTarget);
   };
 
   const choose = (id: MenuItem['id']) => {
@@ -217,7 +238,9 @@ export function Sidebar({ open, mode, explorer, explorerState, currentPath, onOp
           x={menu.x}
           y={menu.y}
           items={menu.path === null ? CREATE_ITEMS : ITEM_ITEMS}
+          pluginItems={visiblePluginItems.map((i) => ({ id: i.id, label: i.title }))}
           onChoose={choose}
+          onChoosePlugin={choosePlugin}
           onClose={() => closeMenu(true)}
         />
       )}

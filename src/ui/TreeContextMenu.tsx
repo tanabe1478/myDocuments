@@ -5,20 +5,29 @@ export interface MenuItem {
   readonly label: string;
 }
 
+/** 部品（段 2）が登録した項目。本体の項目のあとに、区切りを入れて並べる。 */
+export interface PluginMenuItem {
+  readonly id: string;
+  readonly label: string;
+}
+
 interface Props {
   x: number;
   y: number;
   items: readonly MenuItem[];
+  /** 部品の項目（なければ、区切りも出さない）。 */
+  pluginItems?: readonly PluginMenuItem[];
   onChoose(id: MenuItem['id']): void;
+  onChoosePlugin?(id: string): void;
   /** 閉じる（Esc、外のクリック、項目の選択の後）。 */
   onClose(): void;
 }
 
 /**
  * ツリーの右クリックメニュー（role=menu / menuitem）。開くと最初の項目にフォーカスし、上下・Home・End で移動、
- * Enter で実行、Esc で閉じる。外を押しても閉じる。
+ * Enter で実行、Esc で閉じる。外を押しても閉じる。部品の項目は、本体の項目のあとに、区切りを入れて並ぶ（キーボード操作は同じ）。
  */
-export function TreeContextMenu({ x, y, items, onChoose, onClose }: Props) {
+export function TreeContextMenu({ x, y, items, pluginItems = [], onChoose, onChoosePlugin, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -72,7 +81,8 @@ export function TreeContextMenu({ x, y, items, onChoose, onClose }: Props) {
 
   // 窓の外へはみ出さない位置にする。
   const left = Math.max(4, Math.min(x, window.innerWidth - 190));
-  const top = Math.max(4, Math.min(y, window.innerHeight - 8 - items.length * 30));
+  const rows = items.length + pluginItems.length + (pluginItems.length > 0 ? 1 : 0);
+  const top = Math.max(4, Math.min(y, window.innerHeight - 8 - rows * 30));
 
   return (
     <div
@@ -94,6 +104,20 @@ export function TreeContextMenu({ x, y, items, onChoose, onClose }: Props) {
           data-testid={`menu-${item.id}`}
           tabIndex={-1}
           onClick={() => onChoose(item.id)}
+        >
+          {item.label}
+        </button>
+      ))}
+      {pluginItems.length > 0 && <div role="separator" className="tree-context-separator" data-testid="menu-separator" />}
+      {pluginItems.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          role="menuitem"
+          className="tree-context-item"
+          data-testid={`menu-plugin-${item.id}`}
+          tabIndex={-1}
+          onClick={() => onChoosePlugin?.(item.id)}
         >
           {item.label}
         </button>

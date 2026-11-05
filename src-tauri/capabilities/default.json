@@ -34,6 +34,9 @@
     "allow-load-preferences",
     "allow-save-preferences",
     "allow-import-background-image",
-    "allow-read-background-image"
+    "allow-read-background-image",
+    "allow-write-clipboard-text",
+    "allow-load-plugin-permissions",
+    "allow-save-plugin-permissions"
   ]
 }

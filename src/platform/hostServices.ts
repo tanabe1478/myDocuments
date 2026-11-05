@@ -1,4 +1,4 @@
-import type { HostServices } from '../plugin-api';
+import type { HostServices, IsolatedServices } from '../plugin-api';
 import type { DocumentBridge } from './DocumentBridge';
 import { isOpenableExternalUrl } from './externalUrl';
 
@@ -30,5 +30,39 @@ export function createHostServices({ bridge, notify, isMacPlatform }: HostServic
       bridge.openExternalUrl(url).catch(notOpenable);
     },
     isMacPlatform,
+  };
+}
+
+/** クリップボードに書けたときのトーストの文言。 */
+export const CLIPBOARD_COPIED_MESSAGE = 'クリップボードにコピーしました';
+/** クリップボードに書けなかったときのトーストの文言。 */
+export const CLIPBOARD_FAILED_MESSAGE = 'クリップボードに書けませんでした';
+
+export interface IsolatedServicesOptions {
+  readonly bridge: Pick<DocumentBridge, 'writeClipboardText'>;
+  /** 利用者に知らせる（トースト）。 */
+  readonly notify: (notice: { kind: 'info' | 'error'; message: string }) => void;
+  /** 開いている文書のパス（未保存の新規文書は null）。呼ぶたびに今の値を返す。 */
+  readonly currentPath: () => string | null;
+}
+
+/**
+ * 本体が段 2 の部品に貸す機能（ADR-005 の R6）。権限の確認（clipboard.write、paths.read）は、レジストリが、これを呼ぶ前に済ませる。
+ * - クリップボードに書く: 本体の bridge（自前のネイティブのコマンド）を通す。書けたら、トースト「クリップボードにコピーしました」。
+ *   書けなかったときは、トースト「クリップボードに書けませんでした」を出し、部品の呼び出しは失敗になる。
+ * - 開いている文書のパス: 呼んだ時点の値。
+ */
+export function createIsolatedServices({ bridge, notify, currentPath }: IsolatedServicesOptions): IsolatedServices {
+  return {
+    async writeClipboardText(text) {
+      try {
+        await bridge.writeClipboardText(text);
+      } catch (error) {
+        notify({ kind: 'error', message: CLIPBOARD_FAILED_MESSAGE });
+        throw error;
+      }
+      notify({ kind: 'info', message: CLIPBOARD_COPIED_MESSAGE });
+    },
+    currentPath,
   };
 }

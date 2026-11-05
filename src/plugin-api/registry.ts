@@ -1,4 +1,5 @@
 import { EditorState, type Extension } from '@codemirror/state';
+import { PERMISSION_DESCRIPTIONS, isPermission, type Permission, type PermissionGate } from './permissions';
 import { matchesShortcut, parseShortcut, type KeyEventLike, type ParsedShortcut } from './shortcut';
 import {
   SETTINGS_PLACEMENTS,
@@ -7,8 +8,13 @@ import {
   type CommandContext,
   type EditorExtensionEnvironment,
   type EditorExtensionRegistration,
+  type IsolatedCall,
+  type IsolatedCallResult,
   type IsolatedCommandInfo,
+  type IsolatedMenuItemInfo,
   type IsolatedPluginHost,
+  type IsolatedServices,
+  type MenuTarget,
   type Plugin,
   type PluginContext,
   type RadioOption,
@@ -56,6 +62,20 @@ export interface RegisteredCommand {
   run(ctx: CommandContext): void;
 }
 
+/** ツリーの右クリックに出す、段 2 の部品の項目。 */
+export interface RegisteredMenuItem {
+  readonly pluginId: string;
+  /** `<部品の id>.<項目の id>`。 */
+  readonly id: string;
+  readonly title: string;
+  readonly where: 'tree';
+  /**
+   * 項目を選んだ。paths.read が許可されていれば（決めていなければ、確認の画面で聞いてから）、部品の run に対象を渡す。
+   * 拒否、確認の画面を閉じた、部品が止まったときは、何もしない。Promise は reject しない。
+   */
+  run(target: MenuTarget): Promise<void>;
+}
+
 interface RegisteredSettingsItemBase {
   readonly pluginId: string;
   readonly placement: SettingsPlacement;
@@ -88,6 +108,23 @@ export interface PluginRegistry {
   readonly settings: readonly SettingDefinition<unknown>[];
   readonly editorExtensions: readonly RegisteredEditorExtension[];
   readonly commands: readonly RegisteredCommand[];
+  /**
+   * ツリーの右クリックの項目（動いている段 2 の部品のもの。登録の順）。部品が登録・停止するたびに、別の配列になる
+   * （useSyncExternalStore の snapshot として使える）。
+   */
+  readonly menuItems: readonly RegisteredMenuItem[];
+  /** menuItems が変わったときに呼ばれる。戻り値で解除。 */
+  subscribe(listener: () => void): () => void;
+  /**
+   * deferStart で作ったレジストリで、段 2 の部品を動かし始める（最初の描画のあと、App が呼ぶ）。何度呼んでもよい。
+   * deferStart でなければ、作った時点で動いているので、何もしない。
+   */
+  startDeferred(): void;
+  /**
+   * 段 2 の部品が使う、本体の機能（クリップボード、開いている文書のパス）を結ぶ。App が、文書とトーストの持ち主として結ぶ。
+   * 結ぶまでの呼び出しは、失敗として返る。戻り値で解除（結んだ相手と同じときだけ）。
+   */
+  bindServices(services: IsolatedServices): () => void;
   /** 置き場所の項目（その場所に置ける種類のものだけ）を、order の順に。 */
   settingsItems<P extends SettingsPlacement>(placement: P): readonly RegisteredItemAt<P>[];
   /** キー入力に合うコマンド（なければ null）。ホストの固定のショートカットを先に判定してから呼ぶ。 */
@@ -104,6 +141,16 @@ export interface PluginRegistryOptions {
    * （incompatible）。段 2 の部品がないときは、渡さない（iframe も Worker も作られない）。
    */
   readonly isolation?: IsolatedPluginHost;
+  /**
+   * 段 2 の権限の確認（src/permissions/）。ない環境では、権限（manifest.permissions）を宣言した部品は読み込まない（incompatible）。
+   * 宣言のない段 2 の部品は、これがなくても動く。
+   */
+  readonly permissions?: PermissionGate;
+  /**
+   * true のとき、段 2 の部品は作った時点では動かさず、startDeferred() で動かす（iframe と Worker を、最初の描画のあとに作るため）。
+   * 既定は false（作った時点で動かす）。
+   */
+  readonly deferStart?: boolean;
   /** 読み込まなかった・止めたことの記録先。既定は console（warn / error）。 */
   readonly report?: (level: 'warn' | 'error', message: string, error?: unknown) => void;
 }
@@ -118,9 +165,10 @@ interface Registrations {
   editorExtensions: RegisteredEditorExtension[];
   commands: RegisteredCommand[];
   settingsItems: RegisteredSettingsItem[];
+  menuItems: RegisteredMenuItem[];
 }
 
-const emptyRegistrations = (): Registrations => ({ settings: [], editorExtensions: [], commands: [], settingsItems: [] });
+const emptyRegistrations = (): Registrations => ({ settings: [], editorExtensions: [], commands: [], settingsItems: [], menuItems: [] });
 
 interface Entry {
   id: string;
@@ -130,6 +178,10 @@ interface Entry {
   reason: string | null;
   regs: Registrations;
   cleanup: (() => void) | null;
+  /** 段 2 の部品が宣言した権限（宣言のない部品、段 3 の部品は空）。 */
+  permissions: readonly Permission[];
+  /** 段 2 の部品を動かし始める（deferStart のとき、startDeferred が呼ぶ）。 */
+  starter: (() => void) | null;
 }
 
 /** 設定のキーから、ラジオの name を作る規則: 小文字のハイフン区切り（listContinuation → list-continuation）。 */
@@ -141,8 +193,8 @@ function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** 宣言を検査する。使えなければ理由（日本語）、使えれば null。API の版は、ほかの項目の形より先に見る。 */
-function manifestProblem(manifest: unknown): string | null {
+/** 宣言を検査する。使えなければ理由（日本語）、使えれば null。API の版は、ほかの項目の形より先に見る。canConfirm は、権限の確認の仕組みがあるか。 */
+function manifestProblem(manifest: unknown, canConfirm: boolean): string | null {
   if (typeof manifest !== 'object' || manifest === null) return '部品の宣言（manifest）がありません';
   const m = manifest as Record<string, unknown>;
   if (typeof m.apiVersion === 'number' && m.apiVersion !== PLUGIN_API_VERSION) {
@@ -153,9 +205,17 @@ function manifestProblem(manifest: unknown): string | null {
   if (typeof m.name !== 'string' || m.name.trim() === '') return 'name がありません';
   if (typeof m.version !== 'string' || m.version.trim() === '') return 'version がありません';
   if (m.tier !== 'editor' && m.tier !== 'action') return `tier は 'editor' か 'action' だけに対応しています（${String(m.tier)}）`;
-  // 段 2 の権限の宣言（permissions）は、権限の確認の画面と一緒に R6 で足す。R5 の段 2 は、権限の要らない API（registerCommand）だけ。
-  if (m.tier === 'action' && 'permissions' in m && !(Array.isArray(m.permissions) && m.permissions.length === 0)) {
-    return '段 2 の部品の permissions は、まだ宣言できません';
+  // 権限の宣言（permissions）は、段 2 の部品だけ。知らない権限、重複、段 3 の部品の宣言は、その部品を読み込まない。
+  if (m.permissions !== undefined) {
+    if (m.tier !== 'action') return '段 3 の部品は permissions を宣言できません（権限を宣言できるのは段 2 の部品だけです）';
+    if (!Array.isArray(m.permissions)) return 'permissions は配列にしてください';
+    const seen = new Set<string>();
+    for (const permission of m.permissions as unknown[]) {
+      if (!isPermission(permission)) return `permissions に知らない権限があります: ${String(permission)}`;
+      if (seen.has(permission)) return `permissions に重複があります: ${permission}`;
+      seen.add(permission);
+    }
+    if (seen.size > 0 && !canConfirm) return '段 2 の部品の permissions（権限）は、この環境では宣言できません（権限の確認の仕組みがありません）';
   }
   return null;
 }
@@ -166,6 +226,24 @@ export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[]
     options.report ??
     ((level, message, error) => (error === undefined ? console[level](message) : console[level](message, error)));
   const entries: Entry[] = [];
+  const gate = options.permissions;
+  let services: IsolatedServices | null = null;
+
+  // ツリーの右クリックの項目の一覧。変わるたびに別の配列にして、購読者に知らせる。
+  let menuSnapshot: readonly RegisteredMenuItem[] = [];
+  const menuListeners = new Set<() => void>();
+  const refreshMenus = (): void => {
+    const next = entries.filter((e) => e.status === 'active').flatMap((e) => e.regs.menuItems);
+    if (next.length === 0 && menuSnapshot.length === 0) return;
+    menuSnapshot = next;
+    for (const listener of Array.from(menuListeners)) {
+      try {
+        listener();
+      } catch (error) {
+        report('error', '[plugin] 項目の一覧の購読者が例外を出しました', error);
+      }
+    }
+  };
 
   const stop = (entry: Entry, error: unknown): void => {
     if (entry.status !== 'active') return;
@@ -173,6 +251,7 @@ export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[]
     entry.reason = describe(error);
     report('error', `[plugin] 部品「${entry.id}」を止めました: ${entry.reason}`, error);
     runCleanup(entry);
+    refreshMenus();
   };
 
   const runCleanup = (entry: Entry): void => {
@@ -247,11 +326,12 @@ export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[]
     entry: Entry,
     { id, title, shortcut, ignoreInTextEntry }: { id: unknown; title: unknown; shortcut?: unknown; ignoreInTextEntry?: unknown },
     run: RegisteredCommand['run'],
+    allowAlt = false,
   ): void => {
     if (typeof id !== 'string' || id === '') throw new Error('コマンドの id がありません');
     if (typeof title !== 'string' || title === '') throw new Error(`コマンド「${id}」の title がありません`);
     const qualified = `${entry.id}.${id}`;
-    const parsed = shortcut === undefined ? null : parseShortcut(shortcut as string);
+    const parsed = shortcut === undefined ? null : parseShortcut(shortcut as string, { allowAlt });
     for (const r of allRegistrations()) {
       if (r.commands.some((c) => c.id === qualified)) throw new Error(`コマンド「${qualified}」は登録済みです`);
       const clash = parsed && r.commands.find((c) => c.shortcut?.text === parsed.text);
@@ -273,17 +353,89 @@ export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[]
    * 実行（run）は結果を待たない。時間切れ、例外、不正なメッセージは、ホスト（src/plugin-host/）が部品を止めて onStopped で知らせる。
    */
   const startIsolated = (entry: Entry, host: IsolatedPluginHost, source: string): void => {
+    if (entry.status !== 'active') return;
     entry.cleanup = () => host.stop(entry.id);
+    const callFailed = (reason: string): IsolatedCallResult => ({ ok: false, reason });
+    /** 権限を使ってよいか。確認の画面を出しているあいだは、その部品の時間切れの計測を止める。 */
+    const authorize = async (needed: Permission): Promise<'granted' | 'denied' | 'dismissed' | 'unavailable'> => {
+      if (!gate) return 'unavailable';
+      const release = host.suspendTimeouts?.(entry.id);
+      try {
+        return await gate.authorize({ id: entry.id, name: entry.name }, entry.permissions, needed);
+      } finally {
+        release?.();
+      }
+    };
+    const refusal = (needed: Permission, outcome: 'denied' | 'dismissed' | 'unavailable'): IsolatedCallResult =>
+      callFailed(
+        outcome === 'denied'
+          ? `権限 ${needed}（${PERMISSION_DESCRIPTIONS[needed]}）は、利用者が許可していません`
+          : outcome === 'dismissed'
+            ? `権限 ${needed} の確認の画面が閉じられたため、今回は使えません`
+            : `権限 ${needed} の確認の仕組みがありません`,
+      );
+    const onCall = async (call: IsolatedCall): Promise<IsolatedCallResult> => {
+      const needed: Permission = call.method === 'clipboardWriteText' ? 'clipboard.write' : 'paths.read';
+      if (entry.status !== 'active') return callFailed('部品は止まっています');
+      // 宣言していない権限の API は、確認の画面を出さずに拒否する。
+      if (!entry.permissions.includes(needed)) {
+        return callFailed(`権限 ${needed}（${PERMISSION_DESCRIPTIONS[needed]}）を manifest.permissions に宣言していません`);
+      }
+      const outcome = await authorize(needed);
+      if (outcome !== 'granted') return refusal(needed, outcome);
+      if (entry.status !== 'active') return callFailed('部品は止まっています');
+      if (!services) return callFailed('本体の準備ができていません');
+      try {
+        if (call.method === 'clipboardWriteText') {
+          await services.writeClipboardText(call.text);
+          return { ok: true, value: null };
+        }
+        const path = services.currentPath();
+        if (path !== null && path.length > 4096) return callFailed('パスが長すぎます');
+        return { ok: true, value: path };
+      } catch (error) {
+        report('error', `[plugin] 部品「${entry.id}」の呼び出しで、本体の側が例外を出しました`, error);
+        return callFailed(call.method === 'clipboardWriteText' ? 'クリップボードに書けませんでした' : '本体の側でエラーが起きました');
+      }
+    };
     try {
       host.start(entry.id, source, {
         onCommand: (command: IsolatedCommandInfo) => {
           if (entry.status !== 'active') return;
           try {
-            addCommand(entry, command, guard(entry, () => host.run(entry.id, command.id), () => undefined));
+            addCommand(entry, command, guard(entry, () => host.run(entry.id, command.id), () => undefined), true);
           } catch (error) {
             stop(entry, error);
           }
         },
+        onMenuItem: (item: IsolatedMenuItemInfo) => {
+          if (entry.status !== 'active') return;
+          // 宣言がなければ、登録を拒否して部品を止める（例外は、ホストが部品を止める理由にする）。
+          if (!entry.permissions.includes('paths.read')) {
+            throw new Error('registerContextMenuItem には、権限 paths.read の宣言（manifest.permissions）が要ります');
+          }
+          const qualified = `${entry.id}.${item.id}`;
+          if (entries.some((e) => e.regs.menuItems.some((m) => m.id === qualified))) throw new Error(`メニューの項目「${qualified}」は登録済みです`);
+          entry.regs.menuItems.push({
+            pluginId: entry.id,
+            id: qualified,
+            title: item.title,
+            where: item.where,
+            run: async (target: MenuTarget) => {
+              if (entry.status !== 'active') return;
+              try {
+                // 権限が許可されてから、部品の run に対象を渡す。
+                const outcome = await authorize('paths.read');
+                if (outcome !== 'granted' || entry.status !== 'active') return;
+                host.runMenu?.(entry.id, item.id, target);
+              } catch (error) {
+                report('error', `[plugin] 部品「${entry.id}」のメニューの項目を実行できませんでした`, error);
+              }
+            },
+          });
+          refreshMenus();
+        },
+        onCall,
         onReady: () => {},
         onStopped: (reason: string) => {
           if (entry.status !== 'active') return;
@@ -393,7 +545,7 @@ export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[]
 
   for (const plugin of plugins) {
     const manifest = (plugin as { manifest?: unknown } | null)?.manifest;
-    const problem = manifestProblem(manifest);
+    const problem = manifestProblem(manifest, gate !== undefined);
     const m = (manifest ?? {}) as Record<string, unknown>;
     const entry: Entry = {
       id: typeof m.id === 'string' ? m.id : '(不明)',
@@ -403,6 +555,8 @@ export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[]
       reason: null,
       regs: emptyRegistrations(),
       cleanup: null,
+      permissions: [],
+      starter: null,
     };
     entries.push(entry);
     const duplicate = problem === null && entries.some((e) => e !== entry && e.id === entry.id);
@@ -429,7 +583,9 @@ export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[]
         entry.reason = unusable;
         report('warn', `[plugin] 部品「${entry.id}」を読み込みません: ${unusable}`);
       } else {
-        startIsolated(entry, host, source);
+        entry.permissions = Array.isArray(m.permissions) ? (m.permissions as Permission[]) : [];
+        if (options.deferStart) entry.starter = () => startIsolated(entry, host, source);
+        else startIsolated(entry, host, source);
       }
       continue;
     }
@@ -458,6 +614,26 @@ export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[]
     get commands() {
       return active().flatMap((e) => e.regs.commands);
     },
+    get menuItems() {
+      return menuSnapshot;
+    },
+    subscribe(listener) {
+      menuListeners.add(listener);
+      return () => void menuListeners.delete(listener);
+    },
+    startDeferred() {
+      for (const entry of entries) {
+        const starter = entry.starter;
+        entry.starter = null;
+        starter?.();
+      }
+    },
+    bindServices(next) {
+      services = next;
+      return () => {
+        if (services === next) services = null;
+      };
+    },
     settingsItems<P extends SettingsPlacement>(placement: P): readonly RegisteredItemAt<P>[] {
       return active()
         .flatMap((e) => e.regs.settingsItems)
@@ -469,12 +645,14 @@ export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[]
     },
     dispose() {
       for (const entry of entries) {
+        entry.starter = null;
         runCleanup(entry);
         if (entry.status === 'active') {
           entry.status = 'stopped';
           entry.reason = '解除しました';
         }
       }
+      refreshMenus();
     },
   };
 }

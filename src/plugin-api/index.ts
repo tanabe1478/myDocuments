@@ -5,6 +5,18 @@
 export { PLUGIN_API_VERSION } from './version';
 export { AFTER_COMPOSITION_MS, ownsCaretScroll, skipCaretFollow } from './conventions';
 export { frontmatterEndLine } from './frontmatter';
+export {
+  PERMISSIONS,
+  PERMISSION_DESCRIPTIONS,
+  isPermission,
+  normalizePermissionsFile,
+  type Permission,
+  type PermissionDecision,
+  type PermissionDecisions,
+  type PermissionGate,
+  type PermissionOutcome,
+  type PluginPermissionsFile,
+} from './permissions';
 export { isBlankLine } from './lines';
 export {
   HOST_APPEARANCE_ORDER,
@@ -17,12 +29,17 @@ export {
   type EditorExtensionEnvironment,
   type EditorExtensionRegistration,
   type HostServices,
+  type IsolatedCall,
+  type IsolatedCallResult,
   type IsolatedCommandInfo,
+  type IsolatedMenuItemInfo,
   type IsolatedPluginHost,
   type IsolatedPluginListener,
+  type IsolatedServices,
   type Plugin,
   type PluginContext,
   type PluginManifest,
+  type MenuTarget,
   type PluginTier,
   type RadioOption,
   type RadioSettingsItem,
@@ -42,6 +59,7 @@ export {
   type PluginStatus,
   type RegisteredCommand,
   type RegisteredCheckboxItem,
+  type RegisteredMenuItem,
   type RegisteredItemAt,
   type RegisteredEditorExtension,
   type RegisteredRadioItem,

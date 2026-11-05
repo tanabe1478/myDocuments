@@ -18,6 +18,7 @@ import {
   type SaveResult,
   type SessionInfo,
 } from '../DocumentBridge';
+import { normalizePermissionsFile, type PluginPermissionsFile } from '../../plugin-api';
 import { isOpenableExternalUrl } from '../externalUrl';
 import { decodeBytes, encodeText, sameBytes, sha256Hex, sniffImageMime } from './bytes';
 
@@ -25,6 +26,10 @@ import { decodeBytes, encodeText, sameBytes, sha256Hex, sniffImageMime } from '.
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 /** 設定を再読み込みをまたいで保つ sessionStorage のキー（実アプリの preferences.json の代わり）。 */
 const PREFS_KEY = '__mdeE2E_preferences';
+/** 部品の権限の決定を再読み込みをまたいで保つ sessionStorage のキー（実アプリの plugin-permissions.json の代わり）。 */
+const PERMISSIONS_KEY = '__mdeE2E_pluginPermissions';
+/** クリップボードに書ける文字数の上限（Rust 側と同じ）。 */
+const MAX_CLIPBOARD_CHARS = 100_000;
 /** 開いているフォルダ（session.lastFolder）を再読み込みをまたいで保つ sessionStorage のキー（実アプリの session.json の代わり）。 */
 const FOLDER_KEY = '__mdeE2E_lastFolder';
 
@@ -60,8 +65,12 @@ export interface E2ESeed {
   /**
    * 隔離した操作（段 2）のテスト用の部品（src/isolated-plugins/e2eFixtures.ts）。plugins に書いた名前の部品を読み込む。
    * 書かなければ、段 2 の部品はなく、iframe も Worker も作られない。時間切れ（ミリ秒）は、テストを早く終わらせるために短くできる。
+   * bundled: true のとき、同梱の段 2 の部品（本番と同じ一覧）も読み込む。書かなければ読み込まない（e2e のビルドだけ。既存のテストが、
+   * 同梱の部品のメニューの項目や iframe に影響されないため）。
    */
-  isolated?: { plugins: string[]; activateTimeoutMs?: number; runTimeoutMs?: number };
+  isolated?: { plugins: string[]; activateTimeoutMs?: number; runTimeoutMs?: number; bundled?: boolean };
+  /** 部品の権限の、保存済みの決定（再読み込みをまたいで保たれた値があれば、そちらが先）。 */
+  pluginPermissions?: PluginPermissionsFile;
 }
 
 /** テストが window.__mdeE2E 経由で観測・操作するもの。 */
@@ -107,6 +116,10 @@ export interface E2EState {
   openedUrls: string[];
   /** 全画面かどうか（toggleFullscreen が切り替える）。 */
   fullscreen: boolean;
+  /** writeClipboardText に渡された文字列（書かれた順）。実際には OS のクリップボードに書かない。 */
+  clipboard: string[];
+  /** savePluginPermissions に渡された値（保存された順）。 */
+  savedPluginPermissions: PluginPermissionsFile[];
   /** 取り込み済みの背景画像（imageId → 画像）。 */
   images: Map<string, BackgroundImageData>;
   imagePath: string | null;
@@ -218,6 +231,8 @@ export function createMemoryBridge(): DocumentBridge {
     closed: false,
     openedUrls: [],
     fullscreen: false,
+    clipboard: [],
+    savedPluginPermissions: [],
     images: new Map(),
     imagePath: seed.imagePath ?? null,
     checkDelayMs: 0,
@@ -592,6 +607,21 @@ export function createMemoryBridge(): DocumentBridge {
       // ネイティブ側と同じ規則（http / https でホストあり）。通ったものを記録するだけで、実際には開かない。
       if (!isOpenableExternalUrl(url)) throw new BridgeError('invalid-input', 'only http and https urls can be opened');
       state.openedUrls.push(url);
+    },
+    async writeClipboardText(text) {
+      // ネイティブ側と同じ規則（空と、100,000 文字を超えるものは拒否）。書いたものを記録するだけで、実際のクリップボードには書かない。
+      if (text === '') throw new BridgeError('invalid-input', 'the text is empty');
+      if (Array.from(text).length > MAX_CLIPBOARD_CHARS) throw new BridgeError('invalid-input', 'the text is too long');
+      state.clipboard.push(text);
+    },
+    async loadPluginPermissions() {
+      const saved = sessionStorage.getItem(PERMISSIONS_KEY);
+      return normalizePermissionsFile(saved !== null ? JSON.parse(saved) : seed.pluginPermissions);
+    },
+    async savePluginPermissions(permissions) {
+      const normalized = normalizePermissionsFile(permissions);
+      state.savedPluginPermissions.push(structuredClone(normalized));
+      sessionStorage.setItem(PERMISSIONS_KEY, JSON.stringify(normalized));
     },
     async toggleFullscreen() {
       state.calls.fullscreen++;

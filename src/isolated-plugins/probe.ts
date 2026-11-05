@@ -12,6 +12,10 @@ import type { HostTrace } from '../plugin-host';
  *  (4) Worker から仲介への、決めていない形のメッセージ（仲介が止める）。
  *  (5) 鍵が漏れたと仮定して、本体が鍵を部品に渡した場合の (2) と (3)。
  *  (6) 仲介の iframe と同じ条件の文脈（probe-frame）から、鍵ありの webkit.messageHandlers.ipc.postMessage などが届くか。
+ *  (7) R6: 権限の API。宣言していない権限の API の呼び出し（確認なしで拒否される）、不正な形の呼び出し（部品が止まる）、
+ *      未決の権限の呼び出し（確認の画面が出て、自動では許可されない。この検証は、確認の画面を答えるコードを持たない）。
+ *      クリップボードへの書き込みは、この検証用のビルドでは記録（clipboard.log）に差し替わっていて、OS のクリップボードには書かない。
+ *  (8) R6: 同梱の部品が、本物の plug: と relay.js の上で動き、コマンドとメニューの項目を登録したこと。
  * 届いたかの判定は、ネイティブ側の記録（canary.log）と 127.0.0.1 の受け口の記録で行う（このファイルが送る自己申告は参考）。
  * 比較のために、本体（鍵を持つ側）からの呼び出しも記録する（対照）。
  */
@@ -94,6 +98,8 @@ const registerReport = (done) => api.registerCommand({ id: 'report', title: 'rep
 interface ProbePart {
   readonly id: string;
   readonly source: (c: { net: string; key: string | null }) => string;
+  /** 部品が宣言する権限（R6）。 */
+  readonly permissions?: readonly string[];
 }
 
 const PARTS: readonly ProbePart[] = [
@@ -117,6 +123,35 @@ const PARTS: readonly ProbePart[] = [
     source: ({ key }) =>
       `api.registerCommand({ id: 'report', title: 'report', run: async () => {} });\nself.postMessage({ kind: 'invoke', cmd: 'isolation_probe_canary', payload: { who: 'worker:postmessage-invoke' }, __TAURI_INVOKE_KEY__: ${JSON.stringify(key)} });`,
   },
+  // (7) 宣言していない権限の API の呼び出し。API 経由と、仲介へ直接の postMessage の 2 通り。どちらも、確認の画面なしで拒否される
+  // （結果は、本体から Worker に result として届く。ここで受け取って、報告に載せる）。
+  {
+    id: 'probe-undeclared',
+    source: () => `
+const got = [];
+self.addEventListener('message', (e) => { const d = e.data; if (d && d.kind === 'result') got.push({ call: d.call, ok: d.ok, declaredMentioned: /宣言していません/.test(String(d.reason || '')) }); });
+api.registerCommand({ id: 'report', title: 'report', run: async () => {
+  self.postMessage({ kind: 'call', call: 11, method: 'clipboardWriteText', text: 'probe:undeclared-raw-write' });
+  self.postMessage({ kind: 'call', call: 12, method: 'currentPath' });
+  const viaApi = [];
+  for (const attempt of [() => api.clipboard.writeText('probe:undeclared-api-write'), () => api.document.currentPath()]) {
+    try { await attempt(); viaApi.push('resolved'); } catch (e) { viaApi.push('rejected:' + /宣言していません/.test(String(e.message))); }
+  }
+  await new Promise((r) => setTimeout(r, 1500));
+  throw new Error(JSON.stringify({ got, viaApi }).slice(0, 290));
+} });`,
+  },
+  // (7) 不正な形の呼び出し。仲介が部品を止める。
+  { id: 'probe-bad-call-method', permissions: ['clipboard.write'], source: () => `api.registerCommand({ id: 'report', title: 'report', run: async () => {} });\nself.postMessage({ kind: 'call', call: 1, method: 'readClipboard' });` },
+  { id: 'probe-bad-call-extra', permissions: ['paths.read'], source: () => `api.registerCommand({ id: 'report', title: 'report', run: async () => {} });\nself.postMessage({ kind: 'call', call: 1, method: 'currentPath', text: 'x' });` },
+  { id: 'probe-bad-call-long', permissions: ['clipboard.write'], source: () => `api.registerCommand({ id: 'report', title: 'report', run: async () => {} });\nself.postMessage({ kind: 'call', call: 1, method: 'clipboardWriteText', text: 'x'.repeat(100001) });` },
+  { id: 'probe-bad-menu', permissions: ['paths.read'], source: () => `api.registerCommand({ id: 'report', title: 'report', run: async () => {} });\nself.postMessage({ kind: 'menu', id: 'x', title: 't', where: 'editor' });` },
+  // (7) 未決の権限の呼び出し。確認の画面が出て、答えられない限り、書かれない（この検証は、答えない）。
+  {
+    id: 'probe-undecided',
+    permissions: ['clipboard.write'],
+    source: () => `api.registerCommand({ id: 'report', title: 'report', run: async () => { await api.clipboard.writeText('probe:undecided-write'); } });`,
+  },
   // (4) 本体と同じ名前の BroadcastChannel（origin が違うので、本体には届かないはず）。本体の側が listen して、聞こえたら記録する
   {
     id: 'probe-broadcast',
@@ -124,8 +159,8 @@ const PARTS: readonly ProbePart[] = [
   },
 ];
 
-export const probePlugins: readonly ActionPlugin[] = PARTS.map(({ id }) => ({
-  manifest: { id, name: `${MARK} ${id}`, version: '0.0.0', apiVersion: PLUGIN_API_VERSION, tier: 'action' },
+export const probePlugins: readonly ActionPlugin[] = PARTS.map(({ id, permissions }) => ({
+  manifest: { id, name: `${MARK} ${id}`, version: '0.0.0', apiVersion: PLUGIN_API_VERSION, tier: 'action', ...(permissions ? { permissions } : {}) } as ActionPlugin['manifest'],
   // source は、起動のときに鍵と受け口の URL を決めてから作る（createProbe）。ここは宣言だけ。
   source: '/* replaced in createProbe */',
 }));
@@ -143,6 +178,9 @@ export async function createProbe(): Promise<ProbeSetup> {
 
   // 対照: 本体（鍵を持つ側）からの呼び出しは、ネイティブ側の記録に届く。記録の仕組みが動いていることの確認。
   await invoke('isolation_probe_canary', { who: 'main:control-invoke' });
+  // 対照（R6）: 本体（鍵を持つ側）からの、クリップボードへの書き込みのコマンドは、記録（clipboard.log）に届く。この検証用のビルドでは、
+  // 書き込みは記録に差し替わっていて、OS のクリップボードには書かない。
+  await invoke('write_clipboard_text', { text: 'main:control-clipboard' });
   const control: Record<string, string> = {};
   try {
     const handler = (window as unknown as { webkit?: { messageHandlers?: { ipc?: { postMessage(m: string): void } } } }).webkit?.messageHandlers?.ipc;
@@ -161,7 +199,10 @@ export async function createProbe(): Promise<ProbeSetup> {
   const plugins: ActionPlugin[] = probePlugins.map((p, i) => ({ ...p, source: PARTS[i]!.source({ net, key }) }));
   const stops = new Map<string, string>();
   const waiting = new Map<string, () => void>();
+  /** 同梱の部品について、本体の側で見えた出来事（本物の plug: と relay.js の上で起動したことの確認）。 */
+  const bundledEvents: string[] = [];
   const trace = (event: HostTrace): void => {
+    if (event.plugin === 'copy-path') bundledEvents.push(event.type === 'command' ? `command:${event.command}` : event.type === 'menu' ? `menu:${event.item}` : event.type);
     if (event.type !== 'stopped') return;
     stops.set(event.plugin, event.reason);
     waiting.get(event.plugin)?.();
@@ -202,13 +243,26 @@ export async function createProbe(): Promise<ProbeSetup> {
 
   const afterBoot = (registry: PluginRegistry): void => {
     void (async () => {
+      // 同梱の部品（R6）が、本物の plug: と relay.js の上で、コマンドとメニューの項目を登録し、ready になったか。
+      for (let i = 0; i < 100 && !bundledEvents.includes('ready'); i++) await new Promise((r) => setTimeout(r, 100));
+      await report({
+        ev: 'bundled',
+        plugin: 'copy-path',
+        events: bundledEvents,
+        commands: registry.commands.filter((c) => c.pluginId === 'copy-path').map((c) => c.id),
+        menuItems: registry.menuItems.filter((m) => m.pluginId === 'copy-path').map((m) => m.id),
+        status: registry.records.find((r) => r.id === 'copy-path')?.status ?? null,
+      });
       // 部品の Worker を 1 つずつ。report のコマンドを実行して、結果の自己申告を止めた理由として受け取る。
       for (const { manifest } of plugins) {
         const id = manifest.id;
-        const stopped = new Promise<void>((resolve) => {
-          waiting.set(id, resolve);
-          setTimeout(resolve, 15000);
-        });
+        if (id === 'probe-undecided') continue; // 最後に、別の扱いで試す（確認の画面が出る）。
+        const stopped = stops.has(id)
+          ? Promise.resolve()
+          : new Promise<void>((resolve) => {
+              waiting.set(id, resolve);
+              setTimeout(resolve, 15000);
+            });
         for (let i = 0; i < 100 && !registry.commands.some((c) => c.id === `${id}.report`); i++) {
           if (stops.has(id)) break;
           await new Promise((r) => setTimeout(r, 100));
@@ -220,6 +274,22 @@ export async function createProbe(): Promise<ProbeSetup> {
       }
       await new Promise((r) => setTimeout(r, 500));
       await report({ ev: 'broadcast', heardInMainPage: hear });
+      // 未決の権限の呼び出し（R6）。確認の画面が出る。この検証は、画面に答えるコードを持たない（自動では許可しない）。
+      const undecided = registry.commands.find((c) => c.id === 'probe-undecided.report');
+      undecided?.run({} as never);
+      await new Promise((r) => setTimeout(r, 3000));
+      const dialog = document.querySelector('[data-testid="permission-dialog"]');
+      await report({
+        ev: 'undecided',
+        ran: Boolean(undecided),
+        dialogShown: dialog !== null,
+        dialogPlugin: dialog?.querySelector('[data-testid="permission-plugin-name"]')?.textContent ?? null,
+        dialogPermissions: Array.from(dialog?.querySelectorAll('[data-permission]') ?? []).map((li) => li.getAttribute('data-permission')),
+        status: registry.records.find((r) => r.id === 'probe-undecided')?.status ?? null,
+      });
+      // 同梱の部品の未決の呼び出し（本物の plug: の上。確認の画面は上の部品が出しているので、順番を待つ）。これも、書かれない。
+      registry.commands.find((c) => c.id === 'copy-path.copy-current-path')?.run({} as never);
+      await new Promise((r) => setTimeout(r, 1500));
       // 仲介の iframe と同じ条件の文脈（probe-frame）から。
       const frameResults = await runFrame();
       await report({ ev: 'relay-context', results: frameResults });

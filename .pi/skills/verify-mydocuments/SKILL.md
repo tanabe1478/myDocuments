@@ -1,6 +1,6 @@
 ---
 name: verify-mydocuments
-description: Immersive Markdown Editor（Tauri 2 + CodeMirror 6 の没入型 Markdown エディタ）の動作を、実ユーザー面で再現可能に起動・操作・証跡化する。primary は VITE_E2E ビルドの Web UI を Playwright（chromium）で操作する面、secondary は macOS の Tauri debug ビルドの窓の観測。文書の保存、設定画面（外観と編集の節）と外観、左サイドバーとエクスプローラー（フォルダツリー、作成・名前の変更・ゴミ箱への移動、外部の変更の自動反映）、執筆モード、保存の信頼性、書き心地（Enter でのリストの継続、カーソルのない行で記法を隠す記号の表示、⌘/Ctrl+クリックでリンクを開く操作、隠した行のチェックボックスのクリックでの切り替えを含む）を変えたとき、または変更を検証して証跡を残したいときに使う。
+description: Immersive Markdown Editor（Tauri 2 + CodeMirror 6 の没入型 Markdown エディタ）の動作を、実ユーザー面で再現可能に起動・操作・証跡化する。primary は VITE_E2E ビルドの Web UI を Playwright（chromium）で操作する面、secondary は macOS の Tauri debug ビルドの窓の観測。文書の保存、設定画面（外観と編集の節）と外観、左サイドバーとエクスプローラー（フォルダツリー、作成・名前の変更・ゴミ箱への移動、外部の変更の自動反映、同梱の段 2 の部品「パスをコピー」と部品の権限の確認）、執筆モード、保存の信頼性、書き心地（Enter でのリストの継続、カーソルのない行で記法を隠す記号の表示、⌘/Ctrl+クリックでリンクを開く操作、隠した行のチェックボックスのクリックでの切り替えを含む）を変えたとき、または変更を検証して証跡を残したいときに使う。
 ---
 
 # verify-mydocuments
@@ -86,7 +86,7 @@ steps は上から順に実行し、外れたら止めて exit 1 にする。
 - 観測: observe（名前。files に仮想パスを並べると、バイト数、bom、crlf、lf、text を記録）、eval（ページ内で式を評価して記録）。
 - 検査: expect。対象は eval（式）か、testId / role+name / label / text / css のいずれか（設定画面の中なら panel: true）。read は text（既定）、count、visible、focused、attr:<name>、css:<prop>。比較は equals、not、contains、matches（正規表現）、gte、lte。timeout（既定 3000ms）まで再試行する。note は報告用の説明。
 
-key の ControlOrMeta はその OS の Mod キー（macOS は Cmd、それ以外は Ctrl）。安定したハンドルは data-testid（doc-title、unsaved-mark、toast、conflict-bar、conflict-diff、conflict-reload、conflict-keep、diff-dialog、recovery-dialog、settings-button、settings-dialog、settings-editing、sidebar、sidebar-toggle、sidebar-close、sidebar-empty、open-folder、retry-folder、restore-failure、change-folder、refresh-folder、new-file、new-folder、folder-name、file-tree、explorer-tree-area、tree-item、tree-note、tree-name-input、tree-name-error、tree-context-menu、confirm-trash、trash-ok、trash-cancel、char-count、canvas-bg、canvas-bg-image、canvas-surface、contrast-ratio、contrast-warning ほか）と、.cm-content、.cm-line、aria の名前（ツリーは role treeitem と名前）（dialog「設定」、radio「単色」「窓いっぱい」など）。観測の入口は window.__mdeE2E（calls、physicalWrites、log、conflicts、drafts、backups、savedPreferences、session、openedFolder、listed、watched、watchedFolders、trashed、renames、openedUrls（リンクを開く操作で渡された URL。ブラウザは開かない）、closed、fullscreen、editor.getText()、readFile(path)）。
+key の ControlOrMeta はその OS の Mod キー（macOS は Cmd、それ以外は Ctrl）。安定したハンドルは data-testid（doc-title、unsaved-mark、toast、conflict-bar、conflict-diff、conflict-reload、conflict-keep、diff-dialog、recovery-dialog、settings-button、settings-dialog、settings-editing、sidebar、sidebar-toggle、sidebar-close、sidebar-empty、open-folder、retry-folder、restore-failure、change-folder、refresh-folder、new-file、new-folder、folder-name、file-tree、explorer-tree-area、tree-item、tree-note、tree-name-input、tree-name-error、tree-context-menu、confirm-trash、trash-ok、trash-cancel、char-count、canvas-bg、canvas-bg-image、canvas-surface、contrast-ratio、contrast-warning ほか）と、.cm-content、.cm-line、aria の名前（ツリーは role treeitem と名前）（dialog「設定」、radio「単色」「窓いっぱい」など）。観測の入口は window.__mdeE2E（calls、physicalWrites、log、conflicts、drafts、backups、savedPreferences、session、openedFolder、listed、watched、watchedFolders、trashed、renames、openedUrls（リンクを開く操作で渡された URL。ブラウザは開かない）、clipboard（クリップボードに書かれた文字列の記録。OS のクリップボードには書かない）、savedPluginPermissions（保存された部品の権限の決定）、closed、fullscreen、editor.getText()、readFile(path)）。
 
 ## Evidence
 
@@ -150,9 +150,9 @@ npm run perf -- --quick --web-only --inject-input-delay 3   # 計測専用: 全 
 
 ## 隔離した操作（段 2）の検証
 
-部品の仕組み（ADR-005）の、隔離した操作の段（段 2）を変えたとき、またはその隔離を確かめ直したいときの手順。上の Launch から Cleanup とは別で、macOS の実際の Tauri の窓を使う。OS へのキー入力・マウス操作は送らない。
+部品の仕組み（ADR-005）の、隔離した操作の段（段 2）を変えたとき、またはその隔離を確かめ直したいときの手順。上の Launch から Cleanup とは別で、macOS の実際の Tauri の窓を使う。OS へのキー入力・マウス操作は送らない。R6 で、権限（宣言、初回の確認、保存、取り消し）と、権限の要る API（クリップボードへの書き込み、パス、ツリーの右クリックの項目）、同梱の段 2 の部品「パスをコピー」が入った（features/explorer.md の EXP-14）。
 
-- ブラウザ版（primary）: e2e のビルドが、テスト用の段 2 の部品（src/isolated-plugins/e2eFixtures.ts）を、seed の isolated に名前を書いたときだけ読み込む。確かめる内容は tests/e2e/isolated-plugins.spec.ts（`npm run test:e2e`）。Launch と Drive の seed にも `isolated: { plugins: ['e2e-ok'], runTimeoutMs: 1000 }` を書ける。観測の入口は `window.__mdeE2EIsolatedTrace`（本体の側で見えた start、command、ready、run、done、stopped の記録）と、console の `[plugin] 部品「<id>」を止めました: <理由>`。seed に isolated がなければ、iframe も Worker も作られない。
+- ブラウザ版（primary）: e2e のビルドが、テスト用の段 2 の部品（src/isolated-plugins/e2eFixtures.ts）を、seed の isolated に名前を書いたときだけ読み込む。確かめる内容は tests/e2e/isolated-plugins.spec.ts（`npm run test:e2e`）。Launch と Drive の seed にも `isolated: { plugins: ['e2e-ok'], runTimeoutMs: 1000 }` を書ける。観測の入口は `window.__mdeE2EIsolatedTrace`（本体の側で見えた start、command、ready、run、done、stopped の記録）と、console の `[plugin] 部品「<id>」を止めました: <理由>`。seed に isolated がなければ、iframe も Worker も作られない（同梱の段 2 の部品も読み込まない）。同梱の部品（パスをコピー）を読み込むときは `isolated: { plugins: [], bundled: true }`。観測の入口に、`window.__mdeE2E.clipboard`（クリップボードに書かれた文字列の記録。OS のクリップボードには書かない）、`window.__mdeE2E.savedPluginPermissions`（保存された権限の決定）がある。seed の `pluginPermissions` は、保存済みの権限の決定の代わり。
 - Tauri の窓（隔離の検証）: Cargo の feature `isolation-probe` と `VITE_ISOLATION_PROBE=1` の両方を有効にしたビルドだけが、記録用のネイティブのコマンドと、検証用の段 2 の部品を持つ。
 
 ```
@@ -162,7 +162,7 @@ node .pi/skills/verify-mydocuments/scripts/isolation-probe.mjs --judge-only <dir
 node .pi/skills/verify-mydocuments/scripts/check-probe-absent.mjs           # 本番の dist/ と通常の実行ファイルに、検証用のコードがないことの検査
 ```
 
-- 判定の根拠は、ネイティブ側の記録（canary.log。検証用のコマンドが書く）と、127.0.0.1 の受け口の記録（net.log）。webview 側の自己申告（report.jsonl）は、表に並べるだけ。結果は artifacts/verify-mydocuments/<run-id>/evidence/isolation-probe/（judgement.json、judgement.md、各記録、窓の撮影）。$YORISHIRO_EVIDENCE_DIR があれば、そこにもコピーする。
+- 判定の根拠は、ネイティブ側の記録（canary.log。検証用のコマンドが書く）と、127.0.0.1 の受け口の記録（net.log）。webview 側の自己申告（report.jsonl）は、表に並べるだけ。R6 の権限の API は、clipboard.log（検証用のビルドでは、クリップボードへの書き込みが記録に差し替わる。OS のクリップボードには書かない。本体の対照の 1 行だけが出るはずで、ほかの行があれば FAIL）と、アプリのデータ領域の plugin-permissions.json（確認の画面に答えていないので、できていないはず。できていれば FAIL）で判定する。宣言していない権限の API の拒否、不正な形の呼び出しでの停止、未決の権限での確認の画面（自動では許可されない）、同梱の部品が本物の plug: の上で ready になりコマンドとメニューの項目を登録したこと、のどれかが記録で確かめられないときは、INCOMPLETE。結果は artifacts/verify-mydocuments/<run-id>/evidence/isolation-probe/（judgement.json、judgement.md、各記録、窓の撮影）。$YORISHIRO_EVIDENCE_DIR があれば、そこにもコピーする。
 - exit code: 0 は鍵なしで届く経路がなく、対照も届いた（PASS）。2 は鍵なしで届く経路があった（FAIL。直さずに報告する）。3 は検証が終わらなかった、または対照が届かなかった（INCOMPLETE）。対照が届かない結果は、届かなかったという結論にしない。
 - 鍵ありで届く経路（ADR-005 の「R5 で確かめた隔離」）は FAIL にしない。表に「鍵ありで届く経路」として出る。
 - 検証用のビルドは、repo の dist/ を検証用のコード入りにする。終わったら、通常の `tauri.mjs build`（--probe なし）か `npm run build` で作り直してから、check-probe-absent.mjs を実行する。

@@ -1,4 +1,5 @@
 import type { DocumentFormat } from '../document/format';
+import type { PluginPermissionsFile } from '../plugin-api';
 import type { Preferences } from '../preferences/preferences';
 
 export interface OpenedDocument {
@@ -198,6 +199,15 @@ export interface DocumentBridge {
    * ネイティブ側でも必ず検査する（呼び出し側の検査に頼らない）。
    */
   openExternalUrl(url: string): Promise<void>;
+  /**
+   * クリップボードに文字列を書く（書くだけ。読む口はない）。部品の権限（clipboard.write）は、呼ぶ前に本体が確かめる。
+   * 空と、100,000 文字を超える文字列は、ネイティブ側でも BridgeError('invalid-input')（呼び出し側の検査に頼らない）。
+   */
+  writeClipboardText(text: string): Promise<void>;
+  /** 部品の権限の、利用者の決定（設定とは別のファイル）。ないとき、壊れているときは、決定のない空の値。 */
+  loadPluginPermissions(): Promise<PluginPermissionsFile>;
+  /** 部品の権限の決定を保存する（ネイティブ側が、形と大きさを検査する）。 */
+  savePluginPermissions(permissions: PluginPermissionsFile): Promise<void>;
   /** 全画面を切り替え、切替後の状態（true なら全画面）を返す。 */
   toggleFullscreen(): Promise<boolean>;
   /** 最初の描画が済んだことをネイティブ側へ知らせる（窓の表示）。 */

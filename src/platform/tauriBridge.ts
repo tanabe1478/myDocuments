@@ -4,6 +4,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import type { DocumentFormat } from '../document/format';
 import { OPENABLE_EXTENSIONS } from '../document/fileKinds';
+import { normalizePermissionsFile } from '../plugin-api';
 import {
   BridgeError,
   type BackgroundImageData,
@@ -130,6 +131,11 @@ export function createTauriBridge(): DocumentBridge {
       return { mime, bytes: decodeBase64(data) };
     },
     openExternalUrl: (url: string) => call<void>('open_external_url', { url }),
+    writeClipboardText: (text: string) => call<void>('write_clipboard_text', { text }),
+    async loadPluginPermissions() {
+      return normalizePermissionsFile(await call<unknown>('load_plugin_permissions'));
+    },
+    savePluginPermissions: (permissions) => call<void>('save_plugin_permissions', { permissions }),
     async toggleFullscreen() {
       const win = getCurrentWindow();
       const next = !(await win.isFullscreen());

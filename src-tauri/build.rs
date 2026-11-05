@@ -26,6 +26,9 @@ fn main() {
         "save_preferences",
         "import_background_image",
         "read_background_image",
+        "write_clipboard_text",
+        "load_plugin_permissions",
+        "save_plugin_permissions",
     ];
     // 隔離の検証用のコマンド（feature `isolation-probe` のときだけ）。許可は lib.rs が実行時に足す。
     if std::env::var_os("CARGO_FEATURE_ISOLATION_PROBE").is_some() {

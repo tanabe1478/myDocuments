@@ -1,4 +1,5 @@
 import type { Extension } from '@codemirror/state';
+import type { Permission } from './permissions';
 
 /**
  * 部品の段（ADR-005 の 3 段のうち、実装済みのもの）。
@@ -17,6 +18,11 @@ export interface PluginManifest {
   /** 対応する公開 API の版。ホストの PLUGIN_API_VERSION と違うと読み込まれない。 */
   readonly apiVersion: number;
   readonly tier: PluginTier;
+  /**
+   * 使うつもりの権限（段 2 の部品だけ。省略は宣言なし）。知らない権限、重複、段 3 の部品の permissions は、その部品を読み込まない。
+   * 権限の確認の仕組み（PluginRegistryOptions.permissions）がない環境では、空でない宣言のある部品は読み込まない。
+   */
+  readonly permissions?: readonly Permission[];
 }
 
 /**
@@ -31,11 +37,15 @@ export interface Plugin {
 
 /**
  * 隔離した操作（段 2）の部品。`{ manifest, source }`。manifest.tier は 'action'。
- * source は、Worker の中で動くコードの文字列（クラシックスクリプト）。Worker のグローバルに、公開 API `api` がある
- * （R5 は `api.registerCommand` だけ）。登録は、source の最初の実行の間（トップレベル）に行う。
+ * source は、Worker の中で動くコードの文字列（クラシックスクリプト）。Worker のグローバルに、公開 API `api` がある。
+ * 登録（registerCommand、registerContextMenuItem）は、source の最初の実行の間（トップレベル）に行う。
  * ホストの空間では評価されない。例:
  *
  *     api.registerCommand({ id: 'say-hello', title: 'あいさつ', shortcut: 'Mod+Shift+H', run: async () => { ... } });
+ *     // 権限（manifest.permissions）が要る API。宣言がない、利用者が拒否した、確認の画面を閉じた場合は、Promise が reject される。
+ *     api.registerContextMenuItem({ id: 'copy', title: 'コピー', where: 'tree', run: async (target) => { await api.clipboard.writeText(target.path); } }); // paths.read の宣言が要る
+ *     const path = await api.document.currentPath(); // paths.read（開いている文書のパス。未保存の新規文書は null）
+ *     await api.clipboard.writeText('text'); // clipboard.write
  */
 export interface ActionPlugin {
   readonly manifest: PluginManifest;
@@ -51,10 +61,51 @@ export interface IsolatedCommandInfo {
   readonly ignoreInTextEntry?: boolean;
 }
 
+/** Worker の中の部品が registerContextMenuItem で登録した、ツリーの右クリックの項目（ホストが形を検査して渡す）。 */
+export interface IsolatedMenuItemInfo {
+  /** 部品の中で一意（小文字の英数字とハイフン、64 文字まで）。 */
+  readonly id: string;
+  readonly title: string;
+  /** 置き場所。R6 は 'tree'（エクスプローラーのツリーの行の右クリック）だけ。 */
+  readonly where: 'tree';
+}
+
+/** メニューの項目を選んだときに、部品の run に渡す対象。path は、ツリーの行のパス。 */
+export interface MenuTarget {
+  readonly path: string;
+  readonly kind: 'file' | 'folder';
+}
+
+/**
+ * 段 2 の部品が使う、本体の機能（権限の確認を通ったときだけ、レジストリが呼ぶ）。実装は src/platform/hostServices.ts。
+ * 部品は、bridge（ネイティブへの入口）を直接使わない。
+ */
+export interface IsolatedServices {
+  /** クリップボードに文字列を書く（書けたら、本体がトースト「クリップボードにコピーしました」を出す）。失敗は reject。 */
+  writeClipboardText(text: string): Promise<void>;
+  /** 開いている文書のパス。未保存の新規文書は null。 */
+  currentPath(): string | null;
+}
+
+/** Worker の中の部品が、本体に頼む呼び出し（api.clipboard.writeText、api.document.currentPath）。 */
+export type IsolatedCall =
+  | { readonly method: 'clipboardWriteText'; readonly text: string }
+  | { readonly method: 'currentPath' };
+
+/** 呼び出しの結果。成功は値（currentPath は文書のパスか null。writeText は null）、失敗は利用者向けの理由。 */
+export type IsolatedCallResult = { readonly ok: true; readonly value: string | null } | { readonly ok: false; readonly reason: string };
+
 /** 隔離した部品の出来事の受け口。レジストリが実装する。 */
 export interface IsolatedPluginListener {
   /** 部品のコードの最初の実行の間に、コマンドが登録された。例外を出すと、その部品は止まる。 */
   onCommand(command: IsolatedCommandInfo): void;
+  /** 部品のコードの最初の実行の間に、ツリーの右クリックの項目が登録された。例外を出すと、その部品は止まる。なければ、登録は不正として部品を止める。 */
+  onMenuItem?(item: IsolatedMenuItemInfo): void;
+  /**
+   * 部品が、本体の機能（クリップボード、パス）を呼んだ。権限の確認は、この中（レジストリ）で行う。結果は Worker に返る。
+   * Promise は reject しない（失敗は ok: false で返す）。なければ、呼び出しは常に失敗として返す。
+   */
+  onCall?(call: IsolatedCall): Promise<IsolatedCallResult>;
   /** 部品のコードの最初の実行が、時間内に終わった。 */
   onReady(): void;
   /** ホストがその部品を止めた（例外、時間切れ、不正なメッセージ）。Worker はもう止まっている。理由は利用者向けの文。 */
@@ -70,6 +121,13 @@ export interface IsolatedPluginHost {
   start(id: string, source: string, listener: IsolatedPluginListener): void;
   /** 登録済みのコマンドを実行させる。結果は待たない（時間切れなら部品を止める）。止まった部品、登録のないコマンドは何もしない。 */
   run(id: string, commandId: string): void;
+  /** 登録済みのメニューの項目を、対象つきで実行させる。run と同じ扱い。 */
+  runMenu?(id: string, itemId: string, target: MenuTarget): void;
+  /**
+   * 部品の時間切れ（最初の実行、コマンドの実行）の計測を止める。確認の画面を出しているあいだ、その要求の時間切れで部品を止めないため。
+   * 戻り値の関数で再開する（残りの時間から数え直す）。数えて止めるので、重ねて呼んでよい。止まった部品には何もしない。
+   */
+  suspendTimeouts?(id: string): () => void;
   /** 部品の Worker を terminate し、以降は何も通さない。何度呼んでもよい。listener.onStopped は呼ばない。 */
   stop(id: string): void;
   /** 全部の部品を止め、iframe を外す。 */
@@ -156,7 +214,9 @@ export interface CommandRegistration {
   /**
    * ショートカット。'Mod+T' や 'Mod+Shift+T' の形（Mod は macOS で Cmd、それ以外で Ctrl。
    * 末尾は ASCII の英字 1 文字か ','）。論理キーを優先し、英字でない配列のときは物理キーで判定する。
-   * Alt との組み合わせと IME の変換中のキーは対象にしない。ホストの固定のショートカットが先に判定される。
+   * 段 3 のコマンドは、Alt との組み合わせを対象にしない。段 2 のコマンドは 'Mod+Alt+C' の形（Alt つき。Shift とは組み合わせない。末尾は英字）も使える
+   * （macOS の Option つきは物理キーで判定し、Windows と Linux の AltGr では発火しない）。IME の変換中のキーは対象にしない。
+   * ホストの固定のショートカットが先に判定される。
    */
   readonly shortcut?: string;
   /** true のとき、本文以外の文字入力欄（検索パネル・設定画面の入力欄など）にフォーカスがあれば実行しない。 */

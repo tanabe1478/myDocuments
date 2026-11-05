@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-load-plugin-permissions"
+description = "Enables the load_plugin_permissions command without any pre-configured scope."
+commands.allow = ["load_plugin_permissions"]
+
+[[permission]]
+identifier = "deny-load-plugin-permissions"
+description = "Denies the load_plugin_permissions command without any pre-configured scope."
+commands.deny = ["load_plugin_permissions"]

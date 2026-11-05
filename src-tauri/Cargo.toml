@@ -19,6 +19,8 @@ docio = { path = "../crates/docio" }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2.7.2"
+# クリップボードへの書き込み（Rust の API だけを使う。JavaScript 向けの許可は capabilities に入れない。npm の @tauri-apps/plugin-clipboard-manager も入れない）。
+tauri-plugin-clipboard-manager = "2.5.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
