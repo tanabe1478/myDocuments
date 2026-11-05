@@ -26,7 +26,8 @@ async function open(page: Page, plugins: string[], timeouts: { activateTimeoutMs
 }
 
 test('段 2 の部品がないとき、iframe も Worker の受け口も作られない', async ({ page }) => {
-  await launch(page, { files: { [DOC]: utf8('はじめ') }, openPath: DOC });
+  // e2e のビルドも既定で同梱の段 2 の部品（本番と同じ一覧）を読み込むので、「部品がない」構成は seed で明示する（bundled: false）。
+  await launch(page, { files: { [DOC]: utf8('はじめ') }, openPath: DOC, isolated: { plugins: [], bundled: false } });
   await expect(page.locator('iframe')).toHaveCount(0);
   expect(await trace(page)).toEqual([]);
   // 本体のコマンドはそのまま動く（段 2 の仕組みが入っていても、起動と入力に影響しない）。
@@ -50,7 +51,8 @@ test('ショートカットで部品のコマンドが実行され、本体に�
   await expect(hostFrame(page)).toHaveCount(1);
   await expect(hostFrame(page)).toHaveAttribute('sandbox', 'allow-scripts');
   await expect.poll(async () => (await trace(page)).some((e) => e.type === 'ready' && e.plugin === 'e2e-ok')).toBe(true);
-  expect((await trace(page)).filter((e) => e.type === 'command')).toEqual([{ type: 'command', plugin: 'e2e-ok', command: 'record' }]);
+  // 同梱の部品（copy-path）のコマンドは、本番と同じく別に入っている。ここは e2e-ok のコマンドだけを見る。
+  expect((await trace(page)).filter((e) => e.type === 'command' && e.plugin === 'e2e-ok')).toEqual([{ type: 'command', plugin: 'e2e-ok', command: 'record' }]);
 
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+Shift+E');
@@ -63,7 +65,8 @@ test('ショートカットで部品のコマンドが実行され、本体に�
 
 test('例外を出した部品だけが止まり、ほかの部品とアプリは動き続ける（入力・保存ができる）', async ({ page }) => {
   await open(page, ['e2e-ok', 'e2e-throws']);
-  await expect.poll(async () => (await trace(page)).filter((e) => e.type === 'ready').length).toBe(2);
+  // テスト用の 2 つの部品が動き出すのを待つ（同梱の部品 copy-path も、本番と同じく別に動いている）。
+  await expect.poll(async () => (await trace(page)).filter((e) => e.type === 'ready' && e.plugin !== 'copy-path').length).toBe(2);
 
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+Shift+X');
@@ -88,7 +91,8 @@ test('例外を出した部品だけが止まり、ほかの部品とアプリ�
 
 test('応答しない部品（無限ループ）が時間切れで止まり、その間も入力が止まらない', async ({ page }) => {
   await open(page, ['e2e-ok', 'e2e-loop'], { runTimeoutMs: 1000 });
-  await expect.poll(async () => (await trace(page)).filter((e) => e.type === 'ready').length).toBe(2);
+  // テスト用の 2 つの部品が動き出すのを待つ（同梱の部品 copy-path も、本番と同じく別に動いている）。
+  await expect.poll(async () => (await trace(page)).filter((e) => e.type === 'ready' && e.plugin !== 'copy-path').length).toBe(2);
   await page.locator('.cm-content').click();
   const start = Date.now();
   await page.keyboard.press('ControlOrMeta+Shift+M');

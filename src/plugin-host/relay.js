@@ -96,12 +96,10 @@
         commands.set(id, run);
         send(message);
       },
-    };
-    // R6 の API。api の列挙できる項目は registerCommand だけのまま（R5 の形）で、次の 3 つは列挙されない。どれも、権限（manifest.permissions）が要る:
-    // registerContextMenuItem と api.document.currentPath は paths.read、api.clipboard.writeText は clipboard.write。権限の判断は本体が呼び出しのたびに決め、
-    // 宣言がない、利用者が拒否した、確認の画面を閉じた、のどれでも、呼び出しの Promise が reject される。
-    Object.defineProperty(api, 'registerContextMenuItem', {
-      value: function (registration) {
+      // R6 の API。registerContextMenuItem と document.currentPath は権限 paths.read、clipboard.writeText は権限 clipboard.write が要る
+      // （manifest.permissions）。権限の判断は本体が呼び出しのたびに決め、宣言がない、利用者が拒否した、確認の画面を出さなかった、
+      // 確認の画面を閉じた、のどれでも、呼び出しの Promise が reject される。
+      registerContextMenuItem: function (registration) {
         if (started) throw new Error('registerContextMenuItem は、部品のコードの最初の実行の間だけ呼べます');
         if (typeof registration !== 'object' || registration === null) throw new TypeError('registerContextMenuItem には、オブジェクトを渡してください');
         checkId(registration.id, 'メニューの項目');
@@ -113,22 +111,18 @@
         menus.set(registration.id, registration.run);
         send({ kind: 'menu', id: registration.id, title: registration.title, where: 'tree' });
       },
-    });
-    Object.defineProperty(api, 'clipboard', {
-      value: Object.freeze({
+      clipboard: Object.freeze({
         writeText: function (text) {
           if (typeof text !== 'string' || text === '' || text.length > 100000) return Promise.reject(new TypeError('writeText には、1 文字以上 100000 文字までの文字列を渡してください'));
           return call({ method: 'clipboardWriteText', text: text });
         },
       }),
-    });
-    Object.defineProperty(api, 'document', {
-      value: Object.freeze({
+      document: Object.freeze({
         currentPath: function () {
           return call({ method: 'currentPath' });
         },
       }),
-    });
+    };
     Object.freeze(api);
     Object.defineProperty(self, 'api', { value: api, enumerable: true });
     self.onmessage = function (event) {

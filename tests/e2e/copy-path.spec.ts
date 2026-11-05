@@ -468,8 +468,13 @@ test.describe('起動と iframe', () => {
     await expect(page.locator('.cm-content')).toContainText('x');
   });
 
-  test('seed に isolated がなければ（e2e のビルドの既定）、同梱の部品も読み込まず、iframe も作らない（既存のテストへの影響を避ける）', async ({ page }) => {
+  test('seed に isolated がなくても（e2e のビルドの既定）、本番と同じく同梱の部品を読み込む。外すのは bundled: false と明示したときだけ', async ({ page }) => {
     await launch(page, { files: FILES, openPath: DOC, folderPath: ROOT, preferences: { sidebarOpen: true } });
+    await expect(page.locator('iframe[data-testid="plugin-host-frame"]')).toHaveCount(1);
+  });
+
+  test('bundled: false と明示すると、同梱の部品は読み込まれず、iframe も作られない', async ({ page }) => {
+    await launch(page, { files: FILES, openPath: DOC, folderPath: ROOT, preferences: { sidebarOpen: true }, isolated: { plugins: [], bundled: false } });
     await expect(page.locator('iframe')).toHaveCount(0);
   });
 });
@@ -508,6 +513,95 @@ test.describe('権限の API の拒否（検証用の部品）', () => {
     await expect.poll(async () => (await trace(page)).some((e) => e.type === 'ready' && e.plugin === 'e2e-undeclared')).toBe(true);
     expect(await clipboard(page)).toEqual([]);
     await expect(dialog(page)).toHaveCount(0);
+  });
+});
+
+test.describe('確認の画面を出す条件（R6b）', () => {
+  const PART = 'e2e-prompt-abuse';
+  /** 確認の画面が出た回数を、ページの中で数える（出てすぐ消えるものも逃さない）。 */
+  const countDialogs = (page: Page) =>
+    page.addInitScript(() => {
+      const w = window as unknown as { __dialogShown: number };
+      w.__dialogShown = 0;
+      let visible = false;
+      new MutationObserver(() => {
+        const now = document.querySelector('[data-testid="permission-dialog"]') !== null;
+        if (now && !visible) w.__dialogShown++;
+        visible = now;
+      }).observe(document, { childList: true, subtree: true });
+    });
+  const shown = (page: Page) => page.evaluate(() => (window as unknown as { __dialogShown: number }).__dialogShown);
+  const partResults = async (page: Page) =>
+    (await trace(page)).filter((e) => e.type === 'result' && e.plugin === PART).map((e) => [e.method, e.ok]);
+  const partDone = async (page: Page) => (await trace(page)).filter((e) => e.type === 'done' && e.plugin === PART).length;
+  const startPart = async (page: Page, seed: Seed = {}) => {
+    await countDialogs(page);
+    await start(page, seed, { isolated: { plugins: [PART] } });
+    await expect.poll(async () => (await trace(page)).some((e) => e.type === 'ready' && e.plugin === PART)).toBe(true);
+  };
+
+  test('起動時（activate の中）の権限の呼び出しは、確認の画面を出さずに reject される。部品は止まらない', async ({ page }) => {
+    await startPart(page);
+    await expect.poll(() => partResults(page)).toEqual([['clipboardWriteText', false]]);
+    expect(await shown(page)).toBe(0);
+    await expect(dialog(page)).toHaveCount(0);
+    expect(await clipboard(page)).toEqual([]);
+    expect(await savedPermissions(page)).toEqual([]);
+    expect(stoppedReasons(page, PART)).toEqual([]);
+  });
+
+  test('ショートカットの実行の中では、確認の画面が 1 回だけ出る。Esc で閉じたあとの 2 回目以降の呼び出しは、画面なしで reject される。次のショートカットでは、また 1 回出る', async ({ page }) => {
+    await startPart(page);
+    await expect.poll(() => partResults(page)).toHaveLength(1);
+    await page.locator('.cm-content').click();
+    await page.keyboard.press('ControlOrMeta+Shift+k');
+    await expect(dialog(page)).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect.poll(() => partDone(page)).toBe(1);
+    // 3 回の呼び出しのうち、画面が出たのは最初の 1 回だけ。3 回とも断られた（保存もされない）。
+    expect(await partResults(page)).toEqual([['clipboardWriteText', false], ['currentPath', false], ['currentPath', false], ['currentPath', false]]);
+    expect(await shown(page)).toBe(1);
+    await expect(dialog(page)).toHaveCount(0);
+    expect(await savedPermissions(page)).toEqual([]);
+
+    await page.keyboard.press('ControlOrMeta+Shift+k');
+    await expect(dialog(page)).toBeVisible();
+    expect(await shown(page)).toBe(2);
+    await dialog(page).getByRole('button', { name: '許可する' }).click();
+    await expect.poll(() => partDone(page)).toBe(2);
+    // 許可したので、同じ実行の 2 回目以降も通る（聞き直さない）。
+    expect((await partResults(page)).slice(4)).toEqual([['currentPath', true], ['currentPath', true], ['currentPath', true]]);
+    expect(await shown(page)).toBe(2);
+    expect(stoppedReasons(page, PART)).toEqual([]);
+  });
+
+  test('実行の外（実行が終わったあとのタイマー）の呼び出しは、画面なしで reject される。部品は止まらない', async ({ page }) => {
+    await startPart(page);
+    await expect.poll(() => partResults(page)).toHaveLength(1);
+    await page.locator('.cm-content').click();
+    await page.keyboard.press('ControlOrMeta+Shift+l');
+    await expect.poll(() => partDone(page)).toBe(1);
+    await expect.poll(() => partResults(page)).toEqual([['clipboardWriteText', false], ['currentPath', false]]);
+    expect(await shown(page)).toBe(0);
+    await expect(dialog(page)).toHaveCount(0);
+    expect(await savedPermissions(page)).toEqual([]);
+    expect(stoppedReasons(page, PART)).toEqual([]);
+  });
+
+  test('ツリーの項目の選択の実行でも、1 回だけ。保存済みの paths.read は聞かず、未決の clipboard.write の確認が 1 回出て、Esc のあとの呼び出しは画面なしで reject される', async ({ page }) => {
+    await startPart(page, { pluginPermissions: { version: 1, plugins: { [PART]: { 'paths.read': 'granted' } } } });
+    await expect.poll(() => partResults(page)).toHaveLength(1);
+    await row(page, 'b.md').click({ button: 'right' });
+    await menu(page).getByRole('menuitem', { name: 'e2e-burst' }).click();
+    await expect(dialog(page)).toBeVisible();
+    await expect(dialog(page)).toContainText('文字列をクリップボードに書き込む');
+    await page.keyboard.press('Escape');
+    await expect.poll(() => partDone(page)).toBe(1);
+    expect((await partResults(page)).slice(1)).toEqual([['clipboardWriteText', false], ['clipboardWriteText', false], ['clipboardWriteText', false]]);
+    expect(await shown(page)).toBe(1);
+    expect(await clipboard(page)).toEqual([]);
+    expect(await savedPermissions(page)).toEqual([]);
+    expect(stoppedReasons(page, PART)).toEqual([]);
   });
 });
 

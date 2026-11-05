@@ -13,6 +13,7 @@ import {
   type IsolatedCommandInfo,
   type IsolatedMenuItemInfo,
   type IsolatedPluginHost,
+  type IsolatedRun,
   type IsolatedServices,
   type MenuTarget,
   type Plugin,
@@ -356,8 +357,17 @@ export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[]
     if (entry.status !== 'active') return;
     entry.cleanup = () => host.stop(entry.id);
     const callFailed = (reason: string): IsolatedCallResult => ({ ok: false, reason });
+    /**
+     * 利用者の操作で始まった実行を、権限の確認に知らせる。確認の画面は、この実行の中で、1 回まで出せる。
+     * 戻り値は、実行が終わった（実行されなかった場合も含む）ことを知らせる関数。
+     */
+    const beginRun = (): (() => void) => gate?.beginRun?.(entry.id) ?? (() => {});
+    const endWhenFinished = (run: IsolatedRun | undefined, end: () => void): void => {
+      if (run) void run.finished.then(end, end);
+      else end();
+    };
     /** 権限を使ってよいか。確認の画面を出しているあいだは、その部品の時間切れの計測を止める。 */
-    const authorize = async (needed: Permission): Promise<'granted' | 'denied' | 'dismissed' | 'unavailable'> => {
+    const authorize = async (needed: Permission): Promise<'granted' | 'denied' | 'dismissed' | 'not-asked' | 'unavailable'> => {
       if (!gate) return 'unavailable';
       const release = host.suspendTimeouts?.(entry.id);
       try {
@@ -366,13 +376,15 @@ export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[]
         release?.();
       }
     };
-    const refusal = (needed: Permission, outcome: 'denied' | 'dismissed' | 'unavailable'): IsolatedCallResult =>
+    const refusal = (needed: Permission, outcome: 'denied' | 'dismissed' | 'not-asked' | 'unavailable'): IsolatedCallResult =>
       callFailed(
         outcome === 'denied'
           ? `権限 ${needed}（${PERMISSION_DESCRIPTIONS[needed]}）は、利用者が許可していません`
           : outcome === 'dismissed'
             ? `権限 ${needed} の確認の画面が閉じられたため、今回は使えません`
-            : `権限 ${needed} の確認の仕組みがありません`,
+            : outcome === 'not-asked'
+              ? `権限 ${needed} は、まだ決まっていません。確認の画面は、利用者の操作で始まった実行の中で、1 回だけ出します（今回は出しません）`
+              : `権限 ${needed} の確認の仕組みがありません`,
       );
     const onCall = async (call: IsolatedCall): Promise<IsolatedCallResult> => {
       const needed: Permission = call.method === 'clipboardWriteText' ? 'clipboard.write' : 'paths.read';
@@ -403,7 +415,25 @@ export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[]
         onCommand: (command: IsolatedCommandInfo) => {
           if (entry.status !== 'active') return;
           try {
-            addCommand(entry, command, guard(entry, () => host.run(entry.id, command.id), () => undefined), true);
+            addCommand(
+              entry,
+              command,
+              guard(
+                entry,
+                () => {
+                  // 利用者の操作（ショートカット）で始まった実行。確認の画面は、この実行の中で 1 回まで。
+                  const end = beginRun();
+                  try {
+                    endWhenFinished(host.run(entry.id, command.id), end);
+                  } catch (error) {
+                    end();
+                    throw error;
+                  }
+                },
+                () => undefined,
+              ),
+              true,
+            );
           } catch (error) {
             stop(entry, error);
           }
@@ -423,12 +453,15 @@ export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[]
             where: item.where,
             run: async (target: MenuTarget) => {
               if (entry.status !== 'active') return;
+              // 利用者の操作（項目の選択）で始まった実行。確認の画面は、この実行（権限の確認から、部品の run の終わりまで）の中で 1 回まで。
+              const end = beginRun();
               try {
                 // 権限が許可されてから、部品の run に対象を渡す。
                 const outcome = await authorize('paths.read');
-                if (outcome !== 'granted' || entry.status !== 'active') return;
-                host.runMenu?.(entry.id, item.id, target);
+                if (outcome !== 'granted' || entry.status !== 'active') return end();
+                endWhenFinished(host.runMenu?.(entry.id, item.id, target), end);
               } catch (error) {
+                end();
                 report('error', `[plugin] 部品「${entry.id}」のメニューの項目を実行できませんでした`, error);
               }
             },

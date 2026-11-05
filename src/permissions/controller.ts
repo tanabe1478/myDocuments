@@ -5,6 +5,7 @@ import {
   type Permission,
   type PermissionDecision,
   type PermissionDecisions,
+  type PermissionAuthorization,
   type PermissionGate,
   type PermissionOutcome,
 } from '../plugin-api';
@@ -17,9 +18,9 @@ export interface PermissionPrompt {
 }
 
 export interface PermissionsState {
-  /** 保存済みの決定を読み込んだか（読む前は、決定がないものとして扱わない: authorize は読んでから判断する）。 */
+  /** 保存済みの決定を、読み込めたか（読む前、読めなかったときは false。読めなかったあいだ、決定は保存しない）。 */
   readonly loaded: boolean;
-  /** 部品の id → 決めた権限の結果。決めていないものは、キーがない。 */
+  /** 部品の id → 決めた権限の結果（保存済みのものと、今回の起動の間だけのもの）。決めていないものは、キーがない。 */
   readonly decisions: Readonly<Record<string, PermissionDecisions>>;
   /** いま出している確認の画面。なければ null。同時に出すのは 1 つで、ほかは順番を待つ。 */
   readonly prompt: PermissionPrompt | null;
@@ -36,23 +37,41 @@ interface Waiting {
   readonly resolve: (outcome: PermissionOutcome) => void;
 }
 
+/** 利用者の操作で始まった、部品の実行 1 回。確認の画面は、1 回の実行につき 1 回まで。 */
+interface Run {
+  prompts: number;
+}
+
+type Decisions = Readonly<Record<string, PermissionDecisions>>;
+
 /**
- * 段 2 の部品の権限の、利用者の決定と、確認の画面（ADR-005 の R6）。
+ * 段 2 の部品の権限の、利用者の決定と、確認の画面（ADR-005 の R6、R6b）。
  * - 決定の保存は、ネイティブ側の plugin-permissions.json（設定とは別のファイル）。起動では読まない。最初に必要になったとき
  *   （権限の確認、設定画面）に読む（起動の経路を長くしない）。
+ * - 読み込みに失敗したとき（ファイルがない、は失敗ではない。ネイティブが空として返す）は、覚えずに、次に権限が要るとき読み直す。
+ *   読めていないあいだに決めた結果は、今回の起動の間だけのもの（session）として扱い、ファイルには書かない
+ *   （読めていない中身を、空で上書きしないため）。
  * - 決めていない権限を部品が使うとき、確認の画面を出す。宣言した権限のうち、決めていないものをまとめて聞く。
  *   「許可する」「許可しない」は、聞いた権限すべてに同じ結果を保存する。閉じる（Esc、閉じるボタン）は、保存せず、今回だけ断る。
- * - 同じ部品の確認が出ている間に来た呼び出しは、その確認の結果を待つ（画面を重ねない）。別の部品の確認は順番を待つ。
+ * - 確認の画面を出してよいのは、利用者の操作で始まった実行（beginRun）の中で、その実行につき 1 回まで。それ以外の時機
+ *   （起動時、activate の中、実行の外、同じ実行の 2 回目以降）の、決めていない権限の呼び出しは、画面を出さずに not-asked で断る。
+ * - 同じ部品の確認が出ている間に来た、その部品の実行の中の呼び出しは、その確認の結果を待つ（画面を重ねない）。別の部品の確認は順番を待つ。
  * - 保存に失敗しても、今回の起動の間は、決めた結果を使う（トーストで知らせる）。
  */
 export class PermissionController implements PermissionGate {
   private state: PermissionsState = { loaded: false, decisions: {}, prompt: null };
   private readonly listeners = new Set<() => void>();
   private loading: Promise<void> | null = null;
+  /** 保存済みの決定。読めたあとだけ、ここに足して保存する。 */
+  private base: Decisions = {};
+  /** 読めていないあいだに決めた結果（保存しない。今回の起動の間だけ）。 */
+  private session: Decisions = {};
   private readonly queue: Waiting[] = [];
   private current: Waiting | null = null;
   /** 部品の id → その部品の、確認の結果を待っている Promise（重ねて聞かないため）。 */
   private readonly inflight = new Map<string, Promise<PermissionOutcome>>();
+  /** 部品の id → いま続いている、利用者の操作で始まった実行。 */
+  private readonly runs = new Map<string, Run[]>();
   /** 保存は、順番に行う（古い値で上書きしない）。 */
   private saving: Promise<void> = Promise.resolve();
 
@@ -82,32 +101,45 @@ export class PermissionController implements PermissionGate {
     for (const listener of Array.from(this.listeners)) listener();
   }
 
-  /** 保存済みの決定を読む（1 回だけ。読めなければ、決定がないものとして続ける）。 */
+  /** 保存済みと今回だけの決定を合わせた、いまの決定。 */
+  private merged(): Decisions {
+    const out: Record<string, PermissionDecisions> = {};
+    for (const id of new Set([...Object.keys(this.base), ...Object.keys(this.session)])) out[id] = { ...this.base[id], ...this.session[id] };
+    return out;
+  }
+
+  /**
+   * 保存済みの決定を読む。読めたら、以降は読まない。読めなかったら覚えず、次に呼ばれたとき読み直す
+   * （読めないあいだは、決定がないものとして続け、保存しない）。例外は出さない。
+   */
   load = (): Promise<void> => {
+    if (this.state.loaded) return Promise.resolve();
     this.loading ??= (async () => {
-      let decisions: PermissionsState['decisions'] = {};
       try {
-        decisions = normalizePermissionsFile(await this.deps.bridge.loadPluginPermissions()).plugins;
+        this.base = normalizePermissionsFile(await this.deps.bridge.loadPluginPermissions()).plugins;
+        this.set({ loaded: true, decisions: this.merged() });
       } catch {
-        // 読めないときは、決定がないものとして続ける（起動と編集を止めない）。
+        // 読めないときは、決定がないものとして続ける（起動と編集を止めない）。次に必要になったとき、読み直す。
+      } finally {
+        this.loading = null;
       }
-      // 読んでいる間に決まったもの（あれば）を残す。
-      this.set({ loaded: true, decisions: { ...decisions, ...this.state.decisions } });
     })();
     return this.loading;
   };
 
-  authorize: PermissionGate['authorize'] = async (plugin, declared, needed) => {
+  authorize: PermissionGate['authorize'] = async (plugin, declared, needed): Promise<PermissionAuthorization> => {
     for (;;) {
       await this.load();
       const decided = this.state.decisions[plugin.id]?.[needed];
       if (decided) return decided;
       const waiting = this.inflight.get(plugin.id);
       if (waiting) {
-        // 同じ部品の確認が出ている。結果を待って、決まっていれば、それに従う。
+        // 同じ部品の確認が出ている。その部品の実行の中の呼び出しなら、結果を待って、決まっていれば、それに従う。
+        if (!this.inRun(plugin.id)) return 'not-asked';
         if ((await waiting) === 'dismissed') return 'dismissed';
         continue;
       }
+      if (!this.takePrompt(plugin.id)) return 'not-asked';
       const undecided = declared.filter((p) => !this.state.decisions[plugin.id]?.[p]);
       const asked = this.ask({ pluginId: plugin.id, pluginName: plugin.name, permissions: undecided.length > 0 ? undecided : [needed] });
       this.inflight.set(plugin.id, asked);
@@ -118,6 +150,28 @@ export class PermissionController implements PermissionGate {
       }
     }
   };
+
+  beginRun = (pluginId: string): (() => void) => {
+    const run: Run = { prompts: 1 };
+    this.runs.set(pluginId, [...(this.runs.get(pluginId) ?? []), run]);
+    return () => {
+      const rest = (this.runs.get(pluginId) ?? []).filter((r) => r !== run);
+      if (rest.length === 0) this.runs.delete(pluginId);
+      else this.runs.set(pluginId, rest);
+    };
+  };
+
+  private inRun(pluginId: string): boolean {
+    return (this.runs.get(pluginId)?.length ?? 0) > 0;
+  }
+
+  /** 続いている実行のうち、まだ画面を出していないものに、画面を 1 回使わせる。なければ false。 */
+  private takePrompt(pluginId: string): boolean {
+    const run = this.runs.get(pluginId)?.find((r) => r.prompts > 0);
+    if (!run) return false;
+    run.prompts--;
+    return true;
+  }
 
   /** 確認の画面を、順番に出す。 */
   private ask(prompt: PermissionPrompt): Promise<PermissionOutcome> {
@@ -135,7 +189,7 @@ export class PermissionController implements PermissionGate {
     this.set({ prompt: next.prompt });
   }
 
-  /** 確認の画面の答え。granted / denied は聞いた権限すべてに保存し、dismissed は保存しない。 */
+  /** 確認の画面の答え。granted / denied は聞いた権限すべてに保存し（読めていないときは、今回の起動の間だけ）、dismissed は保存しない。 */
   answer = (choice: PermissionOutcome): void => {
     const waiting = this.current;
     if (!waiting) return;
@@ -144,25 +198,34 @@ export class PermissionController implements PermissionGate {
       this.set({ prompt: null });
     } else {
       const { pluginId, permissions } = waiting.prompt;
-      const decided: PermissionDecisions = { ...this.state.decisions[pluginId] };
+      const saved = this.state.loaded;
+      const target = saved ? this.base : this.session;
+      const decided: PermissionDecisions = { ...target[pluginId] };
       for (const permission of permissions) decided[permission] = choice satisfies PermissionDecision;
-      this.set({ prompt: null, decisions: { ...this.state.decisions, [pluginId]: decided } });
-      this.persist();
+      if (saved) this.base = { ...this.base, [pluginId]: decided };
+      else this.session = { ...this.session, [pluginId]: decided };
+      this.set({ prompt: null, decisions: this.merged() });
+      if (saved) this.persist();
+      else this.notifier({ kind: 'error', message: '部品の権限の決定を読み込めていないため、保存しません（今回の起動の間だけ、決めたとおりに扱います）' });
     }
     waiting.resolve(choice);
     this.showNext();
   };
 
-  /** 部品の決定を、すべて取り消す（未決に戻す。次の使用で、もう一度聞く）。 */
+  /** 部品の決定を、すべて取り消す（未決に戻す。次の使用で、もう一度聞く）。保存済みのものがあるときだけ保存する。 */
   revoke = (pluginId: string): void => {
     if (!(pluginId in this.state.decisions)) return;
-    const { [pluginId]: _removed, ...rest } = this.state.decisions;
-    this.set({ decisions: rest });
-    this.persist();
+    const hadSaved = pluginId in this.base;
+    const { [pluginId]: _base, ...base } = this.base;
+    const { [pluginId]: _session, ...session } = this.session;
+    this.base = base;
+    this.session = session;
+    this.set({ decisions: this.merged() });
+    if (hadSaved && this.state.loaded) this.persist();
   };
 
   private persist(): void {
-    const snapshot = { version: 1 as const, plugins: this.state.decisions };
+    const snapshot = { version: 1 as const, plugins: this.base };
     this.saving = this.saving
       .then(() => this.deps.bridge.savePluginPermissions(snapshot))
       .catch(() => this.notifier({ kind: 'error', message: '部品の権限の決定を保存できませんでした（今回の起動の間は、決めたとおりに扱います）' }));

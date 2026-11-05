@@ -33,12 +33,27 @@ export interface PluginPermissionsFile {
  */
 export type PermissionOutcome = 'granted' | 'denied' | 'dismissed';
 
+/**
+ * authorize の結果。PermissionOutcome に加えて:
+ * - not-asked: 確認の画面を出さずに断った（決めていない権限で、利用者の操作で始まった実行の中ではない、または、その実行で確認の画面を出した後）。
+ *   決定は保存せず、次の利用者の操作で始まった実行で、改めて聞く。
+ */
+export type PermissionAuthorization = PermissionOutcome | 'not-asked';
+
 export interface PermissionGate {
   /**
    * 部品 plugin が権限 needed を使ってよいか。決めていなければ、宣言した権限のうち、決めていないもの（declared のうち）を
    * まとめて、確認の画面で聞く。needed は declared に含まれていること（宣言していない権限は、呼ぶ前にレジストリが拒否する）。
+   * 確認の画面を出してよいのは、beginRun で開いた実行（利用者の操作で始まったもの）の中で、その実行につき 1 回まで。
+   * それ以外の時機（起動時、activate の中、実行の外、同じ実行の 2 回目以降）の、決めていない権限は、not-asked で断る。
    */
-  authorize(plugin: { readonly id: string; readonly name: string }, declared: readonly Permission[], needed: Permission): Promise<PermissionOutcome>;
+  authorize(plugin: { readonly id: string; readonly name: string }, declared: readonly Permission[], needed: Permission): Promise<PermissionAuthorization>;
+  /**
+   * 利用者の操作（段 2 のコマンドのショートカット、ツリーのメニューの項目の選択）で、部品 pluginId の実行を始める直前に呼ぶ。
+   * 戻り値の関数は、その実行が終わったとき（終わる、止まる、時間切れ、実行されなかった）に呼ぶ。何度呼んでもよい。
+   * ない実装は、実行の中かどうかを区別しない（テスト用の偽物）。
+   */
+  beginRun?(pluginId: string): () => void;
 }
 
 /**

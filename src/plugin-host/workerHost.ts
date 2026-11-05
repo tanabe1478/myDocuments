@@ -1,4 +1,4 @@
-import type { IsolatedCall, IsolatedCallResult, IsolatedPluginHost, IsolatedPluginListener, MenuTarget } from '../plugin-api';
+import type { IsolatedCall, IsolatedCallResult, IsolatedPluginHost, IsolatedPluginListener, IsolatedRun, MenuTarget } from '../plugin-api';
 import { LIMITS, parseRelayMessage, resultMessage, runMenuMessage, runMessage, startMessage, stopMessage, type MainMessage } from './protocol';
 
 /** 本体が持つ、仲介の iframe への入口。DOM の実装は domFrame.ts。単体テストでは偽物を渡す。 */
@@ -60,7 +60,7 @@ interface Slot {
   state: 'starting' | 'ready' | 'stopped';
   readonly commands: Set<string>;
   readonly menus: Set<string>;
-  readonly pending: Map<number, { readonly command: string; readonly timeout: Timeout }>;
+  readonly pending: Map<number, { readonly command: string; readonly timeout: Timeout; readonly settle: () => void }>;
   /** 結果待ちの呼び出し（部品の中の番号 → 呼び出しの種類）。 */
   readonly calls: Map<number, IsolatedCall['method']>;
   activate: Timeout | null;
@@ -138,7 +138,10 @@ export function createWorkerHost(options: WorkerHostOptions): IsolatedPluginHost
   const clearTimers = (slot: Slot): void => {
     cancelTimeout(slot.activate);
     slot.activate = null;
-    for (const { timeout } of slot.pending.values()) cancelTimeout(timeout);
+    for (const { timeout, settle } of slot.pending.values()) {
+      cancelTimeout(timeout);
+      settle();
+    }
     slot.pending.clear();
     slot.calls.clear();
   };
@@ -259,6 +262,7 @@ export function createWorkerHost(options: WorkerHostOptions): IsolatedPluginHost
         if (!run) return violation(slot, '要求していない番号の done です');
         cancelTimeout(run.timeout);
         slot.pending.delete(message.req);
+        run.settle();
         trace({ type: 'done', plugin: slot.id, command: run.command, req: message.req });
         return;
       }
@@ -270,6 +274,17 @@ export function createWorkerHost(options: WorkerHostOptions): IsolatedPluginHost
       case 'stopped':
         return stopSlot(slot, message.reason, true);
     }
+  };
+
+  /** 実行を結果待ちに入れる。印の finished は、done、止まった、時間切れのどれかで resolve される。 */
+  const track = (slot: Slot, req: number, label: string, timeoutMessage: string): IsolatedRun => {
+    let settle: () => void = () => {};
+    const finished = new Promise<void>((resolve) => {
+      settle = resolve;
+    });
+    const timeout = armTimeout(slot, runTimeoutMs, () => stopSlot(slot, timeoutMessage, true));
+    slot.pending.set(req, { command: label, timeout, settle });
+    return { finished };
   };
 
   const ensureFrame = (): void => {
@@ -300,30 +315,26 @@ export function createWorkerHost(options: WorkerHostOptions): IsolatedPluginHost
 
     run(id, commandId) {
       const slot = slots.get(id);
-      if (!slot || slot.state !== 'ready' || !slot.commands.has(commandId)) return;
-      if (slot.pending.size >= MAX_PENDING_RUNS) return;
+      if (!slot || slot.state !== 'ready' || !slot.commands.has(commandId)) return undefined;
+      if (slot.pending.size >= MAX_PENDING_RUNS) return undefined;
       const req = nextReq++;
-      const timeout = armTimeout(slot, runTimeoutMs, () => {
-        stopSlot(slot, `コマンド「${commandId}」が ${runTimeoutMs} ミリ秒で終わりませんでした`, true);
-      });
-      slot.pending.set(req, { command: commandId, timeout });
+      const run = track(slot, req, commandId, `コマンド「${commandId}」が ${runTimeoutMs} ミリ秒で終わりませんでした`);
       trace({ type: 'run', plugin: id, command: commandId, req });
       post(runMessage(id, req, commandId));
+      return run;
     },
 
     runMenu(id, itemId, target: MenuTarget) {
       const slot = slots.get(id);
-      if (!slot || slot.state !== 'ready' || !slot.menus.has(itemId)) return;
-      if (slot.pending.size >= MAX_PENDING_RUNS) return;
-      if (target.path === '' || target.path.length > LIMITS.pathLength) return;
+      if (!slot || slot.state !== 'ready' || !slot.menus.has(itemId)) return undefined;
+      if (slot.pending.size >= MAX_PENDING_RUNS) return undefined;
+      if (target.path === '' || target.path.length > LIMITS.pathLength) return undefined;
       const req = nextReq++;
       const label = `menu:${itemId}`;
-      const timeout = armTimeout(slot, runTimeoutMs, () => {
-        stopSlot(slot, `メニューの項目「${itemId}」が ${runTimeoutMs} ミリ秒で終わりませんでした`, true);
-      });
-      slot.pending.set(req, { command: label, timeout });
+      const run = track(slot, req, label, `メニューの項目「${itemId}」が ${runTimeoutMs} ミリ秒で終わりませんでした`);
       trace({ type: 'run', plugin: id, command: label, req });
       post(runMenuMessage(id, req, itemId, target.path, target.kind));
+      return run;
     },
 
     suspendTimeouts(id) {

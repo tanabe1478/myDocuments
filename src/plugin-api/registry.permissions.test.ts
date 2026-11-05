@@ -7,6 +7,7 @@ import {
   type IsolatedPluginListener,
   type IsolatedServices,
   type Permission,
+  type PermissionAuthorization,
   type PermissionGate,
   type PermissionOutcome,
   type Plugin,
@@ -326,5 +327,121 @@ describe('deferStart', () => {
     expect(f.host.start).toHaveBeenCalledTimes(1);
     registry.startDeferred();
     expect(f.host.start).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a user-initiated run is told to the confirmation (R6b)', () => {
+  const item = { id: 'copy', title: 'パスをコピー', where: 'tree' as const };
+  const ctx = {} as never;
+
+  /** beginRun の呼び出しと、終わりの合図を記録する門。 */
+  function runGate(outcome: PermissionAuthorization = 'granted') {
+    const log: string[] = [];
+    const authorize = vi.fn(async (): Promise<PermissionAuthorization> => {
+      log.push('authorize');
+      return outcome;
+    });
+    const beginRun = vi.fn((id: string) => {
+      log.push(`begin:${id}`);
+      return () => void log.push(`end:${id}`);
+    });
+    return { gate: { authorize, beginRun } satisfies PermissionGate, log };
+  }
+  const withRuns = (gate: PermissionGate, over: Record<string, unknown> = {}) => {
+    const f = fakeHost();
+    const registry = createPluginRegistry([action(over)], { ...quiet(), isolation: f.host, permissions: gate });
+    registry.bindServices(services());
+    return { ...f, registry };
+  };
+  const finishable = () => {
+    let finish: () => void = () => {};
+    const finished = new Promise<void>((resolve) => (finish = resolve));
+    return { run: { finished }, finish };
+  };
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  it('opens a run before the command starts, and closes it when the host says the run finished', async () => {
+    const g = runGate();
+    const t = withRuns(g.gate);
+    const pending = finishable();
+    t.host.run.mockImplementation(() => {
+      g.log.push('host.run');
+      return pending.run as never;
+    });
+    t.listener().onCommand({ id: 'copy', title: 'コピー', shortcut: 'Mod+Alt+C' });
+    t.registry.commands[0]!.run(ctx);
+    expect(g.log).toEqual(['begin:copy-path', 'host.run']);
+    pending.finish();
+    await flush();
+    expect(g.log).toEqual(['begin:copy-path', 'host.run', 'end:copy-path']);
+  });
+
+  it('closes the run at once when nothing was run (unknown command, not ready), and when the host throws (the part is stopped)', () => {
+    const g = runGate();
+    const t = withRuns(g.gate);
+    t.listener().onCommand({ id: 'copy', title: 'コピー' });
+    t.registry.commands[0]!.run(ctx);
+    expect(g.log).toEqual(['begin:copy-path', 'end:copy-path']);
+
+    const g2 = runGate();
+    const u = withRuns(g2.gate);
+    u.host.run.mockImplementation(() => {
+      throw new Error('boom');
+    });
+    u.listener().onCommand({ id: 'copy', title: 'コピー' });
+    u.registry.commands[0]!.run(ctx);
+    expect(g2.log).toEqual(['begin:copy-path', 'end:copy-path']);
+    expect(u.registry.records[0]!.status).toBe('stopped');
+  });
+
+  it('keeps one run open for a menu item from the selection (before the confirmation) until the part run finished; closes it at once when refused', async () => {
+    const g = runGate('granted');
+    const t = withRuns(g.gate);
+    const pending = finishable();
+    t.host.runMenu.mockImplementation(() => {
+      g.log.push('host.runMenu');
+      return pending.run as never;
+    });
+    t.listener().onMenuItem!(item);
+    await t.registry.menuItems[0]!.run({ path: '/p', kind: 'file' });
+    expect(g.log).toEqual(['begin:copy-path', 'authorize', 'host.runMenu']);
+    pending.finish();
+    await flush();
+    expect(g.log.at(-1)).toBe('end:copy-path');
+
+    for (const outcome of ['denied', 'dismissed', 'not-asked'] as const) {
+      const refused = runGate(outcome);
+      const u = withRuns(refused.gate);
+      u.listener().onMenuItem!(item);
+      await u.registry.menuItems[0]!.run({ path: '/p', kind: 'file' });
+      expect(refused.log).toEqual(['begin:copy-path', 'authorize', 'end:copy-path']);
+      expect(u.host.runMenu).not.toHaveBeenCalled();
+    }
+  });
+
+  it('does not open a run for a call from the part (a call is not a user action)', async () => {
+    const g = runGate('granted');
+    const t = withRuns(g.gate);
+    await t.listener().onCall!({ method: 'currentPath' });
+    expect(g.log).toEqual(['authorize']);
+  });
+
+  it('a not-asked outcome fails only that call, says that no screen is shown, and does not stop the part', async () => {
+    const svc = services();
+    const g = runGate('not-asked');
+    const f = fakeHost();
+    const registry = createPluginRegistry([action()], { ...quiet(), isolation: f.host, permissions: g.gate });
+    registry.bindServices(svc);
+    expect(await f.listener().onCall!({ method: 'clipboardWriteText', text: 'x' })).toEqual({ ok: false, reason: expect.stringContaining('今回は出しません') });
+    expect(svc.writeClipboardText).not.toHaveBeenCalled();
+    expect(registry.records[0]!.status).toBe('active');
+    expect(f.host.stop).not.toHaveBeenCalled();
+  });
+
+  it('works with a gate that does not track runs (a part command and menu item run as before)', async () => {
+    const t = setup(fakeGate('granted'));
+    t.listener().onCommand({ id: 'copy', title: 'コピー' });
+    expect(() => t.registry.commands[0]!.run(ctx)).not.toThrow();
+    expect(t.host.run).toHaveBeenCalledWith('copy-path', 'copy');
   });
 });

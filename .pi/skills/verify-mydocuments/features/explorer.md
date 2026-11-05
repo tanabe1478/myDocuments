@@ -15,7 +15,7 @@
 - EXP-11: 名前の変更。F2 か右クリックの「名前を変更」。入力欄の選択は拡張子の前まで。自分自身の名前と大文字小文字だけの変更は通る。開いている文書（またはそれを含むフォルダ）の名前を変えると、文書は新しいパスへ移る（上部バーの名前、監視、前回の文書、草稿のパス）。本文と未保存の状態は残り、保存は新しいパスに書かれ、削除扱いにならない。失敗したら文書は古いパスのまま。展開状態と選択は新しいパスへ引き継ぐ。
 - EXP-12: ゴミ箱への移動。Delete（macOS は ⌘⌫ も）か右クリックの「ゴミ箱に移動」。毎回、確認（confirm-trash。role alertdialog。既定のフォーカスはキャンセル、Esc で取り消し）。確定するとツリーから消え、選択は隣へ移る。開いている文書（またはそれを含むフォルダ）を移すと、監視の通知を待たずに外部変更の確認が走り、未保存の変更がなければ「削除された」の表示、あれば競合バー。
 - EXP-13: 外部の変更の自動反映。ルートと展開中のフォルダは監視され、外部で項目が増減・名前の変更をされると、操作なしでツリーに反映される。展開状態と選択は保たれ、消えたフォルダは展開をやめる。通知の読み直しはトーストを出さない。
-- EXP-14: 同梱の段 2 の部品「パスをコピー」（ADR-005 の R6）。ファイルとフォルダの行の右クリックメニュー（と Shift+F10）に、本体の 4 項目のあと、区切り（role separator）を入れて「パスをコピー」が並ぶ（testId は menu-plugin-copy-path.copy-path）。空き領域のメニューには出ない。選ぶと、その行のパスがクリップボードに入り、トースト「クリップボードにコピーしました」が出る。Mod+Alt+C は開いている文書のパス（未保存の新規文書では何もしない）。初回は、確認の画面（permission-dialog。role dialog。部品の名前と権限ごとの説明、「許可しない」が既定のフォーカス、「許可する」）が出る。Esc と閉じるは今回だけ断る（保存せず、次の使用で再び聞く）。結果は設定画面の「部品の権限」（settings-plugin-permissions）に出て、「取り消す」で未決に戻る。部品が止まると、メニューの項目は消える。
+- EXP-14: 同梱の段 2 の部品「パスをコピー」（ADR-005 の R6）。ファイルとフォルダの行の右クリックメニュー（と Shift+F10）に、本体の 4 項目のあと、区切り（role separator）を入れて「パスをコピー」が並ぶ（testId は menu-plugin-copy-path.copy-path）。空き領域のメニューには出ない。選ぶと、その行のパスがクリップボードに入り、トースト「クリップボードにコピーしました」が出る。Mod+Alt+C は開いている文書のパス（未保存の新規文書では何もしない）。初回は、確認の画面（permission-dialog。role dialog。部品の名前と権限ごとの説明、「許可しない」が既定のフォーカス、「許可する」）が出る。Esc と閉じるは今回だけ断る（保存せず、次の使用で再び聞く）。確認の画面は、利用者の操作で始まった実行（ショートカット、メニューの項目の選択）の中で、その実行につき 1 回まで（起動時、実行の外、同じ実行の 2 回目以降の未決の呼び出しは、画面なしで断られる）。結果は設定画面の「部品の権限」（settings-plugin-permissions）に出て、「取り消す」で未決に戻る。部品が止まると、メニューの項目は消える。
 
 ## How to get to it (user POV)
 
@@ -42,11 +42,11 @@ Preconditions: Launch 済みで Doctor が全 PASS。フォルダ構造は seed 
 | explorer-restore-missing.json | 存在しないフォルダが session.lastFolder の状態で起動 | 未選択の表示（sidebar-empty、open-folder）に戻り、トーストに「前回のフォルダを開けませんでした」。restore-failure と retry-folder が出る。本文は使え、session.lastFolder は消えずに残る。画像は 01-missing.png |
 | explorer-many.json | 5003 件のフォルダを展開 | 「ほか 3 件」の行（aria-disabled）。項目は 5002 行（フォルダ、readme.md、先頭 5000 件）。item-05000.md はあり、item-05001.md はない。画像は 01-more-row.png |
 | explorer-dark.json | ダークで、前回の文書（b.txt）とフォルダが復元された状態で起動し、docs を展開、a.md をクリック | 文書とフォルダが両方復元される。b.txt が強調され、灰色の項目が読める。画像は 01-dark-tree.png、02-dark-md.png |
-| explorer-create.json（-dark あり） | 新しいファイルのボタン、区切り文字を含む名前、「idea」、項目の右クリックから新しいフォルダ、空き領域のメニュー、Esc、ボタンを Enter | 入力欄がフォーカスされ、不正な名前は aria-invalid と理由が出て何も作られない。idea.md が作られて開く。メニューは項目で 4 つ、空き領域で 2 つ。作ったフォルダは展開・選択。画像は 01-invalid-name.png、02-created-and-opened.png、03-context-menu.png（ダークは -dark 付き） |
+| explorer-create.json（-dark あり） | 新しいファイルのボタン、区切り文字を含む名前、「idea」、項目の右クリックから新しいフォルダ、空き領域のメニュー、Esc、ボタンを Enter | 入力欄がフォーカスされ、不正な名前は aria-invalid と理由が出て何も作られない。idea.md が作られて開く。メニューは項目で 5 つ（本体の 4 つと、同梱の部品の「パスをコピー」）、空き領域で 2 つ。作ったフォルダは展開・選択。画像は 01-invalid-name.png、02-created-and-opened.png、03-context-menu.png（ダークは -dark 付き） |
 | explorer-rename.json（-dark あり） | a.md を開いて追記、F2 で renamed.md、保存。docs を開いた guide.md を右クリックで docs の名前変更 | 選択が [0, 1]。上部バーが renamed.md、未保存マーク・本文・監視・lastPath・草稿のパスが新しいパス。保存は新しいパスだけに書かれる。フォルダの名前変更でも guide.md が追従。画像は 01-rename-input.png、02-after-rename.png、03-after-folder-rename.png |
 | explorer-trash.json（-dark あり） | b.txt で Delete、Esc、Delete して確定。未保存の guide.md を含む docs を右クリックで移す | 確認は alertdialog でフォーカスはキャンセル。Esc では何も起きない。確定で消え、選択は c.md。docs を移すと競合バーが出て本文が残る。画像は 01-confirm-trash.png、02-trashed-open-document.png |
 | explorer-external.json | docs を展開し、外部でファイル・フォルダを足す・消す、docs ごと消す | 操作なしでツリーに反映され、展開は保たれる。watchedFolders がルートと展開中のフォルダ。docs が消えると展開と監視も外れる。トーストなし。画像は 01-external-changes.png |
-| explorer-copy-path.json | 同梱の部品を読み込んで（seed の isolated に bundled: true）、a.md を開き、Mod+Alt+C、確認の画面で「許可する」。docs を右クリックして「パスをコピー」。設定画面で「取り消す」 | 初回は permission-dialog が出て、許可するまで clipboard は空。許可後に /work/notes/a.md が入り、トースト。メニューは 5 項目と区切り 1 つで、docs を選ぶと /work/notes/docs が入る。設定画面の「部品の権限」に結果が出て、取り消すと「決めた権限はありません。」になり、保存された決定が空になる。画像は 01-permission-dialog.png、02-copied-toast.png、03-context-menu.png、04-settings-permissions.png |
+| explorer-copy-path.json | 同梱の部品が読み込まれた既定の構成で、a.md を開き、Mod+Alt+C、確認の画面で「許可する」。docs を右クリックして「パスをコピー」。設定画面で「取り消す」 | 初回は permission-dialog が出て、許可するまで clipboard は空。許可後に /work/notes/a.md が入り、トースト。メニューは 5 項目と区切り 1 つで、docs を選ぶと /work/notes/docs が入る。設定画面の「部品の権限」に結果が出て、取り消すと「決めた権限はありません。」になり、保存された決定が空になる。画像は 01-permission-dialog.png、02-copied-toast.png、03-context-menu.png、04-settings-permissions.png |
 | explorer-restore-retry.json（-dark あり） | 存在しない前回のフォルダで起動し、再試行、フォルダができた後に再試行 | restore-failure に「前回のフォルダ「notes」を開けませんでした」、retry-folder と open-folder。記録は残る。再試行でツリーが出る。画像は 01-restore-failed.png、02-retry-opened.png |
 
 ```
@@ -87,7 +87,7 @@ Tauri の窓（secondary）。作成・名前の変更・ゴミ箱は窓への�
 - 外部の変更の通知は、監視しているフォルダ（watchedFolders）のときだけ届く。展開していないフォルダへの externalWrite は、通知なし。
 - 名前の変更の直後は、開いている文書のディスクの確認が一度走る。直後の保存の操作は、その確認が終わるまで受け付けない（expect の timeout で待つ）。
 - 前回のフォルダの再試行は、memory bridge では files にそのフォルダの下のファイルを externalWrite で置くと「開けるようになった」状態になる。
-- 同梱の段 2 の部品は、e2e のビルドでは、seed の isolated に bundled: true を書いたときだけ読み込まれる（書かなければ、同梱の部品も iframe もなく、ほかのシナリオのメニューは本体の項目だけ）。isolated には plugins（テスト用の部品の名前。空の配列でよい）が要る。部品が動き出す（最初の描画のあと）まで、window.__mdeE2EIsolatedTrace に ready（plugin が copy-path）が出るのを待ってからキーを押す。
+- 同梱の段 2 の部品は、e2e のビルドでも既定で（seed に isolated がなくても）読み込まれる（本番と同じ構成。iframe があり、ツリーの項目のメニューは本体の 4 つのあとに「パスをコピー」が付く）。外すのは、seed の isolated に bundled: false を書いたときだけ（isolated には plugins が要る。空の配列でよい）。部品が動き出す（最初の描画のあと）まで、window.__mdeE2EIsolatedTrace に ready（plugin が copy-path）が出るのを待ってからキーを押す。
 - クリップボードはメモリ bridge の記録（window.__mdeE2E.clipboard）。実際の OS のクリップボードには書かない。権限の保存は window.__mdeE2E.savedPluginPermissions（再読み込みをまたいで保たれるのは sessionStorage の分。seed の pluginPermissions は、保存済みの決定の代わり）。
 - 確認の画面は、宣言した権限のうち決めていないものをまとめて 1 回聞く。「許可する」「許可しない」は聞いた権限すべてに保存される。許可後に部品が止まっていないことは、trace に stopped がないこと（コンソールの「部品「…」を止めました」もない）で確かめる。
 - Mod+Alt+C は、Playwright の press で Alt を付けて送る（macOS の Option の文字合成は再現しない。物理キー code で判定する経路は単体テストが正本）。AltGr の入力は、press では作れない（window へ KeyboardEvent を dispatch して確かめる。tests/e2e/copy-path.spec.ts）。

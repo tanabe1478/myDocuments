@@ -11,10 +11,10 @@ describe('the API in the Worker (R6)', () => {
       registerContextMenuItem(r: unknown): void;
     };
 
-  it('keeps the enumerable api as before (registerCommand only); the R6 members exist but are not enumerated; api is frozen', () => {
+  it('lists every api member as an own enumerable property (nothing is hidden); api and its objects are frozen', () => {
     const { self } = inWorker('');
-    expect(Object.keys(self.api as object)).toEqual(['registerCommand']);
-    expect(Object.getOwnPropertyNames(self.api as object).sort()).toEqual(['clipboard', 'document', 'registerCommand', 'registerContextMenuItem']);
+    expect(Object.keys(self.api as object)).toEqual(['registerCommand', 'registerContextMenuItem', 'clipboard', 'document']);
+    expect(Object.getOwnPropertyNames(self.api as object)).toEqual(Object.keys(self.api as object));
     expect(Object.isFrozen(self.api)).toBe(true);
     expect(Object.isFrozen(api(self).clipboard)).toBe(true);
     expect(Object.isFrozen(api(self).document)).toBe(true);

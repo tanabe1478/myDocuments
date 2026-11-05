@@ -241,3 +241,61 @@ describe('suspending the time limits while a confirmation is shown', () => {
     expect(() => t.host.suspendTimeouts!('a')()).not.toThrow();
   });
 });
+
+describe('the end of a run (R6b: lets the registry know when a user-initiated run is over)', () => {
+  const readyPart = (t: ReturnType<typeof setup>, l = t.listener()) => {
+    t.start('a', 'c', l);
+    t.fromIframe({ v: 0, kind: 'command', plugin: 'a', id: 'x', title: 'x' });
+    t.fromIframe({ v: 0, kind: 'menu', plugin: 'a', id: 'm', title: 'm', where: 'tree' });
+    t.fromIframe(ready('a'));
+    return l;
+  };
+  const settled = (promise: Promise<void>) => {
+    const state = { done: false };
+    void promise.then(() => (state.done = true));
+    return state;
+  };
+
+  it('finishes a command run on done, and a menu run on done; nothing is returned when nothing was run', async () => {
+    const t = setup();
+    readyPart(t);
+    expect(t.host.run('a', 'ghost')).toBeUndefined();
+    expect(t.host.runMenu!('a', 'ghost', { path: '/p', kind: 'file' })).toBeUndefined();
+    expect(t.host.runMenu!('a', 'm', { path: '', kind: 'file' })).toBeUndefined();
+    const run = t.host.run('a', 'x')!;
+    const menu = t.host.runMenu!('a', 'm', { path: '/p', kind: 'file' })!;
+    const first = settled(run.finished);
+    const second = settled(menu.finished);
+    await vi.advanceTimersByTimeAsync(0);
+    expect([first.done, second.done]).toEqual([false, false]);
+    const reqs = t.events.filter((e) => e.type === 'run').map((e) => (e as { req: number }).req);
+    t.fromIframe({ v: 0, kind: 'done', plugin: 'a', req: reqs[0] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect([first.done, second.done]).toEqual([true, false]);
+    t.fromIframe({ v: 0, kind: 'done', plugin: 'a', req: reqs[1] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(second.done).toBe(true);
+  });
+
+  it('finishes the run when the part is stopped by a timeout, a failure or stop(); never rejects', async () => {
+    const timeout = setup();
+    readyPart(timeout);
+    const a = settled(timeout.host.run('a', 'x')!.finished);
+    await vi.advanceTimersByTimeAsync(501);
+    expect(a.done).toBe(true);
+
+    const failed = setup();
+    readyPart(failed);
+    const b = settled(failed.host.run('a', 'x')!.finished);
+    failed.fromIframe({ v: 0, kind: 'failed', plugin: 'a', req: 1, reason: 'x' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(b.done).toBe(true);
+
+    const stopped = setup();
+    readyPart(stopped);
+    const c = settled(stopped.host.runMenu!('a', 'm', { path: '/p', kind: 'folder' })!.finished);
+    stopped.host.stop('a');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(c.done).toBe(true);
+  });
+});

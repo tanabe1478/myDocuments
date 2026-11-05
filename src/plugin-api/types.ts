@@ -116,13 +116,21 @@ export interface IsolatedPluginListener {
  * 隔離した部品を動かす仕組み（src/plugin-host/）が実装する口。レジストリは、この型だけを知る。
  * 実装は、最初の start までは iframe も Worker も作らない。
  */
+export interface IsolatedRun {
+  /** 実行が終わった（done、止まった、時間切れ）とき、resolve される。reject はしない。 */
+  readonly finished: Promise<void>;
+}
+
 export interface IsolatedPluginHost {
   /** 部品の Worker を作って動かす。出来事は listener に届く。 */
   start(id: string, source: string, listener: IsolatedPluginListener): void;
-  /** 登録済みのコマンドを実行させる。結果は待たない（時間切れなら部品を止める）。止まった部品、登録のないコマンドは何もしない。 */
-  run(id: string, commandId: string): void;
+  /**
+   * 登録済みのコマンドを実行させる。結果は待たない（時間切れなら部品を止める）。止まった部品、登録のないコマンドは何もしない（undefined を返す）。
+   * 実行させたときは、その実行が終わる（終わった、止まった、時間切れ）まで続く Promise を持つ印を返す（reject しない）。
+   */
+  run(id: string, commandId: string): IsolatedRun | undefined;
   /** 登録済みのメニューの項目を、対象つきで実行させる。run と同じ扱い。 */
-  runMenu?(id: string, itemId: string, target: MenuTarget): void;
+  runMenu?(id: string, itemId: string, target: MenuTarget): IsolatedRun | undefined;
   /**
    * 部品の時間切れ（最初の実行、コマンドの実行）の計測を止める。確認の画面を出しているあいだ、その要求の時間切れで部品を止めないため。
    * 戻り値の関数で再開する（残りの時間から数え直す）。数えて止めるので、重ねて呼んでよい。止まった部品には何もしない。

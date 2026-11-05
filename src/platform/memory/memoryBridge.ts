@@ -64,9 +64,9 @@ export interface E2ESeed {
   unreadableFolders?: string[];
   /**
    * 隔離した操作（段 2）のテスト用の部品（src/isolated-plugins/e2eFixtures.ts）。plugins に書いた名前の部品を読み込む。
-   * 書かなければ、段 2 の部品はなく、iframe も Worker も作られない。時間切れ（ミリ秒）は、テストを早く終わらせるために短くできる。
-   * bundled: true のとき、同梱の段 2 の部品（本番と同じ一覧）も読み込む。書かなければ読み込まない（e2e のビルドだけ。既存のテストが、
-   * 同梱の部品のメニューの項目や iframe に影響されないため）。
+   * 時間切れ（ミリ秒）は、テストを早く終わらせるために短くできる。
+   * 同梱の段 2 の部品（本番と同じ一覧）は、isolated を書かなくても、本番と同じく読み込む。bundled: false を書いたときだけ読み込まない
+   * （iframe も Worker も作られない構成を試すとき）。
    */
   isolated?: { plugins: string[]; activateTimeoutMs?: number; runTimeoutMs?: number; bundled?: boolean };
   /** 部品の権限の、保存済みの決定（再読み込みをまたいで保たれた値があれば、そちらが先）。 */

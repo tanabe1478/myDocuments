@@ -153,7 +153,8 @@ test.describe('作成 (a)', () => {
     await row(page, 'docs').click({ button: 'right' });
     await expect(menu(page)).toBeVisible();
     await expect(menu(page)).toHaveAttribute('role', 'menu');
-    await expect(menu(page).getByRole('menuitem')).toHaveText(['新しいファイル', '新しいフォルダ', '名前を変更', 'ゴミ箱に移動']);
+    // 末尾の「パスをコピー」は、同梱の段 2 の部品（本番と同じ構成で入る）の項目。
+    await expect(menu(page).getByRole('menuitem')).toHaveText(['新しいファイル', '新しいフォルダ', '名前を変更', 'ゴミ箱に移動', 'パスをコピー']);
     await menu(page).getByRole('menuitem', { name: '新しいフォルダ' }).click();
     await expect(menu(page)).toHaveCount(0);
     await typeName(page, 'viaMenu');
@@ -192,6 +193,9 @@ test.describe('作成 (a)', () => {
     await page.keyboard.press('ArrowDown');
     await expect(menu(page).getByRole('menuitem', { name: '新しいフォルダ' })).toBeFocused();
     await page.keyboard.press('End');
+    // 末尾は、同梱の段 2 の部品の項目「パスをコピー」（本番と同じ構成で入る）。
+    await expect(menu(page).getByRole('menuitem', { name: 'パスをコピー' })).toBeFocused();
+    await page.keyboard.press('ArrowUp');
     await expect(menu(page).getByRole('menuitem', { name: 'ゴミ箱に移動' })).toBeFocused();
     await page.keyboard.press('ArrowUp');
     await expect(menu(page).getByRole('menuitem', { name: '名前を変更' })).toBeFocused();

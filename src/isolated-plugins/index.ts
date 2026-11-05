@@ -4,15 +4,16 @@ import type { HostTrace } from '../plugin-host';
 /**
  * 隔離した操作（段 2）の部品の一覧と、その動かし方の設定。
  * 配布物（本番のビルド）に入る段 2 の部品は、src/features/ の bundledActionPlugins（R6 の最初の部品）。ここに足すのは、検証用の部品だけ（本番では空）。
- * - e2e のビルド（VITE_E2E=1）: seed の isolated に名前を書いたテスト用の部品だけ（e2eFixtures.ts）。
+ * - e2e のビルド（VITE_E2E=1）: seed の isolated に名前を書いたテスト用の部品（e2eFixtures.ts）。同梱の段 2 の部品は、本番と同じく既定で読み込む
+ *   （seed の isolated.bundled が false のときだけ外す）。
  * - 隔離の検証用のビルド（VITE_ISOLATION_PROBE=1）: 検証用の部品（probe.ts）。
  * どちらも define の定数で囲み、本番のビルドからは import ごと取り除かれる。
  */
 export interface IsolatedPluginSet {
   readonly plugins: readonly ActionPlugin[];
   /**
-   * 同梱の段 2 の部品（src/features/ の bundledActionPlugins）も読み込むか。本番は常に true。e2e のビルドは、seed の
-   * isolated.bundled が true のときだけ（既存のテストが、同梱の部品のメニューの項目や iframe に影響されないため）。
+   * 同梱の段 2 の部品（src/features/ の bundledActionPlugins）も読み込むか。本番は常に true。e2e のビルドも既定は true（本番と
+   * 同じ構成で試すため）で、外すのは seed の isolated.bundled が false のときだけ。
    */
   readonly includeBundled: boolean;
   readonly activateTimeoutMs?: number;
@@ -29,7 +30,7 @@ export async function loadIsolatedPlugins(): Promise<IsolatedPluginSet> {
   let includeBundled = true;
   if (__E2E__) {
     const seed = window.__E2E_SEED__?.isolated;
-    includeBundled = seed?.bundled === true;
+    includeBundled = seed?.bundled !== false;
     if (seed) {
       const { e2eActionPlugins } = await import('./e2eFixtures');
       const wanted = new Set(seed.plugins);

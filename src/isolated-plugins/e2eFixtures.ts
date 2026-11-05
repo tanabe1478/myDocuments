@@ -71,4 +71,21 @@ export const e2eActionPlugins: readonly ActionPlugin[] = [
   fixture('e2e-menu-undeclared', `api.registerContextMenuItem({ id: 'x', title: 'x', where: 'tree', run: async () => {} });`, ['clipboard.write']),
   // R6: 知らない権限を宣言する（その部品を読み込まない）。
   fixture('e2e-unknown-permission', `api.registerCommand({ id: 'never', title: 'never', run: async () => {} });`, ['clipboard.write', 'network']),
+  // R6b: 確認の画面を出させようとする部品。起動時（activate の中）、実行の外（タイマー）、同じ実行の 2 回目以降は、画面を出さずに reject される。
+  // 画面が出てよいのは、利用者の操作で始まった実行（ショートカット、ツリーのメニューの項目）の中の最初の 1 回だけ。呼び出しの結果は
+  // 本体の記録（__mdeE2EIsolatedTrace の result）で見る。
+  fixture(
+    'e2e-prompt-abuse',
+    `api.clipboard.writeText('at-activate').catch(() => {});
+     api.registerCommand({ id: 'burst', title: 'burst', shortcut: 'Mod+Shift+K', run: async () => {
+       for (let i = 0; i < 3; i++) await api.document.currentPath().catch(() => null);
+     } });
+     api.registerCommand({ id: 'later', title: 'later', shortcut: 'Mod+Shift+L', run: async () => {
+       setTimeout(() => { api.document.currentPath().catch(() => {}); }, 300);
+     } });
+     api.registerContextMenuItem({ id: 'burst', title: 'e2e-burst', where: 'tree', run: async () => {
+       for (let i = 0; i < 3; i++) await api.clipboard.writeText('x' + i).catch(() => null);
+     } });`,
+    ['clipboard.write', 'paths.read'],
+  ),
 ];
