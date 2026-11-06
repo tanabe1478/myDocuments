@@ -16,6 +16,9 @@ import type { HostTrace } from '../plugin-host';
  *      未決の権限の呼び出し（確認の画面が出て、自動では許可されない。この検証は、確認の画面を答えるコードを持たない）。
  *      クリップボードへの書き込みは、この検証用のビルドでは記録（clipboard.log）に差し替わっていて、OS のクリップボードには書かない。
  *  (8) R6: 同梱の部品が、本物の plug: と relay.js の上で動き、コマンドとメニューの項目を登録したこと。
+ *  (9) R7: パネルと本文の API。不正な形の項目（深さ、登録していないパネル）、頻度の上限（setItems の連打）、カーソルを動かそうとするメッセージ
+ *      （どれも、仲介が部品を止める）。権限 document.read を宣言した部品にだけ本文が届き、宣言していない部品には届かないこと。
+ *      同梱の部品（アウトライン）が、本物の plug: の上でパネルを登録したこと（パネルは見えていないので、本文は届かない）。
  * 届いたかの判定は、ネイティブ側の記録（canary.log）と 127.0.0.1 の受け口の記録で行う（このファイルが送る自己申告は参考）。
  * 比較のために、本体（鍵を持つ側）からの呼び出しも記録する（対照）。
  */
@@ -152,6 +155,31 @@ api.registerCommand({ id: 'report', title: 'report', run: async () => {
     permissions: ['clipboard.write'],
     source: () => `api.registerCommand({ id: 'report', title: 'report', run: async () => { await api.clipboard.writeText('probe:undecided-write'); } });`,
   },
+  // (9) R7: パネルの不正な項目（深さが範囲外）。仲介が部品を止める。
+  { id: 'probe-panel-bad-items', source: () => `api.registerPanel({ id: 'p', title: 'p' });\nself.postMessage({ kind: 'items', panel: 'p', version: 0, items: [{ text: 'x', depth: 99, offset: 0 }], current: null, empty: null });` },
+  // (9) R7: 登録していないパネルの項目。
+  { id: 'probe-panel-unregistered', source: () => `api.registerPanel({ id: 'p', title: 'p' });\nself.postMessage({ kind: 'items', panel: 'other', version: 0, items: [], current: null, empty: null });` },
+  // (9) R7: setItems の頻度の上限（1 秒に 30 回）を超える。
+  { id: 'probe-panel-flood', source: () => `const panel = api.registerPanel({ id: 'p', title: 'p' });\nfor (let i = 0; i < 40; i++) panel.setItems([], { version: i });` },
+  // (9) R7: カーソルを動かそうとする（そのためのメッセージはない）。
+  { id: 'probe-panel-move', source: () => `api.registerPanel({ id: 'p', title: 'p' });\nself.postMessage({ kind: 'moveCursor', offset: 0 });` },
+  // (9) R7: 本文の通知。document.read を宣言した部品には届き（対照）、宣言していない部品には届かない。どちらもパネルを持たない（パネルがあれば、見えているときだけ届く）。
+  // 結果は、report のコマンドの例外の理由に載せる。
+  {
+    id: 'probe-doc-declared',
+    permissions: ['document.read'],
+    source: () => `const got = { docs: 0, sels: 0, kinds: [] };
+api.document.onDidChange((d) => { got.docs++; got.kinds.push(d.kind + ':' + typeof d.text); });
+api.document.onDidChangeSelection(() => { got.sels++; });
+api.registerCommand({ id: 'report', title: 'report', run: async () => { await new Promise((r) => setTimeout(r, 1500)); throw new Error(JSON.stringify(got).slice(0, 290)); } });`,
+  },
+  {
+    id: 'probe-doc-undeclared',
+    source: () => `const got = { docs: 0, sels: 0, kinds: [] };
+api.document.onDidChange((d) => { got.docs++; got.kinds.push(d.kind + ':' + typeof d.text); });
+api.document.onDidChangeSelection(() => { got.sels++; });
+api.registerCommand({ id: 'report', title: 'report', run: async () => { await new Promise((r) => setTimeout(r, 1500)); throw new Error(JSON.stringify(got).slice(0, 290)); } });`,
+  },
   // (4) 本体と同じ名前の BroadcastChannel（origin が違うので、本体には届かないはず）。本体の側が listen して、聞こえたら記録する
   {
     id: 'probe-broadcast',
@@ -201,8 +229,11 @@ export async function createProbe(): Promise<ProbeSetup> {
   const waiting = new Map<string, () => void>();
   /** 同梱の部品について、本体の側で見えた出来事（本物の plug: と relay.js の上で起動したことの確認）。 */
   const bundledEvents: string[] = [];
+  /** 同梱の部品（アウトライン。R7）について、本体の側で見えた出来事。 */
+  const outlineEvents: string[] = [];
   const trace = (event: HostTrace): void => {
     if (event.plugin === 'copy-path') bundledEvents.push(event.type === 'command' ? `command:${event.command}` : event.type === 'menu' ? `menu:${event.item}` : event.type);
+    if (event.plugin === 'outline') outlineEvents.push(event.type === 'panel' ? `panel:${event.panel}` : event.type);
     if (event.type !== 'stopped') return;
     stops.set(event.plugin, event.reason);
     waiting.get(event.plugin)?.();
@@ -252,6 +283,16 @@ export async function createProbe(): Promise<ProbeSetup> {
         commands: registry.commands.filter((c) => c.pluginId === 'copy-path').map((c) => c.id),
         menuItems: registry.menuItems.filter((m) => m.pluginId === 'copy-path').map((m) => m.id),
         status: registry.records.find((r) => r.id === 'copy-path')?.status ?? null,
+      });
+      // 同梱の部品（アウトライン。R7）: パネルを登録し、ready になったこと。パネルは見えていない（サイドバーは閉じている）ので、本文は届かない。
+      for (let i = 0; i < 100 && !outlineEvents.includes('ready'); i++) await new Promise((r) => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, 1000));
+      await report({
+        ev: 'bundled-outline',
+        plugin: 'outline',
+        events: outlineEvents,
+        panels: registry.panels.filter((p) => p.pluginId === 'outline').map((p) => p.id),
+        status: registry.records.find((r) => r.id === 'outline')?.status ?? null,
       });
       // 部品の Worker を 1 つずつ。report のコマンドを実行して、結果の自己申告を止めた理由として受け取る。
       for (const { manifest } of plugins) {

@@ -1,0 +1,47 @@
+{
+  "seed": {
+    "files": {
+      "/docs/note.md": { "text": "# 第一章\n\n本文。\n\n## 第一節\n\n本文。\n" }
+    },
+    "openPath": "/docs/note.md",
+    "preferences": { "theme": "light", "autoHideChrome": false, "sidebarOpen": false },
+    "isolated": { "plugins": ["e2e-panel-evil", "e2e-panel-echo", "e2e-panel-undeclared"], "activateTimeoutMs": 8000, "runTimeoutMs": 8000 }
+  },
+  "steps": [
+    { "press": "ControlOrMeta+o" },
+    { "expect": { "testId": "doc-title", "equals": "note.md" } },
+    { "expect": { "testId": "sidebar", "read": "attr:data-open", "equals": "false" } },
+    { "wait": 800 },
+    { "expect": { "eval": "window.__mdeE2EIsolatedTrace.filter((e) => e.plugin === 'outline' && e.type === 'doc').length", "equals": 0, "note": "サイドバーが閉じている間は、本文を送らない" } },
+    { "click": { "css": ".cm-content" } },
+    { "press": "ControlOrMeta+End" },
+    { "type": "\n# 閉じている間に書いた" },
+    { "wait": 800 },
+    { "expect": { "eval": "window.__mdeE2EIsolatedTrace.filter((e) => e.plugin === 'outline' && e.type === 'doc').length", "equals": 0, "note": "閉じている間の入力も、送らない" } },
+    { "expect": { "eval": "document.querySelector('[data-testid=sidebar]').hasAttribute('inert') && (document.querySelector('[data-testid=plugin-panel-toggle]').focus(), document.activeElement === document.querySelector('[data-testid=plugin-panel-toggle]')) === false", "equals": true, "note": "閉じたサイドバーでは、パネルはフォーカスを受けない" } },
+    { "press": "ControlOrMeta+b" },
+    { "expect": { "css": "[data-testid=plugin-panel][data-panel-id='outline.outline'] [data-testid=plugin-panel-item]", "read": "count", "equals": 3, "note": "開くと、最新の本文から作った一覧が出る" } },
+    { "expect": { "eval": "window.__mdeE2EIsolatedTrace.filter((e) => e.plugin === 'outline' && e.type === 'doc').length", "equals": 1, "note": "開いたとき、最新を 1 回送った" } },
+    { "screenshot": "01-opened-with-panels" },
+    { "click": { "css": "[data-testid=plugin-panel][data-panel-id='outline.outline'] [data-testid=plugin-panel-toggle]" } },
+    { "expect": { "css": "[data-testid=plugin-panel][data-panel-id='outline.outline'] [data-testid=plugin-panel-toggle]", "read": "attr:aria-expanded", "equals": "false" } },
+    { "click": { "css": ".cm-content" } },
+    { "press": "ControlOrMeta+End" },
+    { "type": "\n# たたんでいる間" },
+    { "wait": 800 },
+    { "expect": { "eval": "window.__mdeE2EIsolatedTrace.filter((e) => e.plugin === 'outline' && e.type === 'doc').length", "equals": 1, "note": "節をたたんでいる間も、送らない" } },
+    { "click": { "css": "[data-testid=plugin-panel][data-panel-id='outline.outline'] [data-testid=plugin-panel-toggle]" } },
+    { "expect": { "css": "[data-testid=plugin-panel][data-panel-id='outline.outline'] [data-testid=plugin-panel-item]", "read": "count", "equals": 4, "note": "戻すと、最新が届く" } },
+    { "expect": { "eval": "window.__mdeE2EIsolatedTrace.filter((e) => e.plugin === 'outline' && e.type === 'doc').length", "equals": 2 } },
+    { "focus": { "css": "[data-testid=plugin-panel][data-panel-id='outline.outline'] [data-testid=plugin-panel-item][data-index='1']" } },
+    { "press": "Enter" },
+    { "expect": { "eval": "(() => { const e = window.__mdeE2E.editor; const { head } = e.getSelection(); const t = e.getText(); return t.slice(head, t.indexOf('\\n', head)); })()", "equals": "## 第一節", "note": "Enter でその行へ移り、本文にフォーカスが戻る" } },
+    { "expect": { "eval": "document.activeElement.closest('.cm-content') !== null", "equals": true } },
+    { "expect": { "css": "[data-testid=plugin-panel][data-panel-id='e2e-panel-evil.evil'] [data-testid=plugin-panel-item]", "read": "count", "equals": 4, "note": "HTML に見える文字列を送る部品" } },
+    { "expect": { "css": "[data-testid=plugin-panels] img, [data-testid=plugin-panels] script, [data-testid=plugin-panels] a, [data-testid=plugin-panels] svg", "read": "count", "equals": 0, "note": "要素ができていない（文字のまま）" } },
+    { "expect": { "css": "[data-testid=plugin-panel][data-panel-id='e2e-panel-echo.echo'] [data-testid=plugin-panel-item]", "contains": "markdown", "note": "document.read を宣言した部品には、本文が届く（対照）" } },
+    { "expect": { "css": "[data-testid=plugin-panel][data-panel-id='e2e-panel-undeclared.undeclared'] [data-testid=plugin-panel-item]", "equals": "何も受け取っていません", "note": "document.read を宣言していない部品には、届かない" } },
+    { "expect": { "eval": "window.__mdeE2EIsolatedTrace.filter((e) => e.plugin === 'e2e-panel-undeclared' && (e.type === 'doc' || e.type === 'selection')).length", "equals": 0 } },
+    { "screenshot": "02-panels-final" }
+  ]
+}

@@ -779,6 +779,111 @@ body {
   font-size: 12px;
 }
 
+/* 部品のパネル（ADR-005 の R7）。エクスプローラーの下の節。部品の文字列は、文字として描かれる（見た目は、ここの決まった指定だけ）。 */
+.plugin-panels {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 50%;
+  margin: 8px -8px 0;
+  padding: 0 8px;
+  overflow: auto;
+  border-top: 1px solid var(--md-color-border);
+}
+
+/* 節ごとには縮まない（パネルが複数あっても、各節が欠けない）。はみ出る分は、パネルの領域全体がスクロールする。 */
+.plugin-panel {
+  flex: none;
+}
+
+.plugin-panel-heading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  background: var(--md-color-panel);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.plugin-panel-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plugin-panel-chevron {
+  display: inline-block;
+  width: 12px;
+  color: var(--md-color-chrome-text);
+}
+
+.plugin-panel-body {
+  padding-bottom: 4px;
+}
+
+.plugin-panel-body[hidden] {
+  display: none;
+}
+
+.plugin-panel-empty {
+  margin: 0 0 8px;
+  color: var(--md-color-chrome-text);
+}
+
+.plugin-panel-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plugin-panel-item {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 2px 6px 2px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.plugin-panel-item:hover {
+  background: var(--md-color-tree-hover);
+}
+
+.plugin-panel-item:focus-visible {
+  outline: 2px solid var(--md-color-link);
+  outline-offset: -2px;
+}
+
+/* 現在の項目（カーソルのある節）。色だけに頼らず、左の線と太字でも示す。 */
+.plugin-panel-item[aria-current='location'] {
+  background: var(--md-color-tree-current);
+  box-shadow: inset 3px 0 0 var(--md-color-accent);
+  font-weight: 600;
+}
+
+.plugin-panel-item[data-depth='1'] { padding-left: 20px; }
+.plugin-panel-item[data-depth='2'] { padding-left: 32px; }
+.plugin-panel-item[data-depth='3'] { padding-left: 44px; }
+.plugin-panel-item[data-depth='4'] { padding-left: 56px; }
+.plugin-panel-item[data-depth='5'] { padding-left: 68px; }
+.plugin-panel-item[data-depth='6'] { padding-left: 80px; }
+.plugin-panel-item[data-depth='7'] { padding-left: 92px; }
+
 /* ツリーの中の名前の入力欄（作成と名前の変更）。拒否の理由は、入力欄の直下に出す。 */
 .tree-edit-row {
   list-style: none;

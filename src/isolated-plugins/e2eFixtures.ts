@@ -88,4 +88,53 @@ export const e2eActionPlugins: readonly ActionPlugin[] = [
      } });`,
     ['clipboard.write', 'paths.read'],
   ),
+  // R7: パネルに、HTML に見える文字列を送る（見出し、項目、項目がないときの文言）。本体は文字として描き、HTML として解釈しない。
+  // 解釈されると、img の onerror などで window.__e2ePwned が立つ。
+  fixture(
+    'e2e-panel-evil',
+    `const panel = api.registerPanel({ id: 'evil', title: '<img src=x onerror="window.__e2ePwned = 1">' });
+     panel.setItems([
+       { text: '<img src=x onerror="window.__e2ePwned = 1">', depth: 0, offset: 0 },
+       { text: '<script>window.__e2ePwned = 1</script>', depth: 1, offset: 0 },
+       { text: '<a href="javascript:window.__e2ePwned = 1">link</a>', depth: 2, offset: 0 },
+       { text: '"><svg onload=window.__e2ePwned=1>', depth: 7, offset: 0 },
+     ], { version: 0 });`,
+    ['document.read'],
+  ),
+  // R7: 受け取った本文の版・種類・長さと、カーソルの位置を、パネルに出す（document.read を宣言している。届いたことを画面で確かめる）。
+  fixture(
+    'e2e-panel-echo',
+    `const panel = api.registerPanel({ id: 'echo', title: 'エコー' });
+     let last = null; let position = null;
+     const render = () => panel.setItems([
+       ...(last ? [{ text: 'doc v' + last.version + ' ' + last.kind + ' ' + last.text.length, depth: 0, offset: 0 }] : []),
+       ...(position ? [{ text: 'sel ' + position.anchor + '-' + position.head, depth: 0, offset: 0 }] : []),
+     ], { version: last ? last.version : 0, emptyText: 'まだ何も受け取っていません' });
+     api.document.onDidChange((d) => { last = d; render(); });
+     api.document.onDidChangeSelection((s) => { position = s; render(); });
+     render();`,
+    ['document.read'],
+  ),
+  // R7: echo と同じだが、document.read を宣言していない。本文もカーソルの位置も届かない（届けば、画面の文字が変わる）。
+  fixture(
+    'e2e-panel-undeclared',
+    `const panel = api.registerPanel({ id: 'undeclared', title: '宣言なし' });
+     const show = (text) => panel.setItems([{ text, depth: 0, offset: 0 }], { version: 0 });
+     api.document.onDidChange((d) => show('received doc ' + d.version));
+     api.document.onDidChangeSelection((s) => show('received sel ' + s.head));
+     show('何も受け取っていません');`,
+  ),
+  // R7: setItems の頻度の上限（1 秒に 30 回）を超える。
+  fixture('e2e-panel-flood', `const panel = api.registerPanel({ id: 'flood', title: '連打' });\nfor (let i = 0; i < 40; i++) panel.setItems([], { version: i });`),
+  // R7: 項目の数の上限（1000）を超える（Worker の API が拒否して、部品の最初の実行が例外になる）。
+  fixture('e2e-panel-many', `const panel = api.registerPanel({ id: 'many', title: '多すぎる' });\npanel.setItems(Array.from({ length: 1001 }, (_, i) => ({ text: 'x' + i, depth: 0, offset: 0 })), { version: 0 });`),
+  // R7: 決めていない形のメッセージ（登録していないパネルの項目）を、API を通さずに送る（仲介が止める）。
+  fixture('e2e-panel-bogus', `api.registerPanel({ id: 'bogus', title: 'bogus' });\nself.postMessage({ kind: 'items', panel: 'nope', version: 0, items: [], current: null, empty: null });`),
+  // R7: カーソルを動かそうとする（そのためのメッセージはない。仲介が止める。本体のカーソルは動かない）。
+  fixture('e2e-panel-move', `api.registerPanel({ id: 'move', title: 'move' });\nself.postMessage({ kind: 'moveCursor', offset: 0 });`),
+  // R7: 版 0 の項目だけを送り続ける（本文の版が進んだあとは古い項目。押しても本体は移さない）。
+  fixture(
+    'e2e-panel-stale',
+    `const panel = api.registerPanel({ id: 'stale', title: '古い項目' });\npanel.setItems([{ text: '先頭へ', depth: 0, offset: 0 }], { version: 0 });`,
+  ),
 ];

@@ -12,6 +12,10 @@
  * R6: 部品が本体の機能（クリップボード、開いている文書のパス）を使う呼び出し（call）と、ツリーの右クリックの項目（menu）を、
  * 決めた形だけ通す。権限を使ってよいかの判断は、ここではしない（本体が、呼び出しのたびに決める）。この文脈は、形と上限と、
  * 番号の対応（要求していない結果を Worker に通さない）だけを見る。
+ *
+ * R7: 部品がパネル（項目の木。描くのは本体）を登録する panel と、項目を送る items（形、深さ、数、頻度の上限を見る）、
+ * 本体が届ける本文（doc）とカーソルの位置（selection）を、決めた形だけ通す。本文を受け取ってよいか（権限 document.read）の判断は、
+ * ここではしない（本体が、届けるかどうかを決める）。部品はカーソルを動かせない（移動を頼むメッセージはない）。
  */
 (function () {
   'use strict';
@@ -27,15 +31,27 @@
   var MAX_PENDING_CALLS = 16;
   var MAX_CLIPBOARD_TEXT = 100000;
   var MAX_PATH = 4096;
+  var MAX_PANELS = 1;
+  var MAX_PANEL_ITEMS = 1000;
+  var MAX_PANEL_TEXT = 200;
+  var MAX_PANEL_DEPTH = 7;
+  var MAX_OFFSET = 2147483647;
+  var MAX_SET_ITEMS = 30;
+  var SET_ITEMS_WINDOW_MS = 1000;
+  var MAX_DOCUMENT_TEXT = 16777216;
   var ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
   var main = window.parent;
-  /** 部品の id → { worker, url, ready, commands, menus, pending（実行の番号）, calls（結果待ちの呼び出しの番号）, stopped } */
+  /** 部品の id → { worker, url, ready, commands, menus, panels, itemTimes（setItems の時刻）, pending（実行の番号）, calls（結果待ちの呼び出しの番号）, stopped } */
   var plugins = new Map();
 
   function toMain(message) {
     message.v = VERSION;
     main.postMessage(message, '*');
+  }
+
+  function isInt(value, min, max) {
+    return typeof value === 'number' && Number.isSafeInteger(value) && value >= min && value <= max;
   }
 
   function hasExactKeys(object, required, optional) {
@@ -60,6 +76,9 @@
     var commands = new Map();
     var menus = new Map();
     var calls = new Map();
+    var panels = new Map();
+    var docListeners = [];
+    var selectionListeners = [];
     var nextCall = 1;
     var started = false;
     function checkId(id, what) {
@@ -78,6 +97,12 @@
         message.call = number;
         send(message);
       });
+    }
+    function isInt(value, min, max) {
+      return typeof value === 'number' && isFinite(value) && Math.floor(value) === value && value >= min && value <= max;
+    }
+    function isText(value) {
+      return typeof value === 'string' && value.length >= 1 && value.length <= 200;
     }
     var api = {
       registerCommand: function (registration) {
@@ -111,6 +136,40 @@
         menus.set(registration.id, registration.run);
         send({ kind: 'menu', id: registration.id, title: registration.title, where: 'tree' });
       },
+      // R7 の API。パネルは項目の木（文字列、深さ、本文の中の位置）を送るだけで、描くのは本体（文字列は文字として描かれる）。
+      // 部品はカーソルを動かせない。項目を押したときの移動は本体が決める。項目の数、文字列の長さ、深さ、頻度に上限がある（超えると部品が止まる）。
+      registerPanel: function (registration) {
+        if (started) throw new Error('registerPanel は、部品のコードの最初の実行の間だけ呼べます');
+        if (typeof registration !== 'object' || registration === null) throw new TypeError('registerPanel には、オブジェクトを渡してください');
+        checkId(registration.id, 'パネル');
+        checkTitle(registration.title, 'パネル');
+        if (panels.size >= 1) throw new Error('パネルは 1 つまでです');
+        var panelId = registration.id;
+        panels.set(panelId, true);
+        send({ kind: 'panel', id: panelId, title: registration.title });
+        return Object.freeze({
+          setItems: function (items, options) {
+            if (!Array.isArray(items)) throw new TypeError('setItems の items は配列にしてください');
+            if (items.length > 1000) throw new RangeError('項目が多すぎます（1000 まで）');
+            if (typeof options !== 'object' || options === null) throw new TypeError('setItems の第 2 引数には、{ version } を含むオブジェクトを渡してください');
+            if (!isInt(options.version, 0, Number.MAX_SAFE_INTEGER)) throw new TypeError('setItems の version は、0 以上の整数にしてください');
+            var copied = [];
+            for (var i = 0; i < items.length; i++) {
+              var item = items[i];
+              if (typeof item !== 'object' || item === null) throw new TypeError('項目はオブジェクトにしてください');
+              if (!isText(item.text)) throw new TypeError('項目の text は、1 文字以上 200 文字までの文字列にしてください');
+              if (!isInt(item.depth, 0, 7)) throw new TypeError('項目の depth は、0 から 7 までの整数にしてください');
+              if (!isInt(item.offset, 0, 2147483647)) throw new TypeError('項目の offset は、0 以上の整数にしてください');
+              copied.push({ text: item.text, depth: item.depth, offset: item.offset });
+            }
+            var current = options.current === undefined ? null : options.current;
+            if (current !== null && !isInt(current, 0, copied.length - 1)) throw new TypeError('setItems の current は、項目の番号（または null）にしてください');
+            var empty = options.emptyText === undefined ? null : options.emptyText;
+            if (empty !== null && !isText(empty)) throw new TypeError('setItems の emptyText は、1 文字以上 200 文字までの文字列にしてください');
+            send({ kind: 'items', panel: panelId, version: options.version, items: copied, current: current, empty: empty });
+          },
+        });
+      },
       clipboard: Object.freeze({
         writeText: function (text) {
           if (typeof text !== 'string' || text === '' || text.length > 100000) return Promise.reject(new TypeError('writeText には、1 文字以上 100000 文字までの文字列を渡してください'));
@@ -120,6 +179,20 @@
       document: Object.freeze({
         currentPath: function () {
           return call({ method: 'currentPath' });
+        },
+        // 本文とカーソルの位置の通知。権限 document.read を宣言した部品だけに、本体が届ける（宣言がなければ、呼ばれない）。
+        // 本体は、入力が止まった後（IME の変換中は送らない）、文書を開いた・切り替えたとき、パネルが見えているときだけ届ける。
+        onDidChange: function (listener) {
+          if (started) throw new Error('onDidChange は、部品のコードの最初の実行の間だけ呼べます');
+          if (typeof listener !== 'function') throw new TypeError('onDidChange には、関数を渡してください');
+          if (docListeners.length >= 8) throw new Error('onDidChange の関数が多すぎます（8 まで）');
+          docListeners.push(listener);
+        },
+        onDidChangeSelection: function (listener) {
+          if (started) throw new Error('onDidChangeSelection は、部品のコードの最初の実行の間だけ呼べます');
+          if (typeof listener !== 'function') throw new TypeError('onDidChangeSelection には、関数を渡してください');
+          if (selectionListeners.length >= 8) throw new Error('onDidChangeSelection の関数が多すぎます（8 まで）');
+          selectionListeners.push(listener);
         },
       }),
     };
@@ -132,6 +205,12 @@
         // 部品のコードの最初の実行が終わってから、メッセージが届く（イベントループの順序）。
         started = true;
         send({ kind: 'ready' });
+      } else if (message.kind === 'doc') {
+        var snapshot = Object.freeze({ text: message.text, kind: message.textKind, version: message.version });
+        for (var d = 0; d < docListeners.length; d++) docListeners[d](snapshot);
+      } else if (message.kind === 'selection') {
+        var position = Object.freeze({ anchor: message.anchor, head: message.head, version: message.version });
+        for (var e2 = 0; e2 < selectionListeners.length; e2++) selectionListeners[e2](position);
       } else if (message.kind === 'result') {
         var pending = calls.get(message.call);
         if (!pending) return;
@@ -214,6 +293,37 @@
         record.menus.add(data.id);
         return null;
       }
+      case 'panel': {
+        if (record.ready) return '部品のコードの最初の実行のあとに、パネルを登録しようとしました';
+        if (!hasExactKeys(data, ['kind', 'id', 'title'], [])) return 'panel の項目が違います';
+        if (!isString(data.id, MAX_ID) || !ID_PATTERN.test(data.id)) return 'panel の id が不正です';
+        if (!isString(data.title, MAX_TITLE)) return 'panel の title が不正です';
+        if (record.panels.size >= MAX_PANELS) return 'パネルが多すぎます（' + MAX_PANELS + ' まで）';
+        record.panels.add(data.id);
+        return null;
+      }
+      case 'items': {
+        if (!hasExactKeys(data, ['kind', 'panel', 'version', 'items', 'current', 'empty'], [])) return 'items の項目が違います';
+        if (!isString(data.panel, MAX_ID) || !record.panels.has(data.panel)) return '登録していないパネルの items です';
+        if (!isInt(data.version, 0, Number.MAX_SAFE_INTEGER)) return 'items の version が不正です';
+        if (!Array.isArray(data.items)) return 'items の items が配列ではありません';
+        if (data.items.length > MAX_PANEL_ITEMS) return '項目が多すぎます（' + MAX_PANEL_ITEMS + ' まで）';
+        for (var i = 0; i < data.items.length; i++) {
+          var item = data.items[i];
+          if (!isPlainObject(item) || !hasExactKeys(item, ['text', 'depth', 'offset'], [])) return '項目の形が違います';
+          if (!isString(item.text, MAX_PANEL_TEXT)) return '項目の text が不正です';
+          if (!isInt(item.depth, 0, MAX_PANEL_DEPTH)) return '項目の depth が不正です';
+          if (!isInt(item.offset, 0, MAX_OFFSET)) return '項目の offset が不正です';
+        }
+        if (data.current !== null && !isInt(data.current, 0, data.items.length - 1)) return 'items の current が範囲外です';
+        if (data.empty !== null && !isString(data.empty, MAX_PANEL_TEXT)) return 'items の empty が不正です';
+        // 頻度の上限（入力のたびに送り続ける部品を止める）。
+        var now = Date.now();
+        while (record.itemTimes.length > 0 && now - record.itemTimes[0] >= SET_ITEMS_WINDOW_MS) record.itemTimes.shift();
+        if (record.itemTimes.length >= MAX_SET_ITEMS) return 'setItems が多すぎます（' + SET_ITEMS_WINDOW_MS + ' ミリ秒に ' + MAX_SET_ITEMS + ' 回まで）';
+        record.itemTimes.push(now);
+        return null;
+      }
       case 'call': {
         if (!Number.isSafeInteger(data.call) || data.call < 1) return 'call の番号が不正です';
         if (data.method === 'clipboardWriteText') {
@@ -268,6 +378,15 @@
       case 'menu':
         toMain({ kind: 'menu', plugin: id, id: data.id, title: data.title, where: data.where });
         break;
+      case 'panel':
+        toMain({ kind: 'panel', plugin: id, id: data.id, title: data.title });
+        break;
+      case 'items': {
+        var shaped = [];
+        for (var k = 0; k < data.items.length; k++) shaped.push({ text: data.items[k].text, depth: data.items[k].depth, offset: data.items[k].offset });
+        toMain({ kind: 'items', plugin: id, panel: data.panel, version: data.version, items: shaped, current: data.current, empty: data.empty });
+        break;
+      }
       case 'call': {
         var out2 = { kind: 'call', plugin: id, call: data.call, method: data.method };
         if (data.method === 'clipboardWriteText') out2.text = data.text;
@@ -288,7 +407,7 @@
 
   function start(id, source) {
     if (plugins.has(id)) return;
-    var record = { worker: null, url: '', ready: false, commands: new Set(), menus: new Set(), pending: new Set(), calls: new Set(), stopped: false };
+    var record = { worker: null, url: '', ready: false, commands: new Set(), menus: new Set(), panels: new Set(), itemTimes: [], pending: new Set(), calls: new Set(), stopped: false };
     plugins.set(id, record);
     try {
       record.url = URL.createObjectURL(new Blob([PRELUDE, source, '\n'], { type: 'text/javascript' }));
@@ -326,6 +445,13 @@
     record.worker.postMessage({ kind: 'runMenu', req: req, item: item, path: path, target: targetKind });
   }
 
+  /** 本文とカーソルの位置を Worker に渡す（動いている部品だけ）。 */
+  function deliver(id, out) {
+    var record = plugins.get(id);
+    if (!record || record.stopped || !record.ready) return;
+    record.worker.postMessage(out);
+  }
+
   /** 呼び出しの結果を Worker に返す。要求していない番号の結果は通さない。 */
   function result(id, data) {
     var record = plugins.get(id);
@@ -353,6 +479,17 @@
       if (!isString(data.plugin, MAX_ID) || !Number.isSafeInteger(data.req) || data.req < 1 || !isString(data.item, MAX_ID)) return;
       if (!isString(data.path, MAX_PATH) || (data.targetKind !== 'file' && data.targetKind !== 'folder')) return;
       runMenu(data.plugin, data.req, data.item, data.path, data.targetKind);
+    } else if (data.kind === 'doc') {
+      if (!hasExactKeys(data, ['v', 'kind', 'plugin', 'version', 'textKind', 'text'], [])) return;
+      if (!isString(data.plugin, MAX_ID) || !isInt(data.version, 0, Number.MAX_SAFE_INTEGER)) return;
+      if (data.textKind !== 'markdown' && data.textKind !== 'plain') return;
+      if (typeof data.text !== 'string' || data.text.length > MAX_DOCUMENT_TEXT) return;
+      deliver(data.plugin, { kind: 'doc', version: data.version, textKind: data.textKind, text: data.text });
+    } else if (data.kind === 'selection') {
+      if (!hasExactKeys(data, ['v', 'kind', 'plugin', 'version', 'anchor', 'head'], [])) return;
+      if (!isString(data.plugin, MAX_ID) || !isInt(data.version, 0, Number.MAX_SAFE_INTEGER)) return;
+      if (!isInt(data.anchor, 0, MAX_OFFSET) || !isInt(data.head, 0, MAX_OFFSET)) return;
+      deliver(data.plugin, { kind: 'selection', version: data.version, anchor: data.anchor, head: data.head });
     } else if (data.kind === 'result') {
       if (!hasExactKeys(data, ['v', 'kind', 'plugin', 'call', 'ok'], ['value', 'reason'])) return;
       if (!isString(data.plugin, MAX_ID) || !Number.isSafeInteger(data.call) || data.call < 1 || typeof data.ok !== 'boolean') return;

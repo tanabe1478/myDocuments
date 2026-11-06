@@ -266,7 +266,7 @@ describe('the code that runs inside the Worker (the prelude)', () => {
 
   it('gives the part the api (the enumerable members are the whole list), and registration is only possible before init', async () => {
     const { posted, deliver, self } = inWorker(`api.registerCommand({ id: 'hi', title: 'Hi', shortcut: 'Mod+H', run: async () => {} });`);
-    expect(Object.keys(self.api as object)).toEqual(['registerCommand', 'registerContextMenuItem', 'clipboard', 'document']);
+    expect(Object.keys(self.api as object)).toEqual(['registerCommand', 'registerContextMenuItem', 'registerPanel', 'clipboard', 'document']);
     expect(Object.isFrozen(self.api)).toBe(true);
     expect(posted).toEqual([{ kind: 'command', id: 'hi', title: 'Hi', shortcut: 'Mod+H' }]);
     deliver({ kind: 'init' });

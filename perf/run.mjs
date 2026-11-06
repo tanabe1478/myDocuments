@@ -12,6 +12,9 @@
 //   --out <path>       結果の保存先を指定
 //   --inject-input-delay <ms>   計測専用: Web UI の全 keydown に ms のビジーウェイトを足す（計測側のページ注入。アプリのコードは変えない）。
 //                      悪化の検出の確認に使う。結果は perf/out/ に出し（perf/results/ には置かない）、mode.injectInputDelayMs に記録する。
+//   --open-sidebar    計測専用: Web UI を、左サイドバーを開いた状態（部品のパネルが見えている）で計測する。既定は閉じた状態。
+//                      結果は perf/out/ に出し（perf/results/ には置かない）、mode.openSidebar に記録する。
+//   --datasets a,b     計測専用: Web UI の計測を、指定した文書（A〜D）に限る（例: --datasets C）。結果は perf/out/ に出し、mode.datasets に記録する。
 // 各 group は失敗しても他を続け、失敗した item は status: "failed" と reason を結果に残す。
 // 終了コード: 失敗した item があれば 1（結果 JSON は書く）。
 import fs from 'node:fs';
@@ -31,6 +34,8 @@ if (!Number.isFinite(injectInputDelayMs) || injectInputDelayMs < 0) {
   console.error('--inject-input-delay には 0 以上の ms を渡してください（例: --inject-input-delay 3）');
   process.exit(2);
 }
+const openSidebar = args['open-sidebar'] === true;
+const datasetIds = typeof args.datasets === 'string' ? args.datasets.split(',') : null;
 const only = typeof args.only === 'string' ? args.only.split(',') : null;
 const browsers = typeof args.browsers === 'string' ? args.browsers.split(',') : ['chromium', 'webkit'];
 const want = (g) => (only ? only.includes(g) : webOnly ? g === 'web' : true);
@@ -57,7 +62,8 @@ const browserVersions = {};
 if (want('web')) {
   try {
     if (!skipBuild || !fs.existsSync(path.join(OUT_DIR, 'web-dist'))) buildWeb(log);
-    const r = await measureWeb({ browsers, fixtures, quick, log, injectInputDelayMs });
+    const webFixtures = datasetIds ? fixtures.filter((f) => datasetIds.includes(f.id)) : fixtures;
+    const r = await measureWeb({ browsers, fixtures: webFixtures, quick, log, injectInputDelayMs, openSidebar });
     items.push(...r.items);
     Object.assign(browserVersions, r.versions);
   } catch (e) {
@@ -108,7 +114,7 @@ const result = {
   generatedAt: new Date().toISOString(),
   durationSec: Math.round((Date.now() - started) / 1000),
   command: cmd,
-  mode: { quick, webOnly, only, browsers, ...(injectInputDelayMs > 0 ? { injectInputDelayMs } : {}) },
+  mode: { quick, webOnly, only, browsers, ...(injectInputDelayMs > 0 ? { injectInputDelayMs } : {}), ...(openSidebar ? { openSidebar } : {}), ...(datasetIds ? { datasets: datasetIds } : {}) },
   commit: git,
   environment: {
     ...env,
@@ -129,6 +135,7 @@ if (typeof args.out === 'string') {
     process.exit(2);
   }
 }
+else if (openSidebar || datasetIds) outFile = path.join(OUT_DIR, `variant${openSidebar ? '-sidebar' : ''}${datasetIds ? `-${datasetIds.join('')}` : ''}${quick ? '-quick' : ''}-${date}-${git.short}.json`);
 else if (injectInputDelayMs > 0) outFile = path.join(OUT_DIR, `inject-${injectInputDelayMs}ms${quick ? '-quick' : ''}-${date}-${git.short}.json`);
 else if (quick) outFile = path.join(OUT_DIR, `quick-${date}-${git.short}.json`);
 else {

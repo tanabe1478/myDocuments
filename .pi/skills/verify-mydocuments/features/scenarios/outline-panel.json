@@ -1,0 +1,39 @@
+{
+  "seed": {
+    "files": {
+      "/docs/note.md": { "text": "# 第一章\n\n本文の段落。\n\n## 第一節\n\n```sh\n# コードの中は数えない\n```\n\n# 第二章\n\n終わり。\n" },
+      "/docs/memo.txt": { "text": "# 見出しに見える行\n" }
+    },
+    "openPath": "/docs/note.md",
+    "preferences": { "theme": "light", "autoHideChrome": false, "sidebarOpen": true },
+    "isolated": { "plugins": [], "activateTimeoutMs": 8000, "runTimeoutMs": 8000 }
+  },
+  "steps": [
+    { "press": "ControlOrMeta+o" },
+    { "expect": { "testId": "doc-title", "equals": "note.md" } },
+    { "expect": { "css": "[data-testid=plugin-panel-item]", "read": "count", "equals": 3, "note": "見出しは 3 件（コードブロックの中の # は数えない）" } },
+    { "expect": { "css": "[data-testid=plugin-panel-item][data-index='0']", "equals": "第一章" } },
+    { "expect": { "css": "[data-testid=plugin-panel-item][data-index='1']", "equals": "第一節" } },
+    { "expect": { "css": "[data-testid=plugin-panel-item][data-index='1']", "read": "attr:data-depth", "equals": "1", "note": "## は深さ 1" } },
+    { "expect": { "css": "[data-testid=plugin-panel-item][data-index='2']", "equals": "第二章" } },
+    { "expect": { "role": "list", "name": "アウトラインの項目", "read": "visible", "equals": true } },
+    { "screenshot": "01-outline-panel" },
+    { "click": { "css": "[data-testid=plugin-panel-item][data-index='2']" } },
+    { "expect": { "eval": "(() => { const e = window.__mdeE2E.editor; const { head } = e.getSelection(); const t = e.getText(); return t.slice(head, t.indexOf('\\n', head)); })()", "equals": "# 第二章", "note": "カーソルが、押した見出しの行の先頭へ移った" } },
+    { "expect": { "eval": "document.activeElement.closest('.cm-content') !== null", "equals": true, "note": "本文にフォーカスが戻った" } },
+    { "expect": { "css": "[data-testid=plugin-panel-item][data-index='2']", "read": "attr:aria-current", "equals": "location", "note": "カーソルのある節が強調される" } },
+    { "screenshot": "02-after-click" },
+    { "press": "ControlOrMeta+End" },
+    { "type": "\n## 追加した節" },
+    { "expect": { "css": "[data-testid=plugin-panel-item]", "read": "count", "equals": 4, "note": "入力が止まった後に、一覧が更新される" } },
+    { "expect": { "css": "[data-testid=plugin-panel-item][data-index='3']", "equals": "追加した節" } },
+    { "press": "ControlOrMeta+s" },
+    { "expect": { "testId": "unsaved-mark", "read": "count", "equals": 0, "note": "保存してから、別の文書を開く（未保存の確認を出さない）" } },
+    { "setPaths": { "open": "/docs/memo.txt" } },
+    { "press": "ControlOrMeta+o" },
+    { "expect": { "testId": "doc-title", "equals": "memo.txt" } },
+    { "expect": { "testId": "plugin-panel-empty", "equals": "見出しはありません", "note": "素のテキストには見出しがない" } },
+    { "expect": { "css": "[data-testid=plugin-panel-item]", "read": "count", "equals": 0 } },
+    { "screenshot": "03-plain-text" }
+  ]
+}

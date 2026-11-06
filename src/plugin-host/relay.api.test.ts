@@ -13,7 +13,7 @@ describe('the API in the Worker (R6)', () => {
 
   it('lists every api member as an own enumerable property (nothing is hidden); api and its objects are frozen', () => {
     const { self } = inWorker('');
-    expect(Object.keys(self.api as object)).toEqual(['registerCommand', 'registerContextMenuItem', 'clipboard', 'document']);
+    expect(Object.keys(self.api as object)).toEqual(['registerCommand', 'registerContextMenuItem', 'registerPanel', 'clipboard', 'document']);
     expect(Object.getOwnPropertyNames(self.api as object)).toEqual(Object.keys(self.api as object));
     expect(Object.isFrozen(self.api)).toBe(true);
     expect(Object.isFrozen(api(self).clipboard)).toBe(true);

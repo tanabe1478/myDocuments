@@ -19,7 +19,8 @@ import { createCodeMirrorAdapter } from './editor/codemirror/CodeMirrorAdapter';
 import { BridgeError, type DocumentBridge, type DraftSummary } from './platform';
 import { createHostServices, createIsolatedServices } from './platform/hostServices';
 import type { PermissionController } from './permissions/controller';
-import type { PluginRegistry } from './plugin-api';
+import { createDocumentFeed, type DocumentFeed } from './panels/documentFeed';
+import type { PluginRegistry, RegisteredPanel } from './plugin-api';
 import { applyPreferences } from './preferences/apply';
 import { createCommandContext } from './preferences/commandContext';
 import { normalizePreferences, type StoredPreferences } from './preferences/preferences';
@@ -31,6 +32,7 @@ import { ConfirmRecreateDialog } from './ui/ConfirmRecreateDialog';
 import { ConfirmTrashDialog } from './ui/ConfirmTrashDialog';
 import { DiffDialog } from './ui/DiffDialog';
 import { PermissionDialog } from './ui/PermissionDialog';
+import { PluginPanels } from './ui/PluginPanels';
 import { RecoveryDialog } from './ui/RecoveryDialog';
 import { SettingsDialog } from './ui/SettingsDialog';
 import { Sidebar, SIDEBAR_ID } from './ui/Sidebar';
@@ -81,6 +83,8 @@ export function App({
   const conflictRef = useRef<HTMLDivElement>(null);
   const bottombarRef = useRef<HTMLElement>(null);
   const adapterRef = useRef<EditorAdapter | null>(null);
+  /** 本文とカーソルの位置を、部品（パネルを持つ段 2 の部品）に届ける時機を決める。エディタの取り付けと一緒に作る。 */
+  const feedRef = useRef<DocumentFeed | null>(null);
   const noticeId = useRef(0);
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
   const [recreate, setRecreate] = useState<PendingRecreate | null>(null);
@@ -157,6 +161,10 @@ export function App({
   const permissionState = useSyncExternalStore(permissions.subscribe, permissions.getState);
   /** 部品（段 2）が足した、ツリーの右クリックの項目。部品が登録・停止するたびに変わる。 */
   const pluginMenuItems = useSyncExternalStore(plugins.subscribe, () => plugins.menuItems);
+  /** 部品（段 2）が足した、サイドバーのパネル。部品が登録・停止し、項目を送るたびに変わる。 */
+  const pluginPanels = useSyncExternalStore(plugins.subscribePanels, () => plugins.panels);
+  /** たたんでいるパネルの id（保存しない。起動のたびに、すべて開いている）。 */
+  const [collapsedPanels, setCollapsedPanels] = useState<ReadonlySet<string>>(() => new Set());
 
   const state = useSyncExternalStore(controller.subscribe, controller.getState);
   const external = useSyncExternalStore(controller.subscribe, controller.getExternal);
@@ -177,10 +185,32 @@ export function App({
     for (const extension of plugins.editorExtensions) {
       adapter.setPluginSetting(extension.settingKey, prefsRef.current[extension.settingKey]);
     }
+    // 本文とカーソルの位置を部品に届ける時機（入力が止まった後、文書の切り替え、変換の確定の後）。入力のたびには届けない。
+    // 届けるかどうか（権限 document.read、パネルが見えているか）は、レジストリが決める。
+    const startState = controller.getState();
+    const feed = createDocumentFeed(
+      {
+        publish: (document, selection) => plugins.publishDocument(document, selection),
+        publishSelection: (selection) => plugins.publishSelection(selection),
+        isComposing: () => adapter.isComposing(),
+        getSelection: () => adapter.getSelection(),
+      },
+      { text: startState.text, kind: textKindOf(startState.path) },
+    );
+    feedRef.current = feed;
+    const offSelection = adapter.onSelectionChange(() => feed.selectionChanged());
+    // 文書を開いた・切り替えた・読み直した、種類が変わった（コントローラーの本文と種類が変わった）。
+    const offDocument = controller.subscribe(() => {
+      const st = controller.getState();
+      feed.sync(st.text, textKindOf(st.path));
+    });
     const off = adapter.onChange((text) => {
+      // 利用者の入力。コントローラーに渡す前に知らせる（そのあとの sync は、同じ本文なので何もしない）。
+      feed.typed(text);
       controller.handleEdit(text);
       setTyping(true);
     });
+    feed.flush();
     if (__E2E__ && window.__mdeE2E) window.__mdeE2E.editor = adapter;
 
     // ネイティブ側からの通知: 監視中の文書の外部変更、窓を閉じる・終了する操作。
@@ -218,6 +248,10 @@ export function App({
       window.removeEventListener('focus', onWindowFocus);
       void subscriptions.then((offs) => offs.forEach((o) => o()));
       off();
+      offSelection();
+      offDocument();
+      feed.dispose();
+      feedRef.current = null;
       adapter.destroy();
       adapterRef.current = null;
     };
@@ -298,6 +332,37 @@ export function App({
 
   const viewportWidth = useViewportWidth();
   const sidebarOpen = prefs.sidebarOpen;
+
+  // パネルが見えているか（サイドバーが開いていて、節がたたまれていない）を部品の一覧に伝える。見えているパネルを持つ部品だけが、本文を受け取る。
+  // 見えたときは、保留を待たず最新を届ける。依存は文字列にして、項目が届くたびには動かさない。
+  const panelIdsKey = pluginPanels.map((p) => p.id).join('\n');
+  const visiblePanelsKey = sidebarOpen ? pluginPanels.filter((p) => !collapsedPanels.has(p.id)).map((p) => p.id).join('\n') : '';
+  useEffect(() => {
+    const visible = new Set(visiblePanelsKey === '' ? [] : visiblePanelsKey.split('\n'));
+    for (const id of panelIdsKey === '' ? [] : panelIdsKey.split('\n')) plugins.setPanelVisible(id, visible.has(id));
+    if (visible.size > 0) feedRef.current?.flush();
+  }, [plugins, panelIdsKey, visiblePanelsKey]);
+
+  const togglePanel = useCallback(
+    (id: string) =>
+      setCollapsedPanels((current) => {
+        const next = new Set(current);
+        if (!next.delete(id)) next.add(id);
+        return next;
+      }),
+    [],
+  );
+
+  /**
+   * パネルの項目を押した。その行の先頭へカーソルを移し、表示し、本文にフォーカスを戻す（エディタの操作。部品は頼めない）。
+   * 項目を作った本文の版が、今の本文の版と違うとき（入力のあとで、次の更新を待っている）は、移さない。
+   */
+  const activatePanelItem = useCallback((panel: RegisteredPanel, index: number) => {
+    const item = panel.items[index];
+    const feed = feedRef.current;
+    if (!item || !feed || panel.version !== feed.version) return;
+    adapterRef.current?.goToLineStart(item.offset);
+  }, []);
   const sidebarLayoutMode = sidebarMode(viewportWidth);
   // 本文の領域（サイドバーを除いた領域）の幅。狭い窓では、サイドバーは本文の上に重なるので、引かない。
   const reserve = sidebarReserve(sidebarOpen, viewportWidth);
@@ -498,6 +563,7 @@ export function App({
         onOpenFile={(path) => void openFromExplorer(path)}
         onClose={closeSidebar}
         pluginMenuItems={pluginMenuItems}
+        pluginPanels={<PluginPanels panels={pluginPanels} collapsed={collapsedPanels} onToggle={togglePanel} onActivate={activatePanelItem} />}
       />
       <div className="workspace" data-testid="workspace">
         <div className="canvas-surface" data-testid="canvas-surface" aria-hidden="true" style={{ opacity: canvas.surfaceOpacity }} />

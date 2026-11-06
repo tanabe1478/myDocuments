@@ -93,6 +93,30 @@ export class CodeMirrorAdapter implements EditorAdapter {
     this.view?.focus();
   }
 
+  goToLineStart(offset: number): void {
+    const view = this.view;
+    if (!view) return;
+    const doc = view.state.doc;
+    // 位置は本文の長さに収める（本文が短くなっていても、範囲外にならない）。整数でない値は 0。
+    const position = Number.isFinite(offset) ? Math.max(0, Math.min(Math.trunc(offset), doc.length)) : 0;
+    const from = doc.lineAt(position).from;
+    view.dispatch({
+      selection: { anchor: from },
+      effects: EditorView.scrollIntoView(from, { y: 'start' }),
+      userEvent: 'select',
+    });
+    view.focus();
+  }
+
+  isComposing(): boolean {
+    return this.view?.compositionStarted === true;
+  }
+
+  getSelection(): EditorSelection {
+    const main = this.view?.state.selection.main;
+    return main ? { anchor: main.anchor, head: main.head } : { anchor: 0, head: 0 };
+  }
+
   setPluginSetting(key: string, value: unknown): void {
     const effects: StateEffect<unknown>[] = [];
     for (const slot of this.pluginSlots) {

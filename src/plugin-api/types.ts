@@ -1,5 +1,5 @@
 import type { Extension } from '@codemirror/state';
-import type { Permission } from './permissions';
+import type { DeclaredPermission } from './permissions';
 
 /**
  * 部品の段（ADR-005 の 3 段のうち、実装済みのもの）。
@@ -20,9 +20,10 @@ export interface PluginManifest {
   readonly tier: PluginTier;
   /**
    * 使うつもりの権限（段 2 の部品だけ。省略は宣言なし）。知らない権限、重複、段 3 の部品の permissions は、その部品を読み込まない。
-   * 権限の確認の仕組み（PluginRegistryOptions.permissions）がない環境では、空でない宣言のある部品は読み込まない。
+   * 権限の確認の仕組み（PluginRegistryOptions.permissions）がない環境では、確認の要る権限（clipboard.write、paths.read）を
+   * 宣言した部品は読み込まない。宣言だけで使える権限（document.read）は、確認の仕組みがなくても使える。
    */
-  readonly permissions?: readonly Permission[];
+  readonly permissions?: readonly DeclaredPermission[];
 }
 
 /**
@@ -46,6 +47,10 @@ export interface Plugin {
  *     api.registerContextMenuItem({ id: 'copy', title: 'コピー', where: 'tree', run: async (target) => { await api.clipboard.writeText(target.path); } }); // paths.read の宣言が要る
  *     const path = await api.document.currentPath(); // paths.read（開いている文書のパス。未保存の新規文書は null）
  *     await api.clipboard.writeText('text'); // clipboard.write
+ *     // R7: 左サイドバーのパネル（項目の木。描くのは本体で、部品の文字列は文字として描かれる）と、本文の通知（permissions: ['document.read'] が要る）。
+ *     const panel = api.registerPanel({ id: 'sections', title: '節の一覧' });
+ *     api.document.onDidChange(({ text, kind, version }) => panel.setItems([{ text: '見出し', depth: 0, offset: 0 }], { version }));
+ *     api.document.onDidChangeSelection(({ anchor, head, version }) => { ... });
  */
 export interface ActionPlugin {
   readonly manifest: PluginManifest;
@@ -95,8 +100,56 @@ export type IsolatedCall =
 /** 呼び出しの結果。成功は値（currentPath は文書のパスか null。writeText は null）、失敗は利用者向けの理由。 */
 export type IsolatedCallResult = { readonly ok: true; readonly value: string | null } | { readonly ok: false; readonly reason: string };
 
+/** パネルの項目 1 つ。text は文字として描かれる（HTML として解釈されない）。 */
+export interface PanelItem {
+  /** 表示する文字列（1〜200 文字）。 */
+  readonly text: string;
+  /** 深さ（0 から 7 まで）。 */
+  readonly depth: number;
+  /** 本文の中の位置（UTF-16 のオフセット。部品が作ったときの本文の上のもの）。項目を押したとき、本体はこの位置の行の先頭へカーソルを移す。 */
+  readonly offset: number;
+}
+
+/** Worker の中の部品が registerPanel で登録したパネル（ホストが形を検査して渡す）。 */
+export interface IsolatedPanelInfo {
+  /** 部品の中で一意（小文字の英数字とハイフン、64 文字まで）。 */
+  readonly id: string;
+  readonly title: string;
+}
+
+/** panel.setItems の内容（ホストが形と上限を検査して渡す）。 */
+export interface IsolatedItemsUpdate {
+  /** パネルの id（部品の中のもの）。 */
+  readonly panel: string;
+  /** 何の版の本文から作ったか。本体が今の本文の版と違うと見たとき、項目を押しても移らない。 */
+  readonly version: number;
+  readonly items: readonly PanelItem[];
+  /** 強調する項目の番号（なければ null）。 */
+  readonly current: number | null;
+  /** 項目が 0 件のときに出す文言（なければ null）。 */
+  readonly empty: string | null;
+}
+
+/** 部品に届ける本文。version は本体が数える（本文か種類が変わるたびに増える）。 */
+export interface DocumentSnapshot {
+  readonly version: number;
+  readonly kind: TextKind;
+  readonly text: string;
+}
+
+/** 部品に届けるカーソルの位置（本文の上の UTF-16 のオフセット）。version は、そのときの本文の版。 */
+export interface SelectionSnapshot {
+  readonly version: number;
+  readonly anchor: number;
+  readonly head: number;
+}
+
 /** 隔離した部品の出来事の受け口。レジストリが実装する。 */
 export interface IsolatedPluginListener {
+  /** 部品のコードの最初の実行の間に、パネルが登録された。例外を出すと、その部品は止まる。なければ、登録は不正として部品を止める。 */
+  onPanel?(panel: IsolatedPanelInfo): void;
+  /** 部品が panel.setItems で項目を送った。例外を出すと、その部品は止まる。 */
+  onItems?(update: IsolatedItemsUpdate): void;
   /** 部品のコードの最初の実行の間に、コマンドが登録された。例外を出すと、その部品は止まる。 */
   onCommand(command: IsolatedCommandInfo): void;
   /** 部品のコードの最初の実行の間に、ツリーの右クリックの項目が登録された。例外を出すと、その部品は止まる。なければ、登録は不正として部品を止める。 */
@@ -131,6 +184,13 @@ export interface IsolatedPluginHost {
   run(id: string, commandId: string): IsolatedRun | undefined;
   /** 登録済みのメニューの項目を、対象つきで実行させる。run と同じ扱い。 */
   runMenu?(id: string, itemId: string, target: MenuTarget): IsolatedRun | undefined;
+  /**
+   * 部品に本文を届ける（部品の api.document.onDidChange が受ける）。動いている（ready の）部品だけ。届けたら true。
+   * 大きすぎる本文（LIMITS.documentTextLength）、止まった部品、ready 前は届けず false。権限（document.read）の判断はレジストリが先にする。
+   */
+  deliverDocument?(id: string, document: DocumentSnapshot): boolean;
+  /** 部品にカーソルの位置を届ける（api.document.onDidChangeSelection が受ける）。deliverDocument と同じ扱い。 */
+  deliverSelection?(id: string, selection: SelectionSnapshot): boolean;
   /**
    * 部品の時間切れ（最初の実行、コマンドの実行）の計測を止める。確認の画面を出しているあいだ、その要求の時間切れで部品を止めないため。
    * 戻り値の関数で再開する（残りの時間から数え直す）。数えて止めるので、重ねて呼んでよい。止まった部品には何もしない。

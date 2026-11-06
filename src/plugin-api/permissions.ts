@@ -19,6 +19,24 @@ export type PermissionDecisions = Partial<Record<Permission, PermissionDecision>
 
 export const isPermission = (value: unknown): value is Permission => typeof value === 'string' && (PERMISSIONS as readonly string[]).includes(value);
 
+/**
+ * 宣言だけで使える権限（ADR-005 の権限の表の「宣言だけで使える」。R7）。確認の画面は出さず、利用者の決定の保存（plugin-permissions.json）も
+ * しない。宣言した部品だけが、その API の出来事（本文と選択の通知）を受け取る。PERMISSIONS（確認と保存の対象）には入れない
+ * （src-tauri/src/plugin_permissions.rs の KNOWN_PERMISSIONS と同じ集合に保つため）。
+ * - document.read: 開いている文書の本文、文書の種類、カーソルの位置を受け取る（api.document.onDidChange、onDidChangeSelection）。
+ */
+export const DECLARATION_ONLY_PERMISSIONS = ['document.read'] as const;
+export type DeclarationOnlyPermission = (typeof DECLARATION_ONLY_PERMISSIONS)[number];
+export const DECLARATION_ONLY_DESCRIPTIONS: Readonly<Record<DeclarationOnlyPermission, string>> = {
+  'document.read': '開いている文書の本文とカーソルの位置を受け取る',
+};
+export const isDeclarationOnlyPermission = (value: unknown): value is DeclarationOnlyPermission =>
+  typeof value === 'string' && (DECLARATION_ONLY_PERMISSIONS as readonly string[]).includes(value);
+
+/** manifest.permissions に書ける権限。 */
+export type DeclaredPermission = Permission | DeclarationOnlyPermission;
+export const isDeclaredPermission = (value: unknown): value is DeclaredPermission => isPermission(value) || isDeclarationOnlyPermission(value);
+
 /** 保存の形（plugin-permissions.json の中身）。 */
 export interface PluginPermissionsFile {
   readonly version: 1;

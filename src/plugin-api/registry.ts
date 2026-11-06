@@ -1,25 +1,30 @@
 import { EditorState, type Extension } from '@codemirror/state';
-import { PERMISSION_DESCRIPTIONS, isPermission, type Permission, type PermissionGate } from './permissions';
+import { PERMISSION_DESCRIPTIONS, isDeclarationOnlyPermission, isDeclaredPermission, isPermission, type DeclaredPermission, type Permission, type PermissionGate } from './permissions';
 import { matchesShortcut, parseShortcut, type KeyEventLike, type ParsedShortcut } from './shortcut';
 import {
   SETTINGS_PLACEMENTS,
   SETTINGS_PLACEMENT_KINDS,
   type ActionPlugin,
   type CommandContext,
+  type DocumentSnapshot,
   type EditorExtensionEnvironment,
   type EditorExtensionRegistration,
   type IsolatedCall,
   type IsolatedCallResult,
   type IsolatedCommandInfo,
+  type IsolatedItemsUpdate,
   type IsolatedMenuItemInfo,
+  type IsolatedPanelInfo,
   type IsolatedPluginHost,
   type IsolatedRun,
   type IsolatedServices,
   type MenuTarget,
+  type PanelItem,
   type Plugin,
   type PluginContext,
   type RadioOption,
   type SettingDefinition,
+  type SelectionSnapshot,
   type SettingHandle,
   type SettingsPlacement,
 } from './types';
@@ -77,6 +82,27 @@ export interface RegisteredMenuItem {
   run(target: MenuTarget): Promise<void>;
 }
 
+/**
+ * 左サイドバーに出す、段 2 の部品のパネル（項目の木）。部品が項目を送るたびに、別のオブジェクトになる（変わらない間は同じもの）。
+ * 項目の文字列は、本体が文字として描く（HTML として解釈しない）。
+ */
+export interface RegisteredPanel {
+  readonly pluginId: string;
+  /** `<部品の id>.<パネルの id>`。 */
+  readonly id: string;
+  /** 節の見出し（部品が決めた文字列。文字として描く）。 */
+  readonly title: string;
+  /** 部品が項目を 1 回でも送ったか（送る前は、項目も文言も出さない）。 */
+  readonly loaded: boolean;
+  /** 項目を作った本文の版（送る前は -1）。今の本文の版と違うとき、項目を押しても本体はカーソルを移さない。 */
+  readonly version: number;
+  readonly items: readonly PanelItem[];
+  /** 強調する項目の番号（なければ null）。 */
+  readonly current: number | null;
+  /** 項目が 0 件のときの文言（部品が渡さなければ null）。 */
+  readonly empty: string | null;
+}
+
 interface RegisteredSettingsItemBase {
   readonly pluginId: string;
   readonly placement: SettingsPlacement;
@@ -116,6 +142,26 @@ export interface PluginRegistry {
   readonly menuItems: readonly RegisteredMenuItem[];
   /** menuItems が変わったときに呼ばれる。戻り値で解除。 */
   subscribe(listener: () => void): () => void;
+  /**
+   * 左サイドバーに出すパネル（動いている段 2 の部品のもの。登録の順）。部品がパネルを登録・停止し、項目を送るたびに、別の配列になる
+   * （useSyncExternalStore の snapshot として使える）。
+   */
+  readonly panels: readonly RegisteredPanel[];
+  /** panels が変わったときに呼ばれる。戻り値で解除。 */
+  subscribePanels(listener: () => void): () => void;
+  /**
+   * パネルが見えているか（サイドバーが開いていて、節がたたまれていない）を伝える。パネルを持つ部品は、見えているときだけ本文を受け取る
+   * （見えていない間は届けず、見えたとき、最新を届ける）。知らない id は無視する。
+   */
+  setPanelVisible(panelId: string, visible: boolean): void;
+  /**
+   * 本文とカーソルの位置（本体が、入力が止まった後などに決めて渡す）を、受け取ってよい部品に届ける。受け取るのは、権限 document.read を
+   * 宣言していて、動いていて、（パネルがあれば）パネルが見えている部品だけ。同じ版は同じ部品に重ねて届けない。最新のものは覚えておき、
+   * 部品が動き始めたとき、パネルが見えたときに届ける。
+   */
+  publishDocument(document: DocumentSnapshot, selection: SelectionSnapshot): void;
+  /** カーソルの位置だけが変わったとき。publishDocument と同じ部品に届ける。 */
+  publishSelection(selection: SelectionSnapshot): void;
   /**
    * deferStart で作ったレジストリで、段 2 の部品を動かし始める（最初の描画のあと、App が呼ぶ）。何度呼んでもよい。
    * deferStart でなければ、作った時点で動いているので、何もしない。
@@ -167,9 +213,10 @@ interface Registrations {
   commands: RegisteredCommand[];
   settingsItems: RegisteredSettingsItem[];
   menuItems: RegisteredMenuItem[];
+  panels: RegisteredPanel[];
 }
 
-const emptyRegistrations = (): Registrations => ({ settings: [], editorExtensions: [], commands: [], settingsItems: [], menuItems: [] });
+const emptyRegistrations = (): Registrations => ({ settings: [], editorExtensions: [], commands: [], settingsItems: [], menuItems: [], panels: [] });
 
 interface Entry {
   id: string;
@@ -179,8 +226,17 @@ interface Entry {
   reason: string | null;
   regs: Registrations;
   cleanup: (() => void) | null;
-  /** 段 2 の部品が宣言した権限（宣言のない部品、段 3 の部品は空）。 */
+  /** 段 2 の部品が宣言した、確認の要る権限（宣言のない部品、段 3 の部品は空）。 */
   permissions: readonly Permission[];
+  /** 宣言だけで使える権限 document.read を宣言した段 2 の部品か（本文とカーソルの位置を受け取る）。 */
+  readsDocument: boolean;
+  /** 段 2 の部品が動いている（最初の実行が終わった）か。本文は、動き始めてから届ける。 */
+  ready: boolean;
+  /** パネルが見えているか（setPanelVisible）。パネルを持たない部品には使わない。 */
+  panelVisible: boolean;
+  /** この部品に届けた、本文の版と種類、カーソルの位置（同じものを重ねて届けない）。 */
+  sentDocumentVersion: number | null;
+  sentSelection: string | null;
   /** 段 2 の部品を動かし始める（deferStart のとき、startDeferred が呼ぶ）。 */
   starter: (() => void) | null;
 }
@@ -212,11 +268,12 @@ function manifestProblem(manifest: unknown, canConfirm: boolean): string | null 
     if (!Array.isArray(m.permissions)) return 'permissions は配列にしてください';
     const seen = new Set<string>();
     for (const permission of m.permissions as unknown[]) {
-      if (!isPermission(permission)) return `permissions に知らない権限があります: ${String(permission)}`;
+      if (!isDeclaredPermission(permission)) return `permissions に知らない権限があります: ${String(permission)}`;
       if (seen.has(permission)) return `permissions に重複があります: ${permission}`;
       seen.add(permission);
     }
-    if (seen.size > 0 && !canConfirm) return '段 2 の部品の permissions（権限）は、この環境では宣言できません（権限の確認の仕組みがありません）';
+    // 確認の画面が要る権限（clipboard.write、paths.read）は、確認の仕組みがない環境では宣言できない。宣言だけで使える権限（document.read）は、要らない。
+    if ([...seen].some(isPermission) && !canConfirm) return '段 2 の部品の permissions（権限）は、この環境では宣言できません（権限の確認の仕組みがありません）';
   }
   return null;
 }
@@ -246,6 +303,43 @@ export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[]
     }
   };
 
+  // 左サイドバーのパネルの一覧。変わるたびに別の配列にして、購読者に知らせる（部品が止まったとき、項目を送ったとき）。
+  let panelSnapshot: readonly RegisteredPanel[] = [];
+  const panelListeners = new Set<() => void>();
+  const notifyPanels = (): void => {
+    for (const listener of Array.from(panelListeners)) {
+      try {
+        listener();
+      } catch (error) {
+        report('error', '[plugin] パネルの一覧の購読者が例外を出しました', error);
+      }
+    }
+  };
+  const refreshPanels = (): void => {
+    const next = entries.filter((e) => e.status === 'active').flatMap((e) => e.regs.panels);
+    if (next.length === panelSnapshot.length && next.every((p, i) => p === panelSnapshot[i])) return;
+    panelSnapshot = next;
+    notifyPanels();
+  };
+
+  // 本体が最後に渡した本文とカーソルの位置。部品が動き始めたとき、パネルが見えたときに、これを届ける。
+  let latest: { document: DocumentSnapshot; selection: SelectionSnapshot } | null = null;
+  const selectionKey = (s: SelectionSnapshot): string => `${s.version}:${s.anchor}:${s.head}`;
+  /** 本文を受け取ってよい部品か（宣言した、動いている、パネルがあれば見えている）。 */
+  const wantsDocument = (entry: Entry): boolean =>
+    entry.status === 'active' && entry.readsDocument && entry.ready && (entry.regs.panels.length === 0 || entry.panelVisible);
+  /** 受け取ってよい部品に、まだ届けていないものを届ける。 */
+  const deliverLatest = (entry: Entry, host: IsolatedPluginHost): void => {
+    if (latest === null || !wantsDocument(entry)) return;
+    const { document, selection } = latest;
+    if (entry.sentDocumentVersion !== document.version) {
+      if (host.deliverDocument?.(entry.id, document) === true) entry.sentDocumentVersion = document.version;
+      else return;
+    }
+    const key = selectionKey(selection);
+    if (entry.sentSelection !== key && host.deliverSelection?.(entry.id, selection) === true) entry.sentSelection = key;
+  };
+
   const stop = (entry: Entry, error: unknown): void => {
     if (entry.status !== 'active') return;
     entry.status = 'stopped';
@@ -253,6 +347,7 @@ export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[]
     report('error', `[plugin] 部品「${entry.id}」を止めました: ${entry.reason}`, error);
     runCleanup(entry);
     refreshMenus();
+    refreshPanels();
   };
 
   const runCleanup = (entry: Entry): void => {
@@ -469,7 +564,26 @@ export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[]
           refreshMenus();
         },
         onCall,
-        onReady: () => {},
+        onPanel: (panel: IsolatedPanelInfo) => {
+          if (entry.status !== 'active') return;
+          const qualified = `${entry.id}.${panel.id}`;
+          if (entries.some((e) => e.regs.panels.some((p) => p.id === qualified))) throw new Error(`パネル「${qualified}」は登録済みです`);
+          entry.regs.panels.push({ pluginId: entry.id, id: qualified, title: panel.title, loaded: false, version: -1, items: [], current: null, empty: null });
+          refreshPanels();
+        },
+        onItems: (update: IsolatedItemsUpdate) => {
+          if (entry.status !== 'active') return;
+          const qualified = `${entry.id}.${update.panel}`;
+          const index = entry.regs.panels.findIndex((p) => p.id === qualified);
+          if (index < 0) throw new Error(`登録していないパネル「${update.panel}」の項目です`);
+          const before = entry.regs.panels[index]!;
+          entry.regs.panels[index] = { ...before, loaded: true, version: update.version, items: update.items, current: update.current, empty: update.empty };
+          refreshPanels();
+        },
+        onReady: () => {
+          entry.ready = true;
+          deliverLatest(entry, host);
+        },
         onStopped: (reason: string) => {
           if (entry.status !== 'active') return;
           entry.regs = emptyRegistrations();
@@ -589,6 +703,11 @@ export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[]
       regs: emptyRegistrations(),
       cleanup: null,
       permissions: [],
+      readsDocument: false,
+      ready: false,
+      panelVisible: false,
+      sentDocumentVersion: null,
+      sentSelection: null,
       starter: null,
     };
     entries.push(entry);
@@ -616,7 +735,9 @@ export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[]
         entry.reason = unusable;
         report('warn', `[plugin] 部品「${entry.id}」を読み込みません: ${unusable}`);
       } else {
-        entry.permissions = Array.isArray(m.permissions) ? (m.permissions as Permission[]) : [];
+        const declared: readonly DeclaredPermission[] = Array.isArray(m.permissions) ? (m.permissions as DeclaredPermission[]) : [];
+        entry.permissions = declared.filter(isPermission);
+        entry.readsDocument = declared.some(isDeclarationOnlyPermission);
         if (options.deferStart) entry.starter = () => startIsolated(entry, host, source);
         else startIsolated(entry, host, source);
       }
@@ -654,6 +775,31 @@ export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[]
       menuListeners.add(listener);
       return () => void menuListeners.delete(listener);
     },
+    get panels() {
+      return panelSnapshot;
+    },
+    subscribePanels(listener) {
+      panelListeners.add(listener);
+      return () => void panelListeners.delete(listener);
+    },
+    setPanelVisible(panelId, visible) {
+      const host = options.isolation;
+      const entry = entries.find((e) => e.regs.panels.some((p) => p.id === panelId));
+      if (!entry || !host || entry.panelVisible === visible) return;
+      entry.panelVisible = visible;
+      if (visible) deliverLatest(entry, host);
+    },
+    publishDocument(document, selection) {
+      const host = options.isolation;
+      latest = { document, selection };
+      if (host) for (const entry of entries) deliverLatest(entry, host);
+    },
+    publishSelection(selection) {
+      const host = options.isolation;
+      if (latest === null) return;
+      latest = { document: latest.document, selection };
+      if (host) for (const entry of entries) deliverLatest(entry, host);
+    },
     startDeferred() {
       for (const entry of entries) {
         const starter = entry.starter;
@@ -686,6 +832,7 @@ export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[]
         }
       }
       refreshMenus();
+      refreshPanels();
     },
   };
 }

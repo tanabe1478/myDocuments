@@ -23,9 +23,25 @@ export const LIMITS = {
   clipboardTextLength: 100_000,
   /** R6: パスの長さ。 */
   pathLength: 4096,
+  /** R7: 1 部品のパネルの数。 */
+  panelsPerPlugin: 1,
+  /** R7: panel.setItems で送れる項目の数。 */
+  panelItems: 1000,
+  /** R7: 項目の文字列と、項目がないときの文言の長さ（UTF-16 の長さ）。 */
+  panelTextLength: 200,
+  /** R7: 項目の深さの最大（0 から数える）。 */
+  panelMaxDepth: 7,
+  /** R7: 項目の本文の中の位置の上限（UTF-16 のオフセット）。 */
+  offsetMax: 2_147_483_647,
+  /** R7: panel.setItems の頻度の上限。window の間に、この回数を超えたら部品を止める。 */
+  setItemsPerWindow: 30,
+  setItemsWindowMs: 1000,
+  /** R7: 部品に届ける本文の長さの上限（UTF-16 の長さ）。超える本文は届けない。 */
+  documentTextLength: 16 * 1024 * 1024,
 } as const;
 
 export type TargetKind = 'file' | 'folder';
+export type DocumentKind = 'markdown' | 'plain';
 
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
@@ -35,6 +51,10 @@ export type MainMessage =
   | { readonly v: 0; readonly kind: 'run'; readonly plugin: string; readonly req: number; readonly command: string }
   /** ツリーの右クリックの項目を、対象つきで実行させる。結果は run と同じ done / failed（req で対応）。 */
   | { readonly v: 0; readonly kind: 'runMenu'; readonly plugin: string; readonly req: number; readonly item: string; readonly path: string; readonly targetKind: TargetKind }
+  /** R7: 本文を届ける（権限 document.read を宣言した部品だけ。本体が判断する）。version は本体が数える本文の版。 */
+  | { readonly v: 0; readonly kind: 'doc'; readonly plugin: string; readonly version: number; readonly textKind: DocumentKind; readonly text: string }
+  /** R7: カーソルの位置を届ける。version は、そのときの本文の版。 */
+  | { readonly v: 0; readonly kind: 'selection'; readonly plugin: string; readonly version: number; readonly anchor: number; readonly head: number }
   /** 呼び出し（call）の結果。成功は値（文字列か null）、失敗は理由。 */
   | { readonly v: 0; readonly kind: 'result'; readonly plugin: string; readonly call: number; readonly ok: true; readonly value: string | null }
   | { readonly v: 0; readonly kind: 'result'; readonly plugin: string; readonly call: number; readonly ok: false; readonly reason: string }
@@ -46,6 +66,18 @@ export type RelayMessage =
   | { readonly kind: 'command'; readonly plugin: string; readonly id: string; readonly title: string; readonly shortcut?: string; readonly ignoreInTextEntry?: boolean }
   /** ツリーの右クリックの項目の登録（部品のコードの最初の実行の間だけ）。 */
   | { readonly kind: 'menu'; readonly plugin: string; readonly id: string; readonly title: string; readonly where: 'tree' }
+  /** R7: パネルの登録（部品のコードの最初の実行の間だけ。1 部品に 1 つ）。 */
+  | { readonly kind: 'panel'; readonly plugin: string; readonly id: string; readonly title: string }
+  /** R7: パネルの項目（全部を置き換える）。version は、項目を作った本文の版。current は強調する項目の番号、empty は 0 件のときの文言。 */
+  | {
+      readonly kind: 'items';
+      readonly plugin: string;
+      readonly panel: string;
+      readonly version: number;
+      readonly items: readonly { readonly text: string; readonly depth: number; readonly offset: number }[];
+      readonly current: number | null;
+      readonly empty: string | null;
+    }
   /** 本体の機能の呼び出し。call は部品の中の番号（1 から。結果待ちの間は重ならない）。 */
   | { readonly kind: 'call'; readonly plugin: string; readonly call: number; readonly method: 'clipboardWriteText'; readonly text: string }
   | { readonly kind: 'call'; readonly plugin: string; readonly call: number; readonly method: 'currentPath' }
@@ -73,6 +105,7 @@ function keysOk(object: Record<string, unknown>, required: readonly string[], op
 const isText = (value: unknown, max: number): value is string => typeof value === 'string' && value.length >= 1 && value.length <= max;
 const isPluginId = (value: unknown): value is string => isText(value, LIMITS.idLength) && ID_PATTERN.test(value);
 const isReq = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 1;
+const isIntBetween = (value: unknown, min: number, max: number): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= min && value <= max;
 
 /** 仲介から届いたデータの形を検査する。決めた形以外（未知の種類、余計な項目、型や長さの違い）はすべて ok: false。 */
 export function parseRelayMessage(data: unknown): ParseResult {
@@ -109,6 +142,32 @@ export function parseRelayMessage(data: unknown): ParseResult {
       if (!isText(title, LIMITS.titleLength)) return fail('menu の title が不正です');
       if (where !== 'tree') return fail('menu の where が不正です');
       return { ok: true, message: { kind, plugin, id, title, where } };
+    }
+    case 'panel': {
+      if (!keysOk(data, ['v', 'kind', 'plugin', 'id', 'title'])) return fail('panel の項目が違います');
+      const { plugin, id, title } = data;
+      if (!isPluginId(plugin) || !isPluginId(id)) return fail('panel の plugin か id が不正です');
+      if (!isText(title, LIMITS.titleLength)) return fail('panel の title が不正です');
+      return { ok: true, message: { kind, plugin, id, title } };
+    }
+    case 'items': {
+      if (!keysOk(data, ['v', 'kind', 'plugin', 'panel', 'version', 'items', 'current', 'empty'])) return fail('items の項目が違います');
+      const { plugin, panel, version, items, current, empty } = data;
+      if (!isPluginId(plugin) || !isPluginId(panel)) return fail('items の plugin か panel が不正です');
+      if (!isIntBetween(version, 0, Number.MAX_SAFE_INTEGER)) return fail('items の version が不正です');
+      if (!Array.isArray(items)) return fail('items の items が配列ではありません');
+      if (items.length > LIMITS.panelItems) return fail(`項目が多すぎます（${LIMITS.panelItems} まで）`);
+      const copied: { text: string; depth: number; offset: number }[] = [];
+      for (const item of items as unknown[]) {
+        if (!isPlainObject(item) || !keysOk(item, ['text', 'depth', 'offset'])) return fail('項目の形が違います');
+        if (!isText(item.text, LIMITS.panelTextLength)) return fail('項目の text が不正です');
+        if (!isIntBetween(item.depth, 0, LIMITS.panelMaxDepth)) return fail('項目の depth が不正です');
+        if (!isIntBetween(item.offset, 0, LIMITS.offsetMax)) return fail('項目の offset が不正です');
+        copied.push({ text: item.text, depth: item.depth, offset: item.offset });
+      }
+      if (current !== null && !isIntBetween(current, 0, copied.length - 1)) return fail('items の current が範囲外です');
+      if (empty !== null && !isText(empty, LIMITS.panelTextLength)) return fail('items の empty が不正です');
+      return { ok: true, message: { kind, plugin, panel, version, items: copied, current, empty } };
     }
     case 'call': {
       const { plugin, call, method } = data;
@@ -159,6 +218,8 @@ export const runMenuMessage = (plugin: string, req: number, item: string, path: 
   path,
   targetKind,
 });
+export const docMessage = (plugin: string, version: number, textKind: DocumentKind, text: string): MainMessage => ({ v: PROTOCOL_VERSION, kind: 'doc', plugin, version, textKind, text });
+export const selectionMessage = (plugin: string, version: number, anchor: number, head: number): MainMessage => ({ v: PROTOCOL_VERSION, kind: 'selection', plugin, version, anchor, head });
 export const resultMessage = (plugin: string, call: number, result: { readonly ok: true; readonly value: string | null } | { readonly ok: false; readonly reason: string }): MainMessage =>
   result.ok
     ? { v: PROTOCOL_VERSION, kind: 'result', plugin, call, ok: true, value: result.value }

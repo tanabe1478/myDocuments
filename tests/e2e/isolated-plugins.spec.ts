@@ -65,8 +65,8 @@ test('ショートカットで部品のコマンドが実行され、本体に�
 
 test('例外を出した部品だけが止まり、ほかの部品とアプリは動き続ける（入力・保存ができる）', async ({ page }) => {
   await open(page, ['e2e-ok', 'e2e-throws']);
-  // テスト用の 2 つの部品が動き出すのを待つ（同梱の部品 copy-path も、本番と同じく別に動いている）。
-  await expect.poll(async () => (await trace(page)).filter((e) => e.type === 'ready' && e.plugin !== 'copy-path').length).toBe(2);
+  // テスト用の 2 つの部品が動き出すのを待つ（同梱の部品 copy-path と outline も、本番と同じく別に動いている）。
+  await expect.poll(async () => (await trace(page)).filter((e) => e.type === 'ready' && e.plugin !== 'copy-path' && e.plugin !== 'outline').length).toBe(2);
 
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+Shift+X');
@@ -91,8 +91,8 @@ test('例外を出した部品だけが止まり、ほかの部品とアプリ�
 
 test('応答しない部品（無限ループ）が時間切れで止まり、その間も入力が止まらない', async ({ page }) => {
   await open(page, ['e2e-ok', 'e2e-loop'], { runTimeoutMs: 1000 });
-  // テスト用の 2 つの部品が動き出すのを待つ（同梱の部品 copy-path も、本番と同じく別に動いている）。
-  await expect.poll(async () => (await trace(page)).filter((e) => e.type === 'ready' && e.plugin !== 'copy-path').length).toBe(2);
+  // テスト用の 2 つの部品が動き出すのを待つ（同梱の部品 copy-path と outline も、本番と同じく別に動いている）。
+  await expect.poll(async () => (await trace(page)).filter((e) => e.type === 'ready' && e.plugin !== 'copy-path' && e.plugin !== 'outline').length).toBe(2);
   await page.locator('.cm-content').click();
   const start = Date.now();
   await page.keyboard.press('ControlOrMeta+Shift+M');

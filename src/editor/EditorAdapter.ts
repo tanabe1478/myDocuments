@@ -19,6 +19,11 @@ export interface EditorSelection {
  *   本文・履歴・選択範囲には触れない。setText で文書を読み込み直しても、現在の値で始まる。登録のない key は無視する。
  * - setTextKind は表示だけを変える（markdown: 本体が Markdown の言語を入れる。見た目は部品が付ける。plain: 素のテキスト。空行の高さだけ付く）。本文・履歴・選択範囲には触れない。
  *   setText で文書を読み込み直しても、種類は保たれる。種類を知る部品の拡張（dependsOnTextKind の登録）は、種類が変わると作り直される。
+ * - goToLineStart は、本文の位置（UTF-16 のオフセット）の行の先頭へカーソルを移し（範囲選択は解く）、その行が見える位置までスクロールし、
+ *   本文にフォーカスを戻す。位置は本文の長さに収める（範囲外でも例外にしない）。本文は変えず、履歴に残さない。
+ *   部品（src/plugin-api/）には、この操作を渡さない（部品はカーソルを動かせない。パネルの項目を押したときだけ、本体が呼ぶ）。
+ * - isComposing は IME の変換中か。本文を部品に届ける時機を決めるために、本体が読む。
+ * - getSelection は今の選択（本文の上の UTF-16 のオフセット）。
  * - setBottomInset は本文のレイアウトを変えない。スクロールの余白（カーソル行を表示領域の端から離す距離）だけを変える。
  */
 export interface EditorAdapter {
@@ -28,6 +33,12 @@ export interface EditorAdapter {
   onChange(cb: (text: string) => void): () => void;
   onSelectionChange(cb: (selection: EditorSelection) => void): () => void;
   focus(): void;
+  /** 位置の行の先頭へカーソルを移し、表示し、本文にフォーカスを戻す。 */
+  goToLineStart(offset: number): void;
+  /** IME の変換中か。 */
+  isComposing(): boolean;
+  /** 今の選択。 */
+  getSelection(): EditorSelection;
   /** 部品が登録した設定の値。 */
   setPluginSetting(key: string, value: unknown): void;
   /** 本文の表示の種類。.txt と .text は plain（Markdown の装飾を付けない）。 */

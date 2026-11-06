@@ -143,6 +143,43 @@ export function judge({ canary, net, report, clipboard = [], permissionsFile = n
     status: bundledReport?.status ?? null,
   };
   const bundledOk = bundled.ready && bundled.commands.includes('copy-path.copy-current-path') && bundled.menuItems.includes('copy-path.copy-path') && bundled.status === 'active';
+  // ---- R7: パネルと本文の API ----
+  // 不正な形の項目、頻度の上限、カーソルを動かそうとするメッセージは、仲介が部品を止める。document.read を宣言した部品にだけ本文が届く。
+  const r7BadIds = ['probe-panel-bad-items', 'probe-panel-unregistered', 'probe-panel-flood', 'probe-panel-move'];
+  const r7Bad = r7BadIds.map((id) => {
+    const r = workerReports.find((x) => x.plugin === id);
+    return { plugin: id, stoppedReason: r?.stopped ?? null, stoppedByRelay: Boolean(r && typeof r.stopped === 'string' && r.stopped.includes('不正なメッセージ')) };
+  });
+  const docDeclared = parseStop(workerReports.find((x) => x.plugin === 'probe-doc-declared'));
+  const docUndeclared = parseStop(workerReports.find((x) => x.plugin === 'probe-doc-undeclared'));
+  const outlineReport = reports.find((r) => r.ev === 'bundled-outline');
+  const r7 = {
+    badCalls: r7Bad,
+    declaredGotDocument: docDeclared ? { docs: docDeclared.docs, sels: docDeclared.sels, kinds: docDeclared.kinds } : null,
+    undeclaredGotDocument: docUndeclared ? { docs: docUndeclared.docs, sels: docUndeclared.sels } : null,
+    outline: {
+      ready: Boolean(outlineReport && outlineReport.events.includes('ready')),
+      panels: outlineReport?.panels ?? [],
+      status: outlineReport?.status ?? null,
+      docDeliveredWhileHidden: outlineReport ? outlineReport.events.filter((e) => e === 'doc').length : null,
+    },
+  };
+  const r7Ok = {
+    declaredGotDocument: Boolean(docDeclared && docDeclared.docs >= 1 && docDeclared.kinds.every((k) => k.endsWith(':string'))),
+    undeclaredGotNothing: Boolean(docUndeclared && docUndeclared.docs === 0 && docUndeclared.sels === 0),
+    outlineOk: r7.outline.ready && r7.outline.panels.includes('outline.outline') && r7.outline.status === 'active',
+    outlineHiddenNoDoc: r7.outline.docDeliveredWhileHidden === 0,
+  };
+  const r7Failures = [
+    ...(docUndeclared && !r7Ok.undeclaredGotNothing ? ['document.read を宣言していない部品に、本文またはカーソルの位置が届いた'] : []),
+    ...(outlineReport && !r7Ok.outlineHiddenNoDoc ? ['パネルが見えていない（サイドバーが閉じている）のに、同梱の部品に本文が届いた'] : []),
+  ];
+  const r7Incomplete = [
+    ...r7Bad.filter((b) => !b.stoppedByRelay).map((b) => `R7 の不正な呼び出し（${b.plugin}）が、部品を止めたと確認できない`),
+    ...(!r7Ok.declaredGotDocument ? ['document.read を宣言した部品に本文が届いた（対照）と確認できない'] : []),
+    ...(docUndeclared === null ? ['document.read を宣言していない部品の試験が報告されていない'] : []),
+    ...(!r7Ok.outlineOk ? ['同梱の部品（アウトライン）が、本物の plug: の上で ready になり、パネルを登録したと確認できない'] : []),
+  ];
   const clipboardControlReached = clipboard.some((l) => l.includes(CLIPBOARD_CONTROL));
   const clipboardOther = clipboard.filter((l) => !l.includes(CLIPBOARD_CONTROL));
   const r6 = {
@@ -169,14 +206,14 @@ export function judge({ canary, net, report, clipboard = [], permissionsFile = n
     ...(!clipboardControlReached ? ['クリップボードの記録の対照（本体からの書き込み）が届いていない'] : []),
     ...(!bundledOk ? ['同梱の部品が、本物の plug: の上で ready になり、コマンドとメニューの項目を登録したと確認できない'] : []),
   ];
-  const failures = [...rows.filter((r) => r.outcome.includes('失敗')), ...r6Failures.map((m) => ({ context: 'R6', path: m }))];
+  const failures = [...rows.filter((r) => r.outcome.includes('失敗')), ...r6Failures.map((m) => ({ context: 'R6', path: m })), ...r7Failures.map((m) => ({ context: 'R7', path: m }))];
   const controlFailures = rows.filter((r) => r.key === 'control' && r.reached === 0);
   const keyedReached = rows.filter((r) => r.outcome.includes('鍵ありで届く経路'));
   const postFailures = postRows.filter((r) => !r.rejectedByRelay);
   const broadcastHeard = broadcast ? broadcast.heardInMainPage : null;
   const complete = done && Boolean(control) && Boolean(control.keyCaptured) && broadcastHeard !== null;
-  const verdict = failures.length > 0 ? 'FAIL' : !complete || controlFailures.length > 0 || r6Incomplete.length > 0 ? 'INCOMPLETE' : 'PASS';
-  return { verdict, complete, keyCaptured: control?.keyCaptured ?? null, r6, r6Incomplete, rows, postRows, postFailures: postFailures.length, broadcastHeardInMainPage: broadcastHeard, failures: failures.map((r) => `${r.context} / ${r.path}`), keyedReached: keyedReached.map((r) => `${r.context} / ${r.path}`), controlFailures: controlFailures.map((r) => r.path), selfReport: { control, workers: workerReports, relayContext: reports.find((r) => r.ev === 'relay-context') ?? null } };
+  const verdict = failures.length > 0 ? 'FAIL' : !complete || controlFailures.length > 0 || r6Incomplete.length > 0 || r7Incomplete.length > 0 ? 'INCOMPLETE' : 'PASS';
+  return { verdict, complete, keyCaptured: control?.keyCaptured ?? null, r6, r6Incomplete, r7, r7Incomplete, rows, postRows, postFailures: postFailures.length, broadcastHeardInMainPage: broadcastHeard, failures: failures.map((r) => `${r.context} / ${r.path}`), keyedReached: keyedReached.map((r) => `${r.context} / ${r.path}`), controlFailures: controlFailures.map((r) => r.path), selfReport: { control, workers: workerReports, relayContext: reports.find((r) => r.ev === 'relay-context') ?? null } };
 }
 
 function markdown(j) {
@@ -193,6 +230,15 @@ function markdown(j) {
   lines.push(`- 未決の権限の呼び出し: 確認の画面が出た ${r6.undecided.dialogShown}（部品 ${r6.undecided.dialogPlugin}、権限 ${JSON.stringify(r6.undecided.dialogPermissions)}）。権限の保存ファイル（plugin-permissions.json）: ${r6.permissionsFileExists ? 'できた（失敗）' : 'できていない（自動では許可されていない）'}`);
   lines.push(`- 同梱の部品（本物の plug: と relay.js の上）: ready ${r6.bundled.ready}、コマンド ${JSON.stringify(r6.bundled.commands)}、メニューの項目 ${JSON.stringify(r6.bundled.menuItems)}、状態 ${r6.bundled.status}`);
   if (j.r6Incomplete.length > 0) lines.push('', `未確認（INCOMPLETE の理由）: ${JSON.stringify(j.r6Incomplete)}`);
+  if (j.r7) {
+    lines.push('', '## R7: パネルと本文の API', '');
+    for (const b of j.r7.badCalls) lines.push(`- 不正な呼び出し（${b.plugin}）: ${b.stoppedByRelay ? '部品を止めた' : '止めていない'}（${b.stoppedReason ?? 'なし'}）`);
+    lines.push(`- document.read を宣言した部品（対照）が受け取った本文: ${JSON.stringify(j.r7.declaredGotDocument)}`);
+    lines.push(`- document.read を宣言していない部品が受け取った本文: ${JSON.stringify(j.r7.undeclaredGotDocument)}（0 のはず）`);
+    lines.push(`- 同梱の部品（アウトライン。本物の plug: の上）: ready ${j.r7.outline.ready}、パネル ${JSON.stringify(j.r7.outline.panels)}、状態 ${j.r7.outline.status}、サイドバーが閉じている間に届いた本文 ${j.r7.outline.docDeliveredWhileHidden} 件（0 のはず）`);
+    if (j.r7Incomplete.length > 0) lines.push('', `未確認（INCOMPLETE の理由。R7）: ${JSON.stringify(j.r7Incomplete)}`);
+    lines.push('');
+  }
   lines.push('');
   return `${lines.join('\n')}\n`;
 }

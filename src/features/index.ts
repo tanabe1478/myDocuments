@@ -3,6 +3,7 @@ import { copyPathPlugin } from './copy-path';
 import { focusPlugin } from './focus';
 import { listContinuationPlugin } from './list-continuation';
 import { markdownPlugin } from './markdown';
+import { outlinePlugin } from './outline';
 import { typewriterPlugin } from './typewriter';
 
 /**
@@ -15,7 +16,8 @@ import { typewriterPlugin } from './typewriter';
 export const bundledPlugins: readonly Plugin[] = [markdownPlugin, focusPlugin, listContinuationPlugin, typewriterPlugin];
 
 /**
- * 同梱の段 2（隔離した操作）の部品の一覧。Worker で動き、権限を宣言する（初回に、本体が確認の画面で聞く）。
+ * 同梱の段 2（隔離した操作）の部品の一覧。Worker で動き、権限を宣言する（確認の要る権限は、初回に、本体が確認の画面で聞く。
+ * 宣言だけで使える権限は、確認なし）。
  * ホストは、この一覧からだけ読み込む。段 3 の部品（bundledPlugins）とは別の配列（読み込み方が違う）。
  */
-export const bundledActionPlugins: readonly ActionPlugin[] = [copyPathPlugin];
+export const bundledActionPlugins: readonly ActionPlugin[] = [copyPathPlugin, outlinePlugin];

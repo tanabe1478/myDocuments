@@ -1,5 +1,5 @@
-import type { IsolatedCall, IsolatedCallResult, IsolatedPluginHost, IsolatedPluginListener, IsolatedRun, MenuTarget } from '../plugin-api';
-import { LIMITS, parseRelayMessage, resultMessage, runMenuMessage, runMessage, startMessage, stopMessage, type MainMessage } from './protocol';
+import type { DocumentSnapshot, IsolatedCall, IsolatedCallResult, IsolatedPluginHost, IsolatedPluginListener, IsolatedRun, MenuTarget, SelectionSnapshot } from '../plugin-api';
+import { LIMITS, docMessage, parseRelayMessage, resultMessage, runMenuMessage, runMessage, selectionMessage, startMessage, stopMessage, type MainMessage } from './protocol';
 
 /** 本体が持つ、仲介の iframe への入口。DOM の実装は domFrame.ts。単体テストでは偽物を渡す。 */
 export interface FrameHandle {
@@ -16,6 +16,11 @@ export type HostTrace =
   | { readonly type: 'command'; readonly plugin: string; readonly command: string }
   | { readonly type: 'menu'; readonly plugin: string; readonly item: string }
   | { readonly type: 'ready'; readonly plugin: string }
+  /** R7: パネルの登録、項目の受け取り（count は項目の数）、本文とカーソルの位置を部品に届けた（length は本文の長さ）。 */
+  | { readonly type: 'panel'; readonly plugin: string; readonly panel: string }
+  | { readonly type: 'items'; readonly plugin: string; readonly panel: string; readonly version: number; readonly count: number }
+  | { readonly type: 'doc'; readonly plugin: string; readonly version: number; readonly kind: 'markdown' | 'plain'; readonly length: number }
+  | { readonly type: 'selection'; readonly plugin: string; readonly version: number; readonly anchor: number; readonly head: number }
   /** 部品が本体の機能を呼んだ（method は clipboardWriteText か currentPath）と、その結果を返した。 */
   | { readonly type: 'call'; readonly plugin: string; readonly method: IsolatedCall['method']; readonly call: number }
   | { readonly type: 'result'; readonly plugin: string; readonly method: IsolatedCall['method']; readonly call: number; readonly ok: boolean }
@@ -60,6 +65,10 @@ interface Slot {
   state: 'starting' | 'ready' | 'stopped';
   readonly commands: Set<string>;
   readonly menus: Set<string>;
+  /** 登録したパネルの id。 */
+  readonly panels: Set<string>;
+  /** panel.setItems を受け取った時刻（頻度の上限の検査用。window より古いものは捨てる）。 */
+  readonly itemTimes: number[];
   readonly pending: Map<number, { readonly command: string; readonly timeout: Timeout; readonly settle: () => void }>;
   /** 結果待ちの呼び出し（部品の中の番号 → 呼び出しの種類）。 */
   readonly calls: Map<number, IsolatedCall['method']>;
@@ -234,6 +243,35 @@ export function createWorkerHost(options: WorkerHostOptions): IsolatedPluginHost
         }
         return;
       }
+      case 'panel': {
+        if (slot.state !== 'starting') return violation(slot, '部品のコードの最初の実行のあとに、パネルを登録しようとしました');
+        if (slot.panels.has(message.id)) return violation(slot, `panel の id「${message.id}」が重なっています`);
+        if (slot.panels.size >= LIMITS.panelsPerPlugin) return violation(slot, 'パネルが多すぎます');
+        if (!slot.listener.onPanel) return violation(slot, 'パネルは、この環境では使えません');
+        slot.panels.add(message.id);
+        trace({ type: 'panel', plugin: slot.id, panel: message.id });
+        try {
+          slot.listener.onPanel({ id: message.id, title: message.title });
+        } catch (error) {
+          stopSlot(slot, error instanceof Error ? error.message : String(error), true);
+        }
+        return;
+      }
+      case 'items': {
+        if (!slot.panels.has(message.panel)) return violation(slot, '登録していないパネルの items です');
+        // 頻度の上限。入力のたびに送り続ける部品を止める。
+        const now = Date.now();
+        while (slot.itemTimes.length > 0 && now - slot.itemTimes[0]! >= LIMITS.setItemsWindowMs) slot.itemTimes.shift();
+        if (slot.itemTimes.length >= LIMITS.setItemsPerWindow) return violation(slot, 'setItems が多すぎます');
+        slot.itemTimes.push(now);
+        trace({ type: 'items', plugin: slot.id, panel: message.panel, version: message.version, count: message.items.length });
+        try {
+          slot.listener.onItems?.({ panel: message.panel, version: message.version, items: message.items, current: message.current, empty: message.empty });
+        } catch (error) {
+          stopSlot(slot, error instanceof Error ? error.message : String(error), true);
+        }
+        return;
+      }
       case 'call': {
         if (slot.calls.has(message.call)) return violation(slot, '結果待ちの番号と重なった call です');
         if (slot.calls.size >= LIMITS.pendingCalls) return violation(slot, '結果待ちの呼び出しが多すぎます');
@@ -303,7 +341,7 @@ export function createWorkerHost(options: WorkerHostOptions): IsolatedPluginHost
       if (slots.has(id)) throw new Error(`部品「${id}」は起動済みです`);
       if (source.length > LIMITS.sourceLength) throw new Error('部品のコードが大きすぎます');
       ensureFrame();
-      const slot: Slot = { id, listener, state: 'starting', commands: new Set(), menus: new Set(), pending: new Map(), calls: new Map(), activate: null, suspended: 0 };
+      const slot: Slot = { id, listener, state: 'starting', commands: new Set(), menus: new Set(), panels: new Set(), itemTimes: [], pending: new Map(), calls: new Map(), activate: null, suspended: 0 };
       slots.set(id, slot);
       slot.activate = armTimeout(slot, activateTimeoutMs, () => {
         slot.activate = null;
@@ -335,6 +373,23 @@ export function createWorkerHost(options: WorkerHostOptions): IsolatedPluginHost
       trace({ type: 'run', plugin: id, command: label, req });
       post(runMenuMessage(id, req, itemId, target.path, target.kind));
       return run;
+    },
+
+    deliverDocument(id, document: DocumentSnapshot) {
+      const slot = slots.get(id);
+      if (!slot || slot.state !== 'ready') return false;
+      if (document.text.length > LIMITS.documentTextLength) return false;
+      trace({ type: 'doc', plugin: id, version: document.version, kind: document.kind, length: document.text.length });
+      post(docMessage(id, document.version, document.kind, document.text));
+      return true;
+    },
+
+    deliverSelection(id, selection: SelectionSnapshot) {
+      const slot = slots.get(id);
+      if (!slot || slot.state !== 'ready') return false;
+      trace({ type: 'selection', plugin: id, version: selection.version, anchor: selection.anchor, head: selection.head });
+      post(selectionMessage(id, selection.version, selection.anchor, selection.head));
+      return true;
     },
 
     suspendTimeouts(id) {

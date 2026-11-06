@@ -30,7 +30,10 @@ export class FakeWorker {
   }
 }
 
-export function bootRelay() {
+/**
+ * @param now 仲介が時刻を読む Date.now の代わり（setItems の頻度の上限の窓を、テストが進める）。省略は本物の Date。
+ */
+export function bootRelay(now?: () => number) {
   FakeWorker.all = [];
   const blobs = new Map<string, unknown[]>();
   const toMain: unknown[] = [];
@@ -51,6 +54,7 @@ export function bootRelay() {
       },
       revokeObjectURL: () => {},
     },
+    ...(now ? { Date: { now } } : {}),
     Map,
     Set,
     Object,
