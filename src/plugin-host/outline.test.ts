@@ -6,7 +6,6 @@ import { inWorker, settle } from './relayHarness';
 // 見出しの抽出は、部品の公開 API（api.document.onDidChange）に本文を渡し、api.registerPanel の panel.setItems に出る項目で確かめる。
 
 const SOURCE = readFileSync(new URL('../features/outline/worker.js', import.meta.url), 'utf8');
-const LONGFORM = readFileSync(new URL('../../phase0/fixtures/perf/C-1mb-longform.md', import.meta.url), 'utf8');
 
 type Posted = Record<string, unknown>;
 interface Item {
@@ -213,17 +212,89 @@ describe('the part code is a plain script that only uses the public API', () => 
   });
 });
 
-describe('a 1 MB document (the C fixture)', () => {
-  it('is read in the Worker without trouble: 7 chapters, offsets that point at the heading lines, in a short time', async () => {
-    expect(LONGFORM.length).toBeGreaterThan(400_000);
+interface BuiltHeading {
+  text: string;
+  depth: number;
+  line: string;
+}
+
+const MIN_BYTES = 1_048_576;
+
+/**
+ * 1 MB 以上（UTF-8）の Markdown を、乱数も日時も使わずに組み立てる。git に入っていないファイルには頼らない。
+ * 章（#）、節（##）、小節（###）、一部の小節の下の項（####）と、# で始まる行を含むフェンスのコードブロックを持つ。
+ */
+function buildLongform(): { text: string; headings: BuiltHeading[] } {
+  const sentences = [
+    '静かな朝に、机の上のノートを開いて、昨日の続きを一行ずつ書き足していく。',
+    '長い文章は、一度に書き上げるよりも、小さな段落を積み重ねるほうが崩れにくい。',
+    '見出しは地図のようなもので、全体のどこにいるのかを、書いている本人にも教えてくれる。',
+    '推敲のたびに言葉の順序を入れ替えて、読み手の息継ぎの位置を確かめる。',
+  ];
+  const chunks: string[] = [];
+  const headings: BuiltHeading[] = [];
+  const heading = (depth: number, text: string) => {
+    const line = `${'#'.repeat(depth + 1)} ${text}`;
+    headings.push({ text, depth, line });
+    chunks.push(`${line}\n\n`);
+  };
+  const paragraph = (seed: number) => {
+    const body = Array.from({ length: 4 + (seed % 3) }, (_, k) => sentences[(seed + k) % sentences.length]).join('');
+    chunks.push(`${body}\n\n`);
+  };
+  const codeBlock = (seed: number) => {
+    chunks.push(['```sh', `# 手順 ${seed}`, '## 実行', 'echo "# not a heading"', '```', '', ''].join('\n'));
+  };
+
+  const CHAPTERS = 7;
+  const SECTIONS = 8;
+  const SUBSECTIONS = 3;
+  const PARAGRAPHS = 12;
+  let seed = 0;
+  for (let c = 1; c <= CHAPTERS; c++) {
+    heading(0, `第${c}章 長い文章の書き方`);
+    paragraph(seed++);
+    for (let s = 1; s <= SECTIONS; s++) {
+      heading(1, `${c}.${s} 節の見出し`);
+      for (let u = 1; u <= SUBSECTIONS; u++) {
+        heading(2, `${c}.${s}.${u} 小節の見出し`);
+        for (let p = 0; p < PARAGRAPHS; p++) {
+          paragraph(seed++);
+          if (p === PARAGRAPHS / 2) codeBlock(seed);
+        }
+        if (u === 2) {
+          heading(3, `${c}.${s}.${u} 項の見出し`);
+          paragraph(seed++);
+        }
+      }
+    }
+  }
+  return { text: chunks.join(''), headings };
+}
+
+describe('a document of 1 MB or more, built in the test', () => {
+  it('is read in the Worker without trouble: every heading counted (not the # lines in code blocks), offsets that point at the heading lines, in a short time', async () => {
+    const { text, headings: built } = buildLongform();
+    expect(Buffer.byteLength(text, 'utf8')).toBeGreaterThanOrEqual(MIN_BYTES);
+    // 組み立てが、見出しの深さを混ぜ、# で始まるコードブロック内の行を持ち、上限（1000 項目）に当たらないことの前提。
+    expect(new Set(built.map((h) => h.depth))).toEqual(new Set([0, 1, 2, 3]));
+    expect(text).toContain('\n# 手順 ');
+    expect(built.length).toBeGreaterThan(7);
+    expect(built.length).toBeLessThan(1000);
+
     const w = start();
     const t0 = performance.now();
-    w.deliver({ kind: 'doc', version: 1, textKind: 'markdown', text: LONGFORM });
+    w.deliver({ kind: 'doc', version: 1, textKind: 'markdown', text });
     const compute = performance.now() - t0;
     await settle();
-    const message = lastItems(w);
-    expect(message.items.length).toBeGreaterThanOrEqual(7);
-    for (const item of message.items) expect(LONGFORM.slice(item.offset, item.offset + item.depth + 2)).toBe(`${'#'.repeat(item.depth + 1)} `);
+    const { items } = lastItems(w);
+    expect(items).toHaveLength(built.length);
+    items.forEach((item, i) => {
+      const expected = built[i]!;
+      expect({ text: item.text, depth: item.depth }, `heading ${i}`).toEqual({ text: expected.text, depth: expected.depth });
+      expect(text.startsWith(expected.line, item.offset), `offset of heading ${i}`).toBe(true);
+      expect(item.offset === 0 || text[item.offset - 1] === '\n', `offset of heading ${i} is at a line start`).toBe(true);
+    });
     // 目安（機械による）: 数十 ms。厳しく縛らず、桁が外れていないことだけを見る。計算は Worker の中で、本体の入力は待たない。
     expect(compute).toBeLessThan(500);
   });
