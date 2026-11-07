@@ -4,7 +4,7 @@ import { App } from './App';
 import { bundledActionPlugins, bundledPlugins } from './features';
 import { loadIsolatedPlugins } from './isolated-plugins';
 import { createPluginRegistry } from './plugin-api';
-import { createIsolatedPluginHost, pluginHostUrl } from './plugin-host';
+import { createIsolatedPluginHost } from './plugin-host';
 import { applyPreferences } from './preferences/apply';
 import { DEFAULT_PREFERENCES, normalizePreferences } from './preferences/preferences';
 import { createBridge } from './platform';
@@ -22,7 +22,6 @@ async function bootstrap(): Promise<void> {
   const isolation =
     actionPlugins.length > 0
       ? createIsolatedPluginHost({
-          hostUrl: pluginHostUrl(),
           ...(isolated.activateTimeoutMs !== undefined ? { activateTimeoutMs: isolated.activateTimeoutMs } : {}),
           ...(isolated.runTimeoutMs !== undefined ? { runTimeoutMs: isolated.runTimeoutMs } : {}),
           ...(isolated.trace ? { trace: isolated.trace } : {}),

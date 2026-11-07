@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
  * - ホストのファイルに、同梱の段 2 の部品「アウトライン」の名前が出てこない。部品のフォルダは、公開 API と自分の worker.js だけを import する。
  * - パネルの描画は、部品の文字列を HTML として解釈しない。
  * - 部品はカーソルを動かせない（移動を頼むメッセージも API もない）。
- * - 新しい iframe、plug: の新しいファイル、本体の CSP の変更がない。
+ * - 新しい iframe がない（R8 で、仲介は srcdoc になり、独自プロトコル plug: はなくなった。本体の CSP の全指令は architecture.test.ts）。
  */
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -122,19 +122,17 @@ describe('a part cannot move the cursor', () => {
   });
 });
 
-describe('no new iframe, no new plug: file, no change of the main CSP', () => {
+describe('no new iframe, and the isolated stage still has the one relay page', () => {
   it('src/plugin-host/ still has exactly host.html and relay.js as non-TypeScript files, and creates the one iframe', () => {
     expect(readdirSync(path.join(ROOT, 'src/plugin-host')).filter((n) => !/\.ts$/.test(n)).sort()).toEqual(['host.html', 'relay.js']);
     const iframes = listFiles('src').filter((f) => /\.(ts|tsx)$/.test(f) && !/\.test\.tsx?$/.test(f) && /createElement\(\s*['"]iframe['"]/.test(read(f)));
     expect(iframes.sort()).toEqual(['src/plugin-host/domFrame.ts', 'src/isolated-plugins/probe.ts'].sort());
   });
 
-  it('plug.rs serves the same two files, and tauri.conf.json’s CSP keeps its R5 value', () => {
-    const plug = read('src-tauri/src/plug.rs');
-    expect(plug).toContain('("/host.html", "text/html; charset=utf-8", HOST_HTML)');
-    expect(plug).toContain('("/relay.js", "text/javascript; charset=utf-8", RELAY_JS)');
+  it('tauri.conf.json’s CSP keeps script-src \'self\' (R8 added only worker-src blob: and narrowed frame-src to none)', () => {
     const conf = JSON.parse(read('src-tauri/tauri.conf.json')) as { app: { security: { csp: string } } };
-    expect(conf.app.security.csp).toContain("frame-src plug:");
+    expect(conf.app.security.csp).toContain("frame-src 'none'");
+    expect(conf.app.security.csp).toContain("worker-src blob:");
     expect(conf.app.security.csp).toContain("script-src 'self'");
   });
 });

@@ -1,5 +1,6 @@
 import { PLUGIN_API_VERSION, type ActionPlugin, type PluginRegistry } from '../plugin-api';
 import type { HostTrace } from '../plugin-host';
+import probeFrameHtml from './probe-frame.html?raw';
 
 /**
  * 隔離の検証用（ADR-005 の R5「R5 で確かめた隔離」）。VITE_ISOLATION_PROBE=1 のビルドと、Cargo の feature isolation-probe を
@@ -11,14 +12,17 @@ import type { HostTrace } from '../plugin-host';
  *  (3) Worker から 127.0.0.1 の受け口への fetch、XHR、WebSocket、importScripts、入れ子の Worker。
  *  (4) Worker から仲介への、決めていない形のメッセージ（仲介が止める）。
  *  (5) 鍵が漏れたと仮定して、本体が鍵を部品に渡した場合の (2) と (3)。
- *  (6) 仲介の iframe と同じ条件の文脈（probe-frame）から、鍵ありの webkit.messageHandlers.ipc.postMessage などが届くか。
+ *  (6) 仲介の iframe と同じ条件の文脈（probe-frame。sandbox の srcdoc の iframe。R8 で plug: から移した）から、鍵ありの
+ *      webkit.messageHandlers.ipc.postMessage などが届くか。R8 では、届かないことを確かめる（届いたら失敗）。
+ *  (6b) R8: その文脈が自分の iframe を別の URL（本体のページ、plug:、data:、blob:）へ移す経路と、子の iframe を作る経路。移った先で鍵ありの
+ *      postMessage が届くかの記録。
  *  (7) R6: 権限の API。宣言していない権限の API の呼び出し（確認なしで拒否される）、不正な形の呼び出し（部品が止まる）、
  *      未決の権限の呼び出し（確認の画面が出て、自動では許可されない。この検証は、確認の画面を答えるコードを持たない）。
  *      クリップボードへの書き込みは、この検証用のビルドでは記録（clipboard.log）に差し替わっていて、OS のクリップボードには書かない。
- *  (8) R6: 同梱の部品が、本物の plug: と relay.js の上で動き、コマンドとメニューの項目を登録したこと。
+ *  (8) R6: 同梱の部品が、本物の relay.js（srcdoc の仲介の iframe）の上で動き、コマンドとメニューの項目を登録したこと。
  *  (9) R7: パネルと本文の API。不正な形の項目（深さ、登録していないパネル）、頻度の上限（setItems の連打）、カーソルを動かそうとするメッセージ
  *      （どれも、仲介が部品を止める）。権限 document.read を宣言した部品にだけ本文が届き、宣言していない部品には届かないこと。
- *      同梱の部品（アウトライン）が、本物の plug: の上でパネルを登録したこと（パネルは見えていないので、本文は届かない）。
+ *      同梱の部品（アウトライン）が、本物の relay.js の上でパネルを登録したこと（パネルは見えていないので、本文は届かない）。
  * 届いたかの判定は、ネイティブ側の記録（canary.log）と 127.0.0.1 の受け口の記録で行う（このファイルが送る自己申告は参考）。
  * 比較のために、本体（鍵を持つ側）からの呼び出しも記録する（対照）。
  */
@@ -227,7 +231,7 @@ export async function createProbe(): Promise<ProbeSetup> {
   const plugins: ActionPlugin[] = probePlugins.map((p, i) => ({ ...p, source: PARTS[i]!.source({ net, key }) }));
   const stops = new Map<string, string>();
   const waiting = new Map<string, () => void>();
-  /** 同梱の部品について、本体の側で見えた出来事（本物の plug: と relay.js の上で起動したことの確認）。 */
+  /** 同梱の部品について、本体の側で見えた出来事（本物の relay.js の上で起動したことの確認）。 */
   const bundledEvents: string[] = [];
   /** 同梱の部品（アウトライン。R7）について、本体の側で見えた出来事。 */
   const outlineEvents: string[] = [];
@@ -268,13 +272,55 @@ export async function createProbe(): Promise<ProbeSetup> {
         }
       };
       window.addEventListener('message', onMessage);
-      frame.src = pluginHostFrameUrl();
+      frame.srcdoc = probeFrameHtml;
+      document.body.appendChild(frame);
+    });
+
+  /**
+   * R8: 仲介と同じ条件の文脈（srcdoc の sandbox の iframe）が、自分を別の URL へ移す（self）、子の iframe を作る（child）経路。
+   * 1 回の試験ごとに新しい文脈を作る（移れたら、その文脈のコードは失われる）。移った先で動くコード（data: と blob: の本文）は、
+   * 鍵ありの postMessage を試し、着いたことを top（この窓）へ知らせる。届いたかの判定は canary.log（id は nav-<mode>-<dest>:postmessage-key）。
+   */
+  const runNav = (mode: 'self' | 'child', dest: 'tauri' | 'plug' | 'data' | 'blob'): Promise<Record<string, unknown>> =>
+    new Promise((resolve) => {
+      const id = `nav-${mode}-${dest}`;
+      const out: Record<string, unknown> = { id, mode, dest, loadEvents: 0, hello: false, landed: null, frameReport: null, mainViolations: [] as string[] };
+      // 本体の窓の CSP の違反（自分を移す経路は、子の iframe の持ち主である本体の frame-src で止まるはず）。
+      const onViolation = (e: SecurityPolicyViolationEvent) => (out.mainViolations as string[]).push(`${e.violatedDirective}:${String(e.blockedURI).slice(0, 24)}`);
+      document.addEventListener('securitypolicyviolation', onViolation);
+      const frame = document.createElement('iframe');
+      frame.setAttribute('sandbox', 'allow-scripts');
+      frame.style.cssText = 'position:absolute;width:0;height:0;border:0;left:-9999px';
+      frame.addEventListener('load', () => {
+        out.loadEvents = (out.loadEvents as number) + 1;
+      });
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        window.removeEventListener('message', onMessage);
+        document.removeEventListener('securitypolicyviolation', onViolation);
+        frame.remove();
+        resolve(out);
+      };
+      const onMessage = (e: MessageEvent) => {
+        const d = e.data as { kind?: string; id?: string };
+        if (d?.kind === 'probe-landed' && d.id === id) out.landed = d;
+        else if (e.source === frame.contentWindow && d?.kind === 'probe-hello') {
+          out.hello = true;
+          frame.contentWindow!.postMessage({ kind: 'probe-nav', mode, dest, key, origin: location.origin }, '*');
+          setTimeout(finish, 4500);
+        } else if (e.source === frame.contentWindow && d?.kind === 'probe-nav-report' && d.id === id) out.frameReport = d;
+      };
+      window.addEventListener('message', onMessage);
+      setTimeout(finish, 12000);
+      frame.srcdoc = probeFrameHtml;
       document.body.appendChild(frame);
     });
 
   const afterBoot = (registry: PluginRegistry): void => {
     void (async () => {
-      // 同梱の部品（R6）が、本物の plug: と relay.js の上で、コマンドとメニューの項目を登録し、ready になったか。
+      // 同梱の部品（R6）が、本物の relay.js の上で、コマンドとメニューの項目を登録し、ready になったか。
       for (let i = 0; i < 100 && !bundledEvents.includes('ready'); i++) await new Promise((r) => setTimeout(r, 100));
       await report({
         ev: 'bundled',
@@ -328,21 +374,23 @@ export async function createProbe(): Promise<ProbeSetup> {
         dialogPermissions: Array.from(dialog?.querySelectorAll('[data-permission]') ?? []).map((li) => li.getAttribute('data-permission')),
         status: registry.records.find((r) => r.id === 'probe-undecided')?.status ?? null,
       });
-      // 同梱の部品の未決の呼び出し（本物の plug: の上。確認の画面は上の部品が出しているので、順番を待つ）。これも、書かれない。
+      // 同梱の部品の未決の呼び出し（本物の relay.js の上。確認の画面は上の部品が出しているので、順番を待つ）。これも、書かれない。
       registry.commands.find((c) => c.id === 'copy-path.copy-current-path')?.run({} as never);
       await new Promise((r) => setTimeout(r, 1500));
-      // 仲介の iframe と同じ条件の文脈（probe-frame）から。
+      // 仲介の iframe と同じ条件の文脈（probe-frame。srcdoc）から。
       const frameResults = await runFrame();
       await report({ ev: 'relay-context', results: frameResults });
+      await new Promise((r) => setTimeout(r, 1500));
+      // R8: その文脈が自分を別の URL へ移す経路と、子の iframe を作る経路（本体のページ、plug:、data:、blob:）。
+      const navResults: Record<string, unknown>[] = [];
+      for (const mode of ['self', 'child'] as const) {
+        for (const dest of ['tauri', 'plug', 'data', 'blob'] as const) navResults.push(await runNav(mode, dest));
+      }
+      await report({ ev: 'nav', results: navResults });
       await new Promise((r) => setTimeout(r, 1500));
       await report({ ev: 'done' });
     })();
   };
 
   return { plugins, trace, afterBoot };
-}
-
-/** 仲介の iframe と同じ条件の、検証用のページ（plug.rs が feature のときだけ返す）。 */
-function pluginHostFrameUrl(): string {
-  return /Windows/i.test(navigator.userAgent) ? 'http://plug.localhost/probe-frame.html' : 'plug://localhost/probe-frame.html';
 }

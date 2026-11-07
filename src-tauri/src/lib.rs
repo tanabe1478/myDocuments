@@ -6,7 +6,6 @@ mod entries;
 mod error;
 mod external;
 mod folders;
-mod plug;
 mod plugin_permissions;
 mod preferences;
 #[cfg(feature = "isolation-probe")]
@@ -374,8 +373,6 @@ pub fn run() {
         // リンクを開くための Rust 側の API（OpenerExt）だけを使う。JavaScript 向けのコマンドは capabilities で許可せず、
         // <a> のクリックを横取りする注入スクリプトも無効にする（開く入口は open_external_url だけ）。
         .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build())
-        // 隔離した操作の段（段 2）の Worker のホスト。決めた 2 つのファイルだけを返す（plug.rs）。
-        .register_uri_scheme_protocol("plug", |_ctx, request| plug::respond(&request))
         .manage(KnownPaths::default())
         .manage(OpenFolders::default())
         .manage(DocumentWatcher::default())
@@ -515,5 +512,35 @@ mod clipboard_acl_tests {
         let text = std::fs::read_to_string(out).unwrap();
         assert!(text.contains("allow-write-clipboard-text"));
         assert!(!text.contains("clipboard-manager"), "a clipboard-manager permission is granted to a window");
+    }
+}
+
+/// capability に `remote` の指定がないことの検査（ADR-005 の R8）。仲介の iframe は srcdoc（送り元の URL が about:srcdoc）なので、Tauri は、
+/// その送り元からのネイティブへの呼び出しをリモートの扱いにする。capability に `remote` の許可（URL の指定）があると、
+/// srcdoc の文脈が許可の対象になりうるので、ファイルにも、ビルドが出力した ACL の生成物の capability にも、ないことを確かめる。
+#[cfg(test)]
+mod no_remote_capability_tests {
+    #[test]
+    fn the_capability_file_has_no_remote() {
+        let caps: serde_json::Value = serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
+        assert!(caps.get("remote").is_none(), "capabilities/default.json must not have a remote entry");
+        assert!(caps.get("local").is_none() || caps["local"] == serde_json::json!(true));
+    }
+
+    #[test]
+    fn the_generated_capabilities_have_no_remote_entry() {
+        let out = std::path::Path::new(env!("OUT_DIR")).join("capabilities.json");
+        let text = std::fs::read_to_string(out).unwrap();
+        let all: serde_json::Value = serde_json::from_str(&text).unwrap();
+        let entries = all.as_object().expect("capabilities.json is an object keyed by capability id");
+        assert!(!entries.is_empty());
+        for (id, capability) in entries {
+            // 生成物の capability の `remote` は、空か、ない（ある場合は URL の一覧が入る）。
+            let remote = capability.get("remote");
+            assert!(
+                remote.is_none() || remote == Some(&serde_json::Value::Null),
+                "capability {id} has a remote entry: {remote:?}"
+            );
+        }
     }
 }

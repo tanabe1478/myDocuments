@@ -1,8 +1,10 @@
 /*
  * 隔離の検証用（ADR-005 の R5。feature isolation-probe のビルドだけ）。__mdeIsolationProbe
- * 仲介のページ（host.html と relay.js）と同じ条件の文脈（plug: の sandbox="allow-scripts" の iframe、同じ CSP のヘッダー）で動き、
- * 「仲介のコードが壊された場合の上限」を確かめる。本物の仲介のコードは、この検証では動かさない（部品のコードも動かない）。
+ * 仲介のページ（host.html と relay.js）と同じ条件の文脈（sandbox="allow-scripts" の srcdoc の iframe。本体の CSP を継承し、同じ meta の CSP）で動き、
+ * 「仲介のコードが壊された場合の上限」を確かめる（ADR-005 の R8）。本物の仲介のコードは、この検証では動かさない（部品のコードも動かない）。
  * 結果は本体へ postMessage で返す（自己申告。届いたかの判定は、ネイティブ側の記録と 127.0.0.1 の受け口の記録で行う）。
+ * R8: 自分を別の URL へ移す経路と、子の iframe を作る経路（probe-nav）も試す。移った先で動くコード（data: と blob: の本文）は、鍵つきの
+ * webkit.messageHandlers.ipc.postMessage を試し、着いたことを top へ知らせる。
  */
 (function () {
   'use strict';
@@ -116,6 +118,75 @@
     return Promise.all(steps);
   }
 
+  /** 移った先で動くコード。着いたことを top へ知らせ、鍵つきの postMessage を試す（届いたかは canary.log で判定する）。 */
+  function payloadHtml(id, key) {
+    var code =
+      '(function(){var r={href:String(location.href).slice(0,48),origin:String(self.origin)};' +
+      'try{var h=window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.ipc;' +
+      'if(h){h.postMessage(JSON.stringify({cmd:"isolation_probe_canary",callback:1,error:2,options:{},payload:{who:' +
+      JSON.stringify(id + ':postmessage-key') +
+      '},__TAURI_INVOKE_KEY__:' +
+      JSON.stringify(key) +
+      '}));r.posted=true}else r.posted="no-handler"}catch(e){r.posted="ERR:"+e.name}' +
+      'top.postMessage({kind:"probe-landed",id:' +
+      JSON.stringify(id) +
+      ',r:r},"*")})();';
+    return '<!doctype html><script>' + code + '<' + '/script>';
+  }
+
+  /** 移動先の URL。tauri と plug は、攻撃のコードを置けない（本体のファイルか、なくなったプロトコル）ので、URL だけ。 */
+  function destinationUrl(dest, id, key, origin) {
+    if (dest === 'tauri') return origin + '/';
+    if (dest === 'plug') return 'plug://localhost/probe-frame.html';
+    var html = payloadHtml(id, key);
+    if (dest === 'data') return 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
+    return URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+  }
+
+  /** probe-nav: mode 'self' は自分の iframe を移す（移れたら、このコードは失われる）、'child' は子の iframe を作る。 */
+  function nav(d) {
+    var id = 'nav-' + d.mode + '-' + d.dest;
+    var url;
+    try {
+      url = destinationUrl(d.dest, id, d.key, d.origin);
+    } catch (e) {
+      main.postMessage({ kind: 'probe-nav-report', id: id, error: 'url:' + e.name }, '*');
+      return;
+    }
+    var violations = [];
+    document.addEventListener('securitypolicyviolation', function (e) {
+      violations.push(e.violatedDirective + ':' + String(e.blockedURI).slice(0, 24));
+    });
+    var report = function (extra) {
+      var out = { kind: 'probe-nav-report', id: id, violations: violations };
+      for (var k in extra) out[k] = extra[k];
+      main.postMessage(out, '*');
+    };
+    try {
+      if (d.mode === 'self') {
+        window.location.href = url;
+        // 移れたら、このコードは失われ、ここは動かない。動いたなら、移動は止められた。
+        setTimeout(function () {
+          report({ stayed: true });
+        }, 2500);
+      } else {
+        var child = document.createElement('iframe');
+        child.setAttribute('sandbox', 'allow-scripts');
+        var loaded = 0;
+        child.addEventListener('load', function () {
+          loaded++;
+        });
+        child.src = url;
+        document.body.appendChild(child);
+        setTimeout(function () {
+          report({ childLoadEvents: loaded });
+        }, 2500);
+      }
+    } catch (e) {
+      report({ error: String((e && e.name) || e) });
+    }
+  }
+
   var net = '';
   window.addEventListener('message', function (event) {
     if (event.source !== main) return;
@@ -126,6 +197,8 @@
       phase1(net).then(function () {
         main.postMessage({ kind: 'probe-result', phase: 1, results: R, csp: csp }, '*');
       });
+    } else if (d.kind === 'probe-nav') {
+      nav(d);
     } else if (d.kind === 'probe-phase2') {
       phase2(d.key).then(function () {
         main.postMessage({ kind: 'probe-result', phase: 2, results: R, csp: csp }, '*');

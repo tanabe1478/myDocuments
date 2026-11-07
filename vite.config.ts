@@ -3,32 +3,45 @@ import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vitest/config';
 
 const PLUGIN_HOST_DIR = new URL('./src/plugin-host/', import.meta.url);
-const PLUGIN_HOST_FILES: Record<string, string> = { 'host.html': 'text/html; charset=utf-8', 'relay.js': 'text/javascript; charset=utf-8' };
+const PROBE_FRAME_DIR = new URL('./src/isolated-plugins/', import.meta.url);
 
 /**
- * 隔離した操作（段 2）の Worker のホスト（src/plugin-host/host.html と relay.js）を、ブラウザ版の同じオリジンの /plug/ から配信する。
- * Tauri 版は同じファイルを独自プロトコル plug: が返す（src-tauri/src/plug.rs が include_str! で埋め込む）。
- * - dev サーバー: そのまま返す。
- * - ビルド: VITE_E2E=1 のときだけ plug/ に書き出す。本番のビルドには出さない（Tauri 版は plug: から読む）。
- * ファイルは vite を通さず、元のバイト列のまま配信する（Tauri 版と同じ中身にするため）。
+ * 本体と同じオリジンの決まったパス /plugin-host/ から配信するファイル（名前 → 元のファイルと Content-Type）。
+ * 仲介の iframe は sandbox の srcdoc（中身は host.html を ?raw で取り込んだもの）で、仲介のコード relay.js だけを、ここから読む（ADR-005 の R8）。
+ * - relay.js: 本番のビルド（dist）にも、e2e のビルドにも、dev サーバーにも、同じバイト列で出す（vite を通さない）。
+ * - probe-frame.js: 隔離の検証用（VITE_ISOLATION_PROBE=1 のときだけ。本番の dist には出ない）。
  */
-function pluginHostFiles(): Plugin {
+function pluginHostFiles(): Record<string, { source: URL; type: string }> {
+  const files: Record<string, { source: URL; type: string }> = {
+    'relay.js': { source: new URL('relay.js', PLUGIN_HOST_DIR), type: 'text/javascript; charset=utf-8' },
+  };
+  if (process.env.VITE_ISOLATION_PROBE === '1') files['probe-frame.js'] = { source: new URL('probe-frame.js', PROBE_FRAME_DIR), type: 'text/javascript; charset=utf-8' };
+  return files;
+}
+
+/**
+ * 隔離した操作（段 2）の仲介のコード（src/plugin-host/relay.js）を、本体と同じオリジンの /plugin-host/relay.js から配信する。
+ * Tauri 版は dist/plugin-host/relay.js を、本体のファイルと同じ tauri: のプロトコルが返す（独自プロトコルは使わない）。
+ * - dev サーバー: そのまま返す。
+ * - ビルド: dist/plugin-host/ に、元のバイト列のまま書き出す（名前にハッシュを付けない）。
+ */
+function pluginHostPlugin(): Plugin {
+  const files = pluginHostFiles();
   return {
     name: 'plugin-host-files',
     configureServer(server) {
-      server.middlewares.use('/plug', (req, res, next) => {
+      server.middlewares.use('/plugin-host', (req, res, next) => {
         const name = (req.url ?? '').split('?')[0]?.replace(/^\//, '') ?? '';
-        const type = Object.hasOwn(PLUGIN_HOST_FILES, name) ? PLUGIN_HOST_FILES[name] : undefined;
-        if (!type) return next();
-        res.setHeader('Content-Type', type);
+        const entry = Object.hasOwn(files, name) ? files[name] : undefined;
+        if (!entry) return next();
+        res.setHeader('Content-Type', entry.type);
         res.setHeader('Cache-Control', 'no-store');
-        res.end(readFileSync(new URL(name, PLUGIN_HOST_DIR)));
+        res.end(readFileSync(entry.source));
       });
     },
     generateBundle() {
-      if (process.env.VITE_E2E !== '1') return;
-      for (const name of Object.keys(PLUGIN_HOST_FILES)) {
-        this.emitFile({ type: 'asset', fileName: `plug/${name}`, source: readFileSync(new URL(name, PLUGIN_HOST_DIR)) });
+      for (const [name, entry] of Object.entries(files)) {
+        this.emitFile({ type: 'asset', fileName: `plugin-host/${name}`, source: readFileSync(entry.source) });
       }
     },
   };
@@ -36,7 +49,7 @@ function pluginHostFiles(): Plugin {
 
 // Tauri の dev サーバーは固定ポートを期待する。
 export default defineConfig({
-  plugins: [react(), pluginHostFiles()],
+  plugins: [react(), pluginHostPlugin()],
   // VITE_E2E=1 のビルドでだけ、メモリ実装の DocumentBridge を含める（src/platform/index.ts）。
   define: {
     __E2E__: JSON.stringify(process.env.VITE_E2E === '1'),

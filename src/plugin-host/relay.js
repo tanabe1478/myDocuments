@@ -1,6 +1,6 @@
 /*
- * 仲介のコード（ADR-005 の案 2a）。Worker のホストのページ（host.html）の、iframe の主の文脈で動く。
- * 配信するファイルそのもの（vite を通さない）。Tauri 版は plug:、ブラウザ版は同じオリジンから返す。
+ * 仲介のコード（ADR-005 の案 2a）。Worker のホストのページ（host.html。sandbox の srcdoc の iframe の中身）の、iframe の主の文脈で動く。
+ * 配信するファイルそのもの（vite を通さない）。本体と同じオリジンの /plugin-host/relay.js から、本番も e2e も同じバイト列で返す（R8）。
  *
  * 役割: 本体（window.parent）から部品のコードの文字列を受け取り、blob の Worker にして動かす。本体と Worker の
  * メッセージを、決めた種類と形だけ通す。形の違うメッセージ、例外、script のエラーを出した Worker は terminate する。

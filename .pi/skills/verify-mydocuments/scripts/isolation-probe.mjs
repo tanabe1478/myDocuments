@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 隔離した操作（段 2）の隔離を、実際の Tauri の窓で確かめる（ADR-005 の「R5 で確かめた隔離」）。macOS 専用。OS へのキー入力・マウス操作は送らない。
+// 隔離した操作（段 2）の隔離を、実際の Tauri の窓で確かめる（ADR-005 の「R5 で確かめた隔離」と「R8 で確かめた隔離」）。macOS 専用。OS へのキー入力・マウス操作は送らない。
 // 使い方:
 //   node .pi/skills/verify-mydocuments/scripts/tauri.mjs build --probe        先に、検証用のビルド（feature isolation-probe）を作る
 //   node .pi/skills/verify-mydocuments/scripts/isolation-probe.mjs [--run-id <id>] [--timeout-sec 150]
@@ -14,7 +14,9 @@
 // R6 で足した経路（権限の API。ADR-005 の「R6 で確かめた隔離」）は、ネイティブ側の記録 clipboard.log（検証用のビルドでは、クリップボードへの書き込みが
 // 記録に差し替わる。OS のクリップボードには書かない）と、アプリのデータ領域の plugin-permissions.json（権限が自動で許可されていない確認）で判定する。
 // 結果: <run-dir>/evidence/isolation-probe/{judgement.json, judgement.md, canary.log, net.log, report.jsonl, tauri.log}。
-// exit code: 0 = 鍵なしで届く経路がなく、対照も届いた / 2 = 鍵なしで届く経路があった（失敗）/ 3 = 検証が完了しなかった、または対照が届かなかった。
+// R8: 仲介の iframe は srcdoc（送り元が about:srcdoc。Tauri の ACL ではリモートの扱い）。仲介と同じ条件の文脈から鍵ありで届く経路も、失敗にする。
+// その文脈が自分を別の URL（本体のページ、plug:、data:、blob:）へ移す経路と、子の iframe を作る経路も試し、移った先で鍵ありの postMessage が届くかを記録する。
+// exit code: 0 = 鍵なしでも鍵ありでも（本体以外から）届く経路がなく、対照も届いた / 2 = 届く経路があった（失敗）/ 3 = 検証が完了しなかった、または対照が届かなかった。
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
@@ -30,9 +32,9 @@ const TAURI = path.join(here, 'tauri.mjs');
 // ---- 判定の表（経路の一覧）----
 // via: canary = ネイティブ側の記録の who、net = 受け口の記録の ctx。
 // key: none = 鍵なし、leaked = 本体が鍵を渡した（漏れたと仮定）、control = 対照（届くはず）。
-// needsKey: その経路が届くのに鍵が要るか。net の経路は鍵と無関係なので、届けば鍵の有無にかかわらず失敗。
+// R8 以降は、対照以外のどの経路も、届けば失敗（鍵なし、鍵あり、どちらも）。
 const worker = 'Worker（仲介の iframe の中の blob の Worker。部品のコード）';
-const relay = '仲介と同じ条件の文脈（plug: の sandbox の iframe。仲介のコードが壊された場合の上限）';
+const relay = '仲介と同じ条件の文脈（srcdoc の sandbox の iframe。仲介のコードが壊された場合の上限）';
 const ROWS = [
   { ctx: '本体（鍵を持つ側）', path: 'invoke（対照）', via: 'canary', id: 'main:control-invoke', key: 'control' },
   { ctx: '本体（鍵を持つ側）', path: 'webkit.messageHandlers.ipc.postMessage、鍵あり（対照）', via: 'canary', id: 'main:control-postmessage-key', key: 'control' },
@@ -90,9 +92,42 @@ export function judge({ canary, net, report, clipboard = [], permissionsFile = n
           ? '届かなかった'
           : row.key === 'none' || row.needsKey === false
             ? '届いた【失敗: 鍵なしで届く経路】'
-            : '届いた（鍵ありで届く経路）';
+            : '届いた【失敗: 鍵ありで届く経路（R8 で塞いだはずの経路）】';
     return { context: row.ctx, path: row.path, key: row.key, via: row.via, id: row.id, reached, outcome };
   });
+  // ---- R8: 仲介と同じ条件の文脈が、自分を別の URL へ移す経路と、子の iframe を作る経路 ----
+  // 判定の根拠は canary.log（id は nav-<self|child>-<data|blob>:postmessage-key。tauri と plug には、攻撃のコードを置けないので記録のみ）。
+  const navReport = reports.find((r) => r.ev === 'nav');
+  const navExpected = ['self', 'child'].flatMap((mode) => ['tauri', 'plug', 'data', 'blob'].map((dest) => `nav-${mode}-${dest}`));
+  const nav = navExpected.map((id) => {
+    const r = navReport?.results?.find((x) => x.id === id) ?? null;
+    const carriesCode = id.endsWith('-data') || id.endsWith('-blob');
+    const canaryReached = carriesCode ? canary.filter((l) => l === `${id}:postmessage-key`).length : null;
+    const frameReport = r?.frameReport ?? null;
+    const landed = r?.landed ?? null;
+    const stayed = Boolean(frameReport && frameReport.stayed);
+    const movedAway = Boolean(r && id.startsWith('nav-self-') && !stayed && r.loadEvents >= 2);
+    return {
+      id,
+      ran: Boolean(r && r.hello),
+      carriesCode,
+      loadEvents: r?.loadEvents ?? null,
+      // 自分を移す経路: 移れたか（移れたら、仲介の文脈のコードは失われる）。子の iframe: load が起きたか。
+      movedAway: id.startsWith('nav-self-') ? movedAway : null,
+      stayed: id.startsWith('nav-self-') ? stayed : null,
+      childLoadEvents: id.startsWith('nav-child-') ? (frameReport?.childLoadEvents ?? null) : null,
+      violations: frameReport?.violations ?? [],
+      mainViolations: r?.mainViolations ?? [],
+      // 移った先で、攻撃のコード（data: と blob: の本文）が動いたか。動いたなら、その先の URL と、鍵ありの postMessage を試したか。
+      payloadRan: landed !== null,
+      landedAt: landed?.r?.href ?? null,
+      landedOrigin: landed?.r?.origin ?? null,
+      posted: landed?.r?.posted ?? null,
+      canaryReached,
+    };
+  });
+  const navFailures = nav.filter((n) => n.canaryReached > 0).map((n) => `R8 / 仲介と同じ条件の文脈が移った先（${n.id}）から、鍵ありの postMessage がネイティブに届いた`);
+  const navIncomplete = [...(navReport ? [] : ['自分を別の URL へ移す経路の試験が報告されていない']), ...nav.filter((n) => navReport && !n.ran).map((n) => `移動の試験（${n.id}）が実行されたと確認できない`)];
   // (4) 仲介が決めていない形のメッセージを受け付けない（部品を止める）ことと、BroadcastChannel の確認（自己申告ではなく本体側の記録）。
   const workerReports = reports.filter((r) => r.ev === 'worker');
   const postRows = ['probe-post-unknown', 'probe-post-forged', 'probe-post-invoke'].map((id) => {
@@ -178,7 +213,7 @@ export function judge({ canary, net, report, clipboard = [], permissionsFile = n
     ...r7Bad.filter((b) => !b.stoppedByRelay).map((b) => `R7 の不正な呼び出し（${b.plugin}）が、部品を止めたと確認できない`),
     ...(!r7Ok.declaredGotDocument ? ['document.read を宣言した部品に本文が届いた（対照）と確認できない'] : []),
     ...(docUndeclared === null ? ['document.read を宣言していない部品の試験が報告されていない'] : []),
-    ...(!r7Ok.outlineOk ? ['同梱の部品（アウトライン）が、本物の plug: の上で ready になり、パネルを登録したと確認できない'] : []),
+    ...(!r7Ok.outlineOk ? ['同梱の部品（アウトライン）が、本物の relay.js の上で ready になり、パネルを登録したと確認できない'] : []),
   ];
   const clipboardControlReached = clipboard.some((l) => l.includes(CLIPBOARD_CONTROL));
   const clipboardOther = clipboard.filter((l) => !l.includes(CLIPBOARD_CONTROL));
@@ -204,16 +239,16 @@ export function judge({ canary, net, report, clipboard = [], permissionsFile = n
     ...badCalls.filter((b) => !b.stoppedByRelay).map((b) => `不正な形の呼び出し（${b.plugin}）が、部品を止めたと確認できない`),
     ...(!undecided.tried || !undecided.dialogShown ? ['未決の権限の呼び出しで、確認の画面が出たと確認できない'] : []),
     ...(!clipboardControlReached ? ['クリップボードの記録の対照（本体からの書き込み）が届いていない'] : []),
-    ...(!bundledOk ? ['同梱の部品が、本物の plug: の上で ready になり、コマンドとメニューの項目を登録したと確認できない'] : []),
+    ...(!bundledOk ? ['同梱の部品が、本物の relay.js の上で ready になり、コマンドとメニューの項目を登録したと確認できない'] : []),
   ];
-  const failures = [...rows.filter((r) => r.outcome.includes('失敗')), ...r6Failures.map((m) => ({ context: 'R6', path: m })), ...r7Failures.map((m) => ({ context: 'R7', path: m }))];
+  const failures = [...rows.filter((r) => r.outcome.includes('失敗')), ...r6Failures.map((m) => ({ context: 'R6', path: m })), ...r7Failures.map((m) => ({ context: 'R7', path: m })), ...navFailures.map((m) => ({ context: 'R8', path: m }))];
   const controlFailures = rows.filter((r) => r.key === 'control' && r.reached === 0);
   const keyedReached = rows.filter((r) => r.outcome.includes('鍵ありで届く経路'));
   const postFailures = postRows.filter((r) => !r.rejectedByRelay);
   const broadcastHeard = broadcast ? broadcast.heardInMainPage : null;
   const complete = done && Boolean(control) && Boolean(control.keyCaptured) && broadcastHeard !== null;
-  const verdict = failures.length > 0 ? 'FAIL' : !complete || controlFailures.length > 0 || r6Incomplete.length > 0 || r7Incomplete.length > 0 ? 'INCOMPLETE' : 'PASS';
-  return { verdict, complete, keyCaptured: control?.keyCaptured ?? null, r6, r6Incomplete, r7, r7Incomplete, rows, postRows, postFailures: postFailures.length, broadcastHeardInMainPage: broadcastHeard, failures: failures.map((r) => `${r.context} / ${r.path}`), keyedReached: keyedReached.map((r) => `${r.context} / ${r.path}`), controlFailures: controlFailures.map((r) => r.path), selfReport: { control, workers: workerReports, relayContext: reports.find((r) => r.ev === 'relay-context') ?? null } };
+  const verdict = failures.length > 0 ? 'FAIL' : !complete || controlFailures.length > 0 || r6Incomplete.length > 0 || r7Incomplete.length > 0 || navIncomplete.length > 0 ? 'INCOMPLETE' : 'PASS';
+  return { verdict, complete, keyCaptured: control?.keyCaptured ?? null, r6, r6Incomplete, r7, r7Incomplete, nav, navIncomplete, rows, postRows, postFailures: postFailures.length, broadcastHeardInMainPage: broadcastHeard, failures: failures.map((r) => `${r.context} / ${r.path}`), keyedReached: keyedReached.map((r) => `${r.context} / ${r.path}`), controlFailures: controlFailures.map((r) => r.path), selfReport: { control, workers: workerReports, relayContext: reports.find((r) => r.ev === 'relay-context') ?? null } };
 }
 
 function markdown(j) {
@@ -222,20 +257,29 @@ function markdown(j) {
   lines.push('', '仲介が決めていない形のメッセージを受け付けず、部品を止めたか（本体の記録）:', '');
   for (const r of j.postRows) lines.push(`- ${r.plugin}: ${r.rejectedByRelay ? '止めた' : '止めていない'}（${r.stoppedReason ?? 'なし'}）`);
   lines.push('', `BroadcastChannel（Worker から本体へ）: 本体のページが聞いたメッセージ ${JSON.stringify(j.broadcastHeardInMainPage)}`, '');
+  lines.push('## R8: 仲介と同じ条件の文脈が、自分を別の URL へ移す経路と、子の iframe を作る経路', '');
+  lines.push('| 経路 | 試験が動いた | load の回数 | 移れたか / 子の load | 違反の記録（仲介の文脈 / 本体の窓） | 移った先で攻撃のコードが動いたか | 移った先での postMessage（鍵あり）がネイティブに届いた回数（canary.log） |', '|---|---|---|---|---|---|---|');
+  for (const n of j.nav) {
+    const moved = n.movedAway !== null ? (n.movedAway ? '移れた（コードは失われた）' : n.stayed ? '移れなかった（止められた）' : '不明') : `子の load ${n.childLoadEvents ?? '不明'} 回`;
+    const landed = n.carriesCode ? (n.payloadRan ? `動いた（${n.landedAt}、origin ${n.landedOrigin}、postMessage ${n.posted}）` : '動かなかった') : '攻撃のコードを置けない（記録のみ）';
+    lines.push(`| ${n.id} | ${n.ran} | ${n.loadEvents} | ${moved} | ${JSON.stringify(n.violations)} / ${JSON.stringify(n.mainViolations)} | ${landed} | ${n.canaryReached ?? '-'} |`);
+  }
+  if (j.navIncomplete.length > 0) lines.push('', `未確認（INCOMPLETE の理由。R8）: ${JSON.stringify(j.navIncomplete)}`);
+  lines.push('');
   const r6 = j.r6;
   lines.push('## R6: 権限の API', '');
   lines.push(`- クリップボードの記録（clipboard.log。検証用のビルドは OS のクリップボードに書かない）: ${r6.clipboardLines.length} 行。対照（本体からの書き込み）が届いた: ${r6.clipboardControlReached}。対照以外（権限なしで書けた経路）: ${r6.clipboardWritesWithoutPermission.length} 行`);
   lines.push(`- 宣言していない権限の API: 仲介への直接の呼び出しが拒否された ${r6.undeclared.rawCallsRefused}、API 経由が reject された ${r6.undeclared.apiCallsRejected}`);
   for (const b of r6.badCalls) lines.push(`- 不正な形の呼び出し（${b.plugin}）: ${b.stoppedByRelay ? '部品を止めた' : '止めていない'}（${b.stoppedReason ?? 'なし'}）`);
   lines.push(`- 未決の権限の呼び出し: 確認の画面が出た ${r6.undecided.dialogShown}（部品 ${r6.undecided.dialogPlugin}、権限 ${JSON.stringify(r6.undecided.dialogPermissions)}）。権限の保存ファイル（plugin-permissions.json）: ${r6.permissionsFileExists ? 'できた（失敗）' : 'できていない（自動では許可されていない）'}`);
-  lines.push(`- 同梱の部品（本物の plug: と relay.js の上）: ready ${r6.bundled.ready}、コマンド ${JSON.stringify(r6.bundled.commands)}、メニューの項目 ${JSON.stringify(r6.bundled.menuItems)}、状態 ${r6.bundled.status}`);
+  lines.push(`- 同梱の部品（本物の relay.js の上）: ready ${r6.bundled.ready}、コマンド ${JSON.stringify(r6.bundled.commands)}、メニューの項目 ${JSON.stringify(r6.bundled.menuItems)}、状態 ${r6.bundled.status}`);
   if (j.r6Incomplete.length > 0) lines.push('', `未確認（INCOMPLETE の理由）: ${JSON.stringify(j.r6Incomplete)}`);
   if (j.r7) {
     lines.push('', '## R7: パネルと本文の API', '');
     for (const b of j.r7.badCalls) lines.push(`- 不正な呼び出し（${b.plugin}）: ${b.stoppedByRelay ? '部品を止めた' : '止めていない'}（${b.stoppedReason ?? 'なし'}）`);
     lines.push(`- document.read を宣言した部品（対照）が受け取った本文: ${JSON.stringify(j.r7.declaredGotDocument)}`);
     lines.push(`- document.read を宣言していない部品が受け取った本文: ${JSON.stringify(j.r7.undeclaredGotDocument)}（0 のはず）`);
-    lines.push(`- 同梱の部品（アウトライン。本物の plug: の上）: ready ${j.r7.outline.ready}、パネル ${JSON.stringify(j.r7.outline.panels)}、状態 ${j.r7.outline.status}、サイドバーが閉じている間に届いた本文 ${j.r7.outline.docDeliveredWhileHidden} 件（0 のはず）`);
+    lines.push(`- 同梱の部品（アウトライン。本物の relay.js の上）: ready ${j.r7.outline.ready}、パネル ${JSON.stringify(j.r7.outline.panels)}、状態 ${j.r7.outline.status}、サイドバーが閉じている間に届いた本文 ${j.r7.outline.docDeliveredWhileHidden} 件（0 のはず）`);
     if (j.r7Incomplete.length > 0) lines.push('', `未確認（INCOMPLETE の理由。R7）: ${JSON.stringify(j.r7Incomplete)}`);
     lines.push('');
   }

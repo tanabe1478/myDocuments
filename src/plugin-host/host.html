@@ -3,15 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <!--
-      Worker のホストのページ（ADR-005 の案 2a）。本体の sandbox="allow-scripts" の iframe の中身。
-      Tauri 版は独自プロトコル plug: が、同じ CSP をヘッダーでも付けて返す。ブラウザ版（e2e と dev）は同じオリジンから配信され、
-      ヘッダーがないので、この meta の CSP が効く。ブラウザ版は http のオリジンのスクリプトを読むので 'self' を足してある
-      （plug: の origin は不透明で 'self' が一致しないため、Tauri 版は plug: のほうだけが効く）。
+      仲介の iframe の中身（ADR-005 の R8）。本体が、sandbox="allow-scripts" の iframe の srcdoc に入れる（このファイルを ?raw で取り込む）。
+      srcdoc の文脈は、本体の CSP を継承する。この meta の CSP は、それをさらに狭める（両方を満たしたものだけが通る）。
+      仲介のコード（relay.js）だけを、本体と同じオリジンの決まったパスから読み、Worker は blob だけ。接続、画像、フレームなどはすべて拒否する。
     -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src plug: 'self'; worker-src blob:" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; worker-src blob:; connect-src 'none'; img-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'" />
     <title>plugin host</title>
   </head>
   <body>
-    <script src="relay.js"></script>
+    <script src="/plugin-host/relay.js"></script>
   </body>
 </html>

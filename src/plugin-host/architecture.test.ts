@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -8,7 +8,8 @@ import { describe, expect, it } from 'vitest';
  * - IPC の鍵と入口の文字列が、段 2 の仕組みのコードに出てこない（鍵を段 1・段 2 に渡さない規則を、コードの側で縛る）。
  * - 仲介のコード（relay.js）が、部品のコードを評価しない。
  * - 段 2 の仕組みのコードが、特定の部品やネイティブへの入口（platform）を import しない。
- * - Tauri 版（plug.rs）とブラウザ版（vite.config.ts）が、同じ元のファイルを使う。CSP の組み立て。
+ * - 仲介の iframe は sandbox の srcdoc（host.html を ?raw で取り込む）、relay.js は本体と同じオリジンの /plugin-host/relay.js から、本番とe2e で同じバイト列で配信される。
+ *   独自プロトコル（plug:）はない。本体の CSP の全指令。capabilities に remote がない（ADR-005 の R8）。
  */
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -89,10 +90,10 @@ describe('relay.js does not evaluate the part code', () => {
     expect(code).toContain('var main = window.parent;');
   });
 
-  it('the host page has no inline script and loads only relay.js', () => {
+  it('the host page has no inline script and loads only relay.js, from the fixed same-origin path', () => {
     const html = read('src/plugin-host/host.html');
     const scripts = [...html.matchAll(/<script\b[^>]*>/g)].map((m) => m[0]);
-    expect(scripts).toEqual(['<script src="relay.js">']);
+    expect(scripts).toEqual(['<script src="/plugin-host/relay.js">']);
     expect(html).not.toMatch(/\son\w+=/);
   });
 });
@@ -133,52 +134,80 @@ describe('what the isolated-stage code may import', () => {
   });
 });
 
-describe('Tauri (plug:) and the browser serve the same source files, with the same CSP', () => {
+describe('the srcdoc iframe, the same-origin relay.js, and the CSPs (R8)', () => {
+  const directives = (csp: string) => new Map(csp.split(';').map((d) => d.trim()).filter(Boolean).map((d) => [d.split(/\s+/)[0]!, d.split(/\s+/).slice(1)] as const));
+
   it('the files are exactly host.html and relay.js (plus the TypeScript and tests)', () => {
     const others = readdirSync(path.join(SRC, 'plugin-host')).filter((n) => !/\.(ts)$/.test(n));
     expect(others.sort()).toEqual(['host.html', 'relay.js']);
   });
 
-  it('plug.rs embeds those files with include_str! and serves exactly those names', () => {
-    const plug = read('src-tauri/src/plug.rs');
-    expect(plug).toContain('include_str!("../../src/plugin-host/host.html")');
-    expect(plug).toContain('include_str!("../../src/plugin-host/relay.js")');
-    expect(plug).toContain('("/host.html", "text/html; charset=utf-8", HOST_HTML)');
-    expect(plug).toContain('("/relay.js", "text/javascript; charset=utf-8", RELAY_JS)');
-    // ほかの 2 つは、検証用のページ（feature isolation-probe のときだけ）。cfg が直前にある。
-    expect([...plug.matchAll(/include_str!\(/g)]).toHaveLength(4);
-    expect([...plug.matchAll(/#\[cfg\(feature = "isolation-probe"\)\]\nconst PROBE_FRAME_(?:HTML|JS): &str = include_str!\("\.\.\/\.\.\/src\/isolated-plugins\/probe-frame\.(?:html|js)"\);/g)]).toHaveLength(2);
-    // ファイルシステムから読まない（テストの部分だけが、埋め込みの確認のために読む）。
-    expect(plug.split('#[cfg(test)]')[0]).not.toMatch(/std::fs|File::open|read_to_string/);
+  it('there is no custom protocol: plug.rs, hostUrl.ts, the registration, and frame-src plug: are gone', () => {
+    expect(existsSync(path.join(ROOT, 'src-tauri/src/plug.rs'))).toBe(false);
+    expect(existsSync(path.join(ROOT, 'src/plugin-host/hostUrl.ts'))).toBe(false);
+    for (const f of listFiles(path.join(ROOT, 'src-tauri/src')).filter((f) => f.endsWith('.rs'))) {
+      const text = readFileSync(f, 'utf8');
+      expect(text, rel(f)).not.toMatch(/register_uri_scheme_protocol|register_asynchronous_uri_scheme_protocol|mod plug;/);
+    }
+    expect(read('src-tauri/tauri.conf.json')).not.toMatch(/plug:|plug\b/);
+    expect(read('src-tauri/Cargo.toml')).not.toMatch(/\bplug\b/);
   });
 
-  it('vite.config.ts serves and emits those same files from src/plugin-host/, and only emits them for the e2e build', () => {
+  it('the iframe gets its content as srcdoc (the raw host.html), never as a URL', () => {
+    const dom = read('src/plugin-host/domFrame.ts');
+    const domCode = dom.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    expect(domCode).toContain('iframe.srcdoc = hostHtml;');
+    expect(domCode).not.toMatch(/\.src\s*=|setAttribute\(\s*['"]src['"]/);
+    const index = read('src/plugin-host/index.ts');
+    expect(index).toContain("import hostHtml from './host.html?raw';");
+    expect(index).toContain('createDomFrame(hostHtml)');
+  });
+
+  it('vite.config.ts serves and emits relay.js from src/plugin-host/ at /plugin-host/relay.js, in every build (no e2e-only condition)', () => {
     const vite = read('vite.config.ts');
     expect(vite).toContain("new URL('./src/plugin-host/', import.meta.url)");
-    expect(vite).toContain("'host.html': 'text/html; charset=utf-8'");
-    expect(vite).toContain("'relay.js': 'text/javascript; charset=utf-8'");
-    expect(vite).toMatch(/generateBundle\(\) \{\s*if \(process\.env\.VITE_E2E !== '1'\) return;/);
-    expect(vite).toContain('readFileSync(new URL(name, PLUGIN_HOST_DIR))');
+    expect(vite).toContain("'relay.js': { source: new URL('relay.js', PLUGIN_HOST_DIR), type: 'text/javascript; charset=utf-8' }");
+    expect(vite).toContain("server.middlewares.use('/plugin-host'");
+    expect(vite).toContain('fileName: `plugin-host/${name}`');
+    const generate = /generateBundle\(\) \{([\s\S]*?)\n    \},/.exec(vite)![1]!;
+    expect(generate).not.toMatch(/VITE_E2E|VITE_ISOLATION_PROBE|return;/);
+    // 検証用のファイルは、VITE_ISOLATION_PROBE=1 のときだけ。
+    expect(vite).toMatch(/if \(process\.env\.VITE_ISOLATION_PROBE === '1'\) files\['probe-frame\.js'\]/);
   });
 
-  const directives = (csp: string) => new Map(csp.split(';').map((d) => d.trim()).filter(Boolean).map((d) => [d.split(/\s+/)[0]!, d.split(/\s+/).slice(1)] as const));
+  it('the build emits plugin-host/relay.js with exactly the bytes of src/plugin-host/relay.js, and nothing else (no probe file) without VITE_ISOLATION_PROBE', async () => {
+    const config = (await import('../../vite.config')).default as { plugins: Array<{ name?: string; generateBundle?: (this: { emitFile(f: unknown): void }) => void }> };
+    const plugin = config.plugins.flat().find((p) => p && p.name === 'plugin-host-files');
+    expect(plugin).toBeDefined();
+    const emitted: Array<{ type: string; fileName: string; source: Buffer }> = [];
+    plugin!.generateBundle!.call({ emitFile: (f) => emitted.push(f as (typeof emitted)[number]) });
+    expect(process.env.VITE_ISOLATION_PROBE).not.toBe('1');
+    expect(emitted.map((e) => [e.type, e.fileName])).toEqual([['asset', 'plugin-host/relay.js']]);
+    expect(Buffer.compare(emitted[0]!.source, readFileSync(path.join(SRC, 'plugin-host', 'relay.js')))).toBe(0);
+  });
 
-  it('the header CSP (plug.rs) and the meta CSP (host.html) agree: the meta only adds the self origin for the browser build', () => {
-    const header = /pub const CSP: &str = "([^"]+)";/.exec(read('src-tauri/src/plug.rs'))![1]!;
+  it('the meta CSP of the host page narrows the inherited main CSP: only relay.js (self) and blob workers; connection, images, frames are none', () => {
     const meta = /<meta http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(read('src/plugin-host/host.html'))![1]!;
-    expect(header).toBe("default-src 'none'; script-src plug:; worker-src blob:");
-    const h = directives(header);
-    const m = directives(meta);
-    expect([...m.keys()]).toEqual([...h.keys()]);
-    expect(m.get('default-src')).toEqual(["'none'"]);
-    expect(m.get('worker-src')).toEqual(['blob:']);
-    expect(h.get('script-src')).toEqual(['plug:']);
-    expect(m.get('script-src')).toEqual(['plug:', "'self'"]);
-    // ネットワークと接続を許す指定は、どちらにもない。
-    for (const csp of [header, meta]) expect(csp).not.toMatch(/connect-src|img-src|frame-src|unsafe-eval|unsafe-inline|http:|https:|data:|\*/);
+    expect(Object.fromEntries(directives(meta))).toEqual({
+      'default-src': ["'none'"],
+      'script-src': ["'self'"],
+      'worker-src': ['blob:'],
+      'connect-src': ["'none'"],
+      'img-src': ["'none'"],
+      'frame-src': ["'none'"],
+      'base-uri': ["'none'"],
+      'form-action': ["'none'"],
+    });
+    expect(meta).not.toMatch(/unsafe-eval|unsafe-inline|http:|https:|data:|\*|plug:|ipc/);
   });
 
-  it('the main CSP gained only frame-src plug: (every other directive is as before)', () => {
+  it('the verification page (probe-frame.html) has the same meta CSP as the host page, and loads its script from the same path family', () => {
+    const metaOf = (f: string) => /<meta http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(read(f))![1]!;
+    expect(metaOf('src/isolated-plugins/probe-frame.html')).toBe(metaOf('src/plugin-host/host.html'));
+    expect(read('src/isolated-plugins/probe-frame.html')).toContain('<script src="/plugin-host/probe-frame.js"></script>');
+  });
+
+  it('the main CSP: every directive is listed; this Run added worker-src blob: and narrowed frame-src to none', () => {
     const conf = JSON.parse(read('src-tauri/tauri.conf.json')) as { app: { security: { csp: string } } };
     const csp = directives(conf.app.security.csp);
     expect(Object.fromEntries(csp)).toEqual({
@@ -188,12 +217,22 @@ describe('Tauri (plug:) and the browser serve the same source files, with the sa
       'img-src': ["'self'", 'data:', 'blob:'],
       'font-src': ["'self'", 'data:'],
       'connect-src': ["'self'", 'ipc:', 'http://ipc.localhost'],
-      'frame-src': ['plug:'],
+      'frame-src': ["'none'"],
+      'worker-src': ['blob:'],
       'object-src': ["'none'"],
       'base-uri': ["'none'"],
       'form-action': ["'none'"],
       'frame-ancestors': ["'none'"],
     });
+  });
+
+  it('capabilities have no remote entry, and grant only the main window (a srcdoc context is Remote for Tauri; a remote grant could include it)', () => {
+    const caps = JSON.parse(read('src-tauri/capabilities/default.json')) as Record<string, unknown>;
+    expect(Object.keys(caps)).not.toContain('remote');
+    expect(caps.windows).toEqual(['main']);
+    expect(existsSync(path.join(ROOT, 'src-tauri/capabilities'))).toBe(true);
+    expect(readdirSync(path.join(ROOT, 'src-tauri/capabilities')).sort()).toEqual(['default.json']);
+    expect(read('src-tauri/tauri.conf.json')).not.toMatch(/"remote"|dangerousRemoteDomainIpcAccess/);
   });
 
   it('the iframe is created with sandbox="allow-scripts" and without allow-same-origin', () => {

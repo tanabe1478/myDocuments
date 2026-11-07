@@ -2,12 +2,12 @@
 <html lang="ja">
   <head>
     <meta charset="utf-8" />
-    <!-- 隔離の検証用（Cargo の feature isolation-probe のビルドだけが、plug: から返す）。仲介のページ（host.html）と同じ条件の文脈: -->
-    <!-- 同じ独自プロトコル、同じ CSP のヘッダー、sandbox="allow-scripts"。スクリプトだけが検証用。 -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src plug: 'self'; worker-src blob:" />
+    <!-- 隔離の検証用（VITE_ISOLATION_PROBE=1 のビルドだけ。ADR-005 の R8）。仲介の iframe（src/plugin-host/host.html）と同じ条件の文脈: -->
+    <!-- sandbox="allow-scripts" の srcdoc、本体の CSP の継承、同じ meta の CSP（architecture のテストが、host.html の meta と同じ文字列であることを縛る）。スクリプトだけが検証用。 -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; worker-src blob:; connect-src 'none'; img-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'" />
     <title>__mdeIsolationProbe frame</title>
   </head>
   <body>
-    <script src="probe-frame.js"></script>
+    <script src="/plugin-host/probe-frame.js"></script>
   </body>
 </html>

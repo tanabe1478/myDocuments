@@ -533,6 +533,8 @@ R1・R2 と同じく、部品のテーマは CodeMirror が自動で付ける cl
 
 R5（2026-11-04）で、隔離した操作の段（段 2）の土台を作った（案 2a）。配布物に入るのは仕組みだけで、段 2 の部品は 1 つも入れていない（利用者に見える機能は足していない。最初の部品 S2 と、権限の確認の画面は R6）。API の版は 0 のまま。
 
+R8 で、独自プロトコル `plug:` はなくなり、仲介の iframe は sandbox の srcdoc に変わった（「R8 で決めた細部」）。この節と、R5〜R7 の節にある `plug:` の記述は、そのときの記録として残す。
+
 ### plug: の形と、返すファイル
 
 Rust 側（`src-tauri/src/plug.rs`）が、独自プロトコル `plug` を `register_uri_scheme_protocol` で登録する。返すのは、ビルド時に `include_str!` で埋め込んだ 2 つのファイルだけ。ファイルシステムから読まない。
@@ -760,7 +762,7 @@ method の名前が `document.currentPath` ではなく `currentPath` なのは�
 
 ### 鍵が漏れたときの経路の方針
 
-鍵が漏れたときに、`plug:` の iframe から `webkit.messageHandlers.ipc.postMessage` で、ネイティブのコマンドに届く経路（R5 で確認。R6 の取り直しでも同じ）は、今の規則（鍵を段 2 に、どの形でも渡さない。`architecture.test.ts` と `architecture.r6.test.ts` が、段 2 の仕組みのコードと R6 のコードに、鍵と入口の文字列が出ないことを縛る）で守る。この経路を塞ぐこと（R5 の提案の 2 つ目の `srcdoc` の変形と、3 つ目のネイティブ側での送り元の判別）は、ほかの人の部品を外から読み込む Run の前提とする。R6 では、自前のコマンドが 3 つ増えた（`write_clipboard_text`、`load_plugin_permissions`、`save_plugin_permissions`）ので、鍵が漏れたときに届くコマンドも増えた。権限の判断は本体の画面の側にあり、ネイティブのコマンド自体は、呼ぶ部品の権限を確かめない（「R6 の限界」）。
+鍵が漏れたときに、`plug:` の iframe から `webkit.messageHandlers.ipc.postMessage` で、ネイティブのコマンドに届く経路（R5 で確認。R6 の取り直しでも同じ）は、今の規則（鍵を段 2 に、どの形でも渡さない。`architecture.test.ts` と `architecture.r6.test.ts` が、段 2 の仕組みのコードと R6 のコードに、鍵と入口の文字列が出ないことを縛る）で守る。この経路を塞ぐこと（R5 の提案の 2 つ目の `srcdoc` の変形と、3 つ目のネイティブ側での送り元の判別）は、ほかの人の部品を外から読み込む Run の前提とする。R8 で塞いだ（仲介の iframe を `srcdoc` にした。下の「R8 で決めた細部」）。R6 では、自前のコマンドが 3 つ増えた（`write_clipboard_text`、`load_plugin_permissions`、`save_plugin_permissions`）ので、鍵が漏れたときに届くコマンドも増えた。権限の判断は本体の画面の側にあり、ネイティブのコマンド自体は、呼ぶ部品の権限を確かめない（「R6 の限界」）。
 
 ### ホストが部品を知らないことの縛りの拡張
 
@@ -795,7 +797,7 @@ R6 では動かしていないもの: OS のキー入力を送らないので、
 
 ## R6 の限界
 
-- 権限の判断は、本体の画面（JavaScript）の側にあり、ネイティブのコマンドは、呼ぶ部品の権限を確かめない。鍵が漏れたとき（段 2 には渡さない規則で守っている）は、`plug:` の iframe から、`write_clipboard_text`（検査は空と長さだけ）と `save_plugin_permissions`（形の検査だけ。部品の権限を勝手に `granted` にできる）に届く。外から部品を読み込む Run の前に、塞ぎ方（R5 の提案の 2 と 3）を決める。
+- 権限の判断は、本体の画面（JavaScript）の側にあり、ネイティブのコマンドは、呼ぶ部品の権限を確かめない。鍵が漏れたとき（段 2 には渡さない規則で守っている）は、`plug:` の iframe から、`write_clipboard_text`（検査は空と長さだけ）と `save_plugin_permissions`（形の検査だけ。部品の権限を勝手に `granted` にできる）に届く。外から部品を読み込む Run の前に、塞ぎ方（R5 の提案の 2 と 3）を決める。 R8 で、提案の 2 で塞いだ: 仲介の文脈からは、鍵があっても、これらのコマンドに届かない（実際の窓で確かめた。「R8 で確かめた隔離」）。
 - 確認の画面は、宣言した権限のうち、決めていないものをまとめて許可する。使っていない権限も許可される（宣言の範囲）。部品の名前は `manifest.name` で、同梱の部品だけが対象のため、名前の偽装は考えていない（外から読み込む Run で決める）。
 - 確認の画面を閉じる（Esc）と、その呼び出しが失敗する。部品が、reject を握りつぶさずに例外にすると、その部品が止まる（R5 の規則）。同梱の部品は、握りつぶす。
 - 取り消しは、動いている部品を止めず、次の呼び出しから効く。確認の画面が出ている間に取り消す操作は、確かめていない（設定画面は、確認の画面の後ろに隠れる）。
@@ -984,8 +986,88 @@ ADR の当初の案は、段 1（sandbox の iframe の中で部品が DOM を�
 - 窓が狭く、サイドバーが本文の上に重なっている（overlay）とき、項目を押して本文にフォーカスが移っても、サイドバーは閉じない（エクスプローラーでファイルを開いたときと同じ）。
 - Tauri の窓での、パネルの実際の操作（クリック、キー）は、OS のキー入力・マウス操作を送らない方針のため、確かめていない。窓では、検証用の部品と同梱の部品が、本物の `plug:` と `relay.js` の上で動くこと（パネルの登録、不正な呼び出しでの停止、document.read の有無による本文の配信の違い）まで。パネルの描画、移動、IME は、Chromium の e2e だけ（実 IME は未検証）。Windows と Linux は未確認。
 - 性能は Web UI（メモリ bridge）の計測だけ。Tauri の実機の起動時間と入力は計測していない。
-- 鍵が漏れたときの経路は、R5・R6 のまま（塞いでいない）。R7 で、ネイティブのコマンドは増えていない。
+- 鍵が漏れたときの経路は、R5・R6 のまま（塞いでいない）。R7 で、ネイティブのコマンドは増えていない。R8 で塞いだ。
 - 設定画面の「部品の権限」には、document.read を出していない（決める権限ではないため）。宣言した権限の一覧は、部品の一覧の Run。
+
+## R8 で決めた細部
+
+R8（2026-11-07）で、鍵（`Tauri-Invoke-Key`）が漏れたときに、仲介の iframe からネイティブのコマンドに届く経路を塞いだ。「ほかの人の部品を外から読み込む Run」の前提だった（R6 の「鍵が漏れたときの経路の方針」）。段 2 の部品、権限（R6）、パネル（R7）、メッセージの形、送り元の確認（`event.source`）は変えていない。API の版は 0 のまま。
+
+### 仕組み
+
+- 仲介の iframe を、`plug:` の URL ではなく、`sandbox="allow-scripts"`（`allow-same-origin` なし）の `srcdoc` にした。中身は `src/plugin-host/host.html`（元は 1 か所のまま。`?raw` で取り込む）。送り元のフレームの URL が `about:srcdoc` になる。
+- 仲介のコード `relay.js` は、本体と同じオリジンの決まったパス `/plugin-host/relay.js` から読む。`vite.config.ts` の plugin が、dev サーバーでも、本番のビルド（`dist`）でも、e2e のビルドでも、`src/plugin-host/relay.js` を、vite を通さず、名前にハッシュを付けず、同じバイト列で出す。Tauri 版は、本体のファイルと同じ `tauri:` のプロトコルが返す。
+- 独自プロトコル `plug:` をやめた。`src-tauri/src/plug.rs`、`register_uri_scheme_protocol`、`src/plugin-host/hostUrl.ts`、本体の CSP の `frame-src plug:` を外した。新しい crate は足していない（`Cargo.lock` は変わらない）。
+- 隔離の検証用のページ（`probe-frame.html` と `probe-frame.js`）も、同じ作り（srcdoc と `/plugin-host/probe-frame.js`）に移した。`probe-frame.js` は `VITE_ISOLATION_PROBE=1` のビルドだけが出す（本番の `dist` には出ない）。
+
+### 親がソースで確かめたこと（実行では確かめていない）
+
+関数名で示す（行番号は版で動く）。
+
+- wry 0.57.1 の `src/wkwebview/class/wry_web_view_delegate.rs` の `did_receive`: `webkit.messageHandlers.ipc.postMessage` で届いたメッセージの `Request` の uri に、送り元のフレームの URL（`msg.frameInfo().request().URL()`）を入れる。
+- tauri 2.12.5 の `src/webview/mod.rs` の `on_message` と `is_local_url`: その URL が、`tauri:` のプロトコル、アプリの URL、または利用者が登録した独自プロトコル（`uri_scheme_protocols` に scheme がある）なら、`Origin::Local`。それ以外は `Origin::Remote`。ACL（capabilities）は、この Origin で判定する。`plug:` は登録した独自プロトコルなので `Local` になり、`default` の許可がそのまま効いた。これが、R5 から、鍵ありの `postMessage` が `plug:` の iframe から届いていた理由。K1 の「srcdoc の iframe は届かなかった（原因は未確認）」の原因は、`about:srcdoc` が `Remote` になることと推測される。
+- `src-tauri/capabilities/` に `remote` の指定がない。`Remote` の送り元には、自前のコマンドにも、プラグインのコマンドにも許可がない。
+- R5 の提案の 3（ネイティブ側で送り元を判別して拒否）は、自前のコマンドに、送り元のフレームの URL が渡らない（`InvokeMessage` に url がない）ので、Tauri を変えずにはできない。そのため、提案の 2（srcdoc）を取った。
+
+### 本体の CSP と、仲介の meta の CSP
+
+本体の CSP（`src-tauri/tauri.conf.json`）の変更は 2 つ。
+
+- `frame-src plug:` を `frame-src 'none'` にした（srcdoc の iframe は、`frame-src 'none'` のままで動いた。Tauri の窓で確かめた。`'none'` で止まれば次に狭いものを探す手順だったが、必要なかった）。
+- `worker-src blob:` を足した。srcdoc は本体の CSP を継承するので、仲介が部品の blob の Worker を作るために要る。足したのはこれだけ。ほかの指令は R7 のまま。`architecture.test.ts` が、全指令を列挙して縛る。
+
+`host.html` の meta の CSP は、継承した本体の CSP をさらに狭める（両方を満たしたものだけが通る）: `default-src 'none'; script-src 'self'; worker-src blob:; connect-src 'none'; img-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'`。本体の CSP の `connect-src 'self' ipc: http://ipc.localhost` は、そのまま継承すると仲介の文脈に `ipc:` への接続を許すので、meta の `connect-src 'none'` が要る。`script-src 'self'` は、sandbox の srcdoc（origin が不透明）でも、`relay.js` を読めた（WKWebView と Chromium で確かめた。K2 の独自プロトコルでは `'self'` が一致しなかった）。
+
+`worker-src blob:` の代償:
+
+- 本体の窓の文脈も、blob の Worker を作れるようになった（これまでは `worker-src` が `script-src 'self'` に落ちて、作れなかった）。`script-src 'self'` と、eval と inline の拒否は変わらないので、Worker を作る JavaScript をすでに動かせる側にしか使えない。ただし、本体の窓で動くコード（段 3 の部品を含む）が、文字列から Worker の中でコードを動かせるようになった（eval に近い経路。Worker は DOM に触れず、eval 自体は継承した CSP で拒否される）。この Worker は、origin が `tauri://localhost` で、Local の扱い（K1: 鍵があれば届く）。段 3 の部品は、元から鍵に届くので、この変更で新しく届くようになるものはないが、文字列からコードを動かす経路が 1 つ増えたことになる（実機での確認はしていない。K1 の記述と、CSP の規則からの整理）。
+- 仲介の文脈の meta の `script-src 'self'` は、仲介の文脈と、そこから作る Worker が、本体と同じオリジンの静的ファイルを読む（`importScripts` など）ことを、CSP の上では止めない。読めるのは、配布物の静的ファイルで、ネットワークの外への経路ではない。Worker からの `importScripts` で本体のオリジンのファイルを読めるかは、確かめていない（未確認。127.0.0.1 の受け口への `importScripts` は、届かなかった）。
+
+### 縛り
+
+- `architecture.test.ts`: 本体の CSP の全指令の列挙、meta の CSP の全指令の列挙、probe-frame.html の meta が host.html と同じ文字列であること、`plug.rs`・`hostUrl.ts`・`register_uri_scheme_protocol` がないこと、iframe が `srcdoc` で作られ、`src` を使わないこと、`vite.config.ts` が `relay.js` を全部のビルドで同じバイト列で出すこと（plugin の `generateBundle` を呼び、出力が元のファイルと同じバイト列であること。検証用のファイルは出ないこと）、capabilities に `remote` がなく、`default.json` だけで、`windows` が `main` だけであること。鍵の縛りは R5 のまま。
+- `src-tauri/src/lib.rs` の Rust のテスト: capability のファイルと、ビルドが出力した ACL の生成物の capability に、`remote` がないこと。
+- `check-probe-absent.mjs`: 本番の `dist/plugin-host/` が `relay.js` だけで、元のファイルと同じバイト列であること。`dist/plug/` がないこと。
+
+## R8 で確かめた隔離
+
+方法: R5 と同じ（`isolation-probe.mjs`。検証用のビルド `tauri.mjs build --probe` を、macOS の実際の Tauri の窓として、run 専用の HOME で起動した。OS のキー入力・マウス操作なし、受け口は 127.0.0.1 だけで run のあいだだけ）。Tauri 2.12.5、wry 0.57.1、WKWebView、macOS、debug ビルド。判定は、ネイティブ側の `canary.log`、受け口の `net.log`、`clipboard.log` などの記録による（自己申告は、その経路が試されたことの確認）。判定の基準を変えた: R8 から、対照以外のどの経路も、届けば失敗（鍵なしでも鍵ありでも）。R5〜R7 は、鍵ありで届く経路を失敗にしなかった。
+
+結果: 判定は `PASS`（終了コード 0）。
+
+- 36 の経路（R5 の 36。対照の 2 つ、鍵なし 19、鍵あり 15）: 対照の 2 つ（本体の `invoke`、本体の鍵ありの `postMessage`）は届いた（`canary.log` に各 1 行）。残りの 34 は、`canary.log` にも `net.log` にも出なかった。`net.log` には、対照の `isolation-probe.mjs` 自身の 1 行だけ。`clipboard.log` は、対照の 1 行だけ。
+- 仲介と同じ条件の文脈（srcdoc の sandbox の iframe）からの、鍵ありの `webkit.messageHandlers.ipc.postMessage`: 自己申告は `posted`（呼び出しは成功した）が、`canary.log` に出なかった。R5〜R7 では、同じ呼び方が、`plug:` の iframe から届いていた。同じ呼び方の本体からの対照は届いた。したがって、この呼び方の拒否は、送り元の違いによる（呼び方の形ではない）。ACL の拒否のログは、`tauri.log` に出なかったので、理由の特定は、上のソースの読みと、`plug:` で届き srcdoc で届かなかった対比による。
+- `window.ipc`: 存在しない（R5 と同じ）。`fetch` と XHR（`ipc://localhost`、`http://ipc.localhost`）は、鍵ありでも `connect-src` に止められた（仲介の文脈の `securitypolicyviolation` で見えた）。127.0.0.1 への `fetch`、XHR、画像、`sendBeacon`、WebSocket、入れ子の Worker は、`connect-src` と `img-src` に止められ、受け口に届かなかった。
+- 同梱の部品（パスをコピーとアウトライン）は、本物の `relay.js`（srcdoc の仲介の iframe）の上で、`ready` になり、コマンド、メニューの項目、パネルを登録した。R6 と R7 の経路（権限の API、不正な呼び出しでの停止、document.read の有無による本文の配信の違い）は、R7 と同じ結果。窓の撮影は、`tauri-isolation-probe.png`（権限の確認の画面が出ている）。
+
+自分を別の URL へ移す経路と、子の iframe を作る経路（srcdoc の仲介と同じ条件の文脈から。1 回の試験ごとに新しい文脈）:
+
+| 経路 | 結果 |
+|---|---|
+| 自分の iframe を、本体のページ（`tauri://localhost/`）、`plug://localhost/...`（なくなったプロトコル）、`data:`、`blob:` へ移す | 4 つとも移れなかった（移動のあとにも仲介の文脈のコードが動き続けた）。本体の窓の CSP の違反 `frame-src` が、4 つとも記録された（仲介の文脈の違反は空）。iframe の `load` イベントは、移動の試みで 2 回起きた（失敗した移動でも起きる） |
+| 子の iframe を、同じ 4 つの URL で作る | 4 つとも、`frame-src` の違反（仲介の文脈で記録）。子の `load` は 1 回 |
+| 移った先で動くコード（`data:` と `blob:` の本文。鍵つきの `postMessage` を試す）が動いたか | 動かなかった（移動と子の iframe が止まったため）。`canary.log` に `nav-` で始まる行はない |
+
+移動が止まったのは、本体の窓の `frame-src 'none'` による。`frame-src` を緩めたときに、移った先がどう扱われるかは、観測できていない（「R8 の限界」）。
+
+テスト: 単体テスト 72 ファイル 1245 件（`npm test`）、Rust は docio 50 件、src-tauri 134 件（`isolation-probe` の feature つきは 136 件。`remote` がないことの 2 件を足した）、e2e 1992 件（`npm run test:e2e`。4 つの project。終了コード 0。出力が切れて、最後の件数の行は見えていない）。既存のテストで直したのは、`plug:` と配信の形に関わるものだけ: `architecture.test.ts` と `architecture.r7.test.ts`（`plug.rs` と `frame-src plug:` を見ていた部分を、新しい縛りに置き換えた）、`tests/e2e/isolated-plugins.spec.ts`（配信されるファイルの確認と、仲介の iframe の探し方を `about:srcdoc` に。`/plug/` のパスを `/plugin-host/relay.js` に）、`tests/e2e/copy-path.spec.ts`（仲介の iframe の探し方だけ）。段 2 の部品、権限、パネルの振る舞いのテストは、変えずに通った。足したテスト: 仲介の文脈と Worker からのネットワーク（fetch、XHR、画像、WebSocket、importScripts、入れ子の Worker）が止まる e2e（Chromium）、`plug.rs` を消したあとの `architecture.test.ts` の縛り、`lib.rs` の `remote` がないことの Rust のテスト。
+
+性能（Web UI。Playwright の chromium 156.0.8078.4 と webkit 27.2、Apple M5、AC 電源。計測中は、この作業から重い処理を並行させていない。ユーザーの既存のアプリの負荷は制御していない）: HEAD（コミット 7f0c33f を `git archive` で別のディレクトリに展開し、`node_modules` はシンボリックリンク）と変更後を、同じ時間帯に `npm run perf -- --only web`（78 項目）で測り、`npm run perf:compare` で比べた。2 組（1 組目は変更後、HEAD の順。2 組目は HEAD、変更後の順）。どちらの組も、悪化の判定はなかった（終了コード 0）。起動の項目（空の文書で、読み込み開始から `data-ready` まで。標本は各 5 件。中央値 ms。HEAD / 変更後）: chromium 145.5 / 148（1 組目）、145.7 / 150.2（2 組目）。webkit 127 / 143（1 組目。p95 は 184 / 236）、132 / 135（2 組目）。webkit の 1 組目の差（+16 ms）は、2 組目では +3 ms で、標本が 5 件の揺れの範囲と見ている（原因は特定していない）。文書を開く（C、1 MB）と入力から描画まで（C の末尾）は、HEAD と同じ範囲。結果は `perf/out/r8-*.json` と `perf/out/r8-compare-*.txt`（`perf/results/` には置いていない）。限界: Tauri の実機の起動時間は計測していない（Web UI の計測だけ）。
+
+## R8 の限界
+
+- 確かめたのは macOS の WKWebView（Tauri 2.12.5、wry 0.57.1、debug ビルド）だけ。Windows（WebView2）、Linux（WebKitGTK）、release ビルドは未確認。Windows は、IPC が `http://ipc.localhost` への fetch で、送り元の判定が違うので、srcdoc（Origin が `null`）が `Remote` になるかは、動かしていない。sandbox の srcdoc の中の meta の `script-src 'self'` が、これらの環境で `relay.js` を読めるかも未確認（読めなければ、仲介が起動しない。その場合は、meta の `script-src` に、本体のオリジンを書く）。
+- 塞いでいる層は、Tauri の ACL が、送り元の URL（`about:srcdoc`）を `Remote` として扱うこと。Tauri のこの挙動に依存する。Tauri を更新するときは、`isolation-probe.mjs` を取り直す（`canary.log` に、鍵ありの `postMessage` の行が出ないこと）。
+- 鍵を段 2 に渡さない規則（architecture の縛り）は、そのまま残す。塞ぎは、その規則が破れたときの、2 重目の守り。
+- 移動の経路は、`frame-src 'none'` で止まったので、止まらなかった場合の、移った先の扱い（`data:`、`blob:` の先から鍵ありの `postMessage` が届くか）は、観測していない。ソースの読みでは、どちらも登録した scheme でもアプリの URL でもないので `Remote`。`frame-src` を緩めるときは、取り直す。
+- ネイティブのコマンドは、R6 のまま、呼ぶ部品の権限を確かめない。鍵が `Local` の送り元（本体の窓。段 3 の部品を含む）に漏れる経路は、今回の対象ではない。
+- 同梱の部品も、`worker-src blob:` の代償（上）を受ける。
+
+### 将来の注意
+
+- capabilities に `remote`（URL のパターンを指定した許可）を足すとき: `about:srcdoc`、`data:`、`blob:` の送り元が、そのパターンに一致しないことを確かめる。一致すると、srcdoc の仲介の文脈が許可の対象になりうる。`architecture.test.ts` と `lib.rs` のテストが、`remote` の追加を検出して落ちる。足すなら、この ADR の議論をやり直す。
+- 段 1（見える iframe）を作るとき: 登録済みの scheme（`tauri:` のアプリの URL、独自プロトコル、`asset:`）の iframe を使わない。Tauri は、これらを `Local` として扱い、鍵ありの `postMessage` が届く（R5 の `plug:` と同じ）。srcdoc の sandbox の iframe で、スクリプトは本体と同じオリジンの決まったパスから読む（仲介と同じ作り）。作ったら、`isolation-probe.mjs` の経路に足して、取り直す。本体の `frame-src` を緩めるときも、同じ。
+- 独自プロトコルを新しく登録しない（登録した scheme の URL はすべて `Local` になる）。
 
 
 ## 未決のこと
@@ -996,6 +1078,6 @@ ADR の当初の案は、段 1（sandbox の iframe の中で部品が DOM を�
 - 仕様 §7.2 の改め方（エディタに関わる部品の範囲で、CodeMirror への依存を認める書き方）。
 - 段 1 の中で、エディタの中に CodeMirror を持つ部品（1 節だけ広げて書く、S1）を、段 1 と段 3 のどちらで作るか。
 - 段 1（見える iframe で部品が自由に描く表示）を作るか。作るなら、先に、Tauri の窓（WKWebView）で、sandbox の iframe の中の無限ループが本体のスレッドを止めるかを測る。止まるなら、段 1 は、iframe の応答の監視と作り直し（R5 の限界にある、仲介の iframe が応答しないときの検出と同じ仕組み）が前提になる。止まらないなら、段 1 を作れる。R7 のパネルは、この測定の結果によらず、段 2 の Worker だけで動く。
-- Windows（WebView2）と Linux（WebKitGTK）での K1〜K3 の確認。独自プロトコルと IPC の経路が違う（Windows は `http://<プロトコル>.localhost`）ので、結果が同じとは限らない。
-- 鍵が漏れたときの `postMessage` の経路を、ネイティブ側で塞げるか。R5 で、この構成（`plug:` の sandbox の iframe）では塞がっていないことを確かめ、R6 の取り直しでも同じだった（「R6 で確かめた隔離」）。塞ぐ手立て（R5 の提案の 2 と 3）は、ほかの人の部品を外から読み込む Run の前提とする（「R6 で決めた細部」の「鍵が漏れたときの経路の方針」）。それまでは、鍵を段 2 に渡さない規則で守る。
+- Windows（WebView2）と Linux（WebKitGTK）での K1〜K3 と、R8 の srcdoc の仲介の確認（送り元の URL が `about:srcdoc` として ACL に渡るか、sandbox の srcdoc の中の meta の `script-src 'self'` が効くか）。IPC の経路が違う（Windows は `http://ipc.localhost` への fetch）ので、結果が同じとは限らない。
+- 鍵が漏れたときの `postMessage` の経路は、R8 で塞いだ（仲介の iframe を srcdoc にした）。macOS（WKWebView、debug ビルド）で確かめた。Windows（WebView2）、Linux（WebKitGTK）、release ビルドで同じかは未確認（「R8 の限界」）。鍵を段 2 に渡さない規則は、そのまま守る（2 重の守り）。
 - セーフモードへの入り方（起動の引数だけか、異常終了の後の確認か）。

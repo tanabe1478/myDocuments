@@ -15,6 +15,8 @@ const stopped = async (page: Page, plugin: string) => {
   return (consoleLogs.get(page) ?? []).filter((t) => t.startsWith(prefix)).map((t) => t.slice(prefix.length));
 };
 const hostFrame = (page: Page) => page.locator('iframe[data-testid="plugin-host-frame"]');
+/** 仲介の iframe の中の文脈（srcdoc。送り元の URL は about:srcdoc）。 */
+const relayFrame = (page: Page) => page.frames().find((f) => f.url() === 'about:srcdoc');
 
 async function open(page: Page, plugins: string[], timeouts: { activateTimeoutMs?: number; runTimeoutMs?: number } = {}) {
   const logs: string[] = [];
@@ -35,15 +37,24 @@ test('段 2 の部品がないとき、iframe も Worker の受け口も作ら�
   await expect(docTitle(page)).toHaveText('note.md');
 });
 
-test('ブラウザ版が配信するホストのファイルは、元のファイルと同じバイト列で、meta の CSP を持つ', async ({ page }) => {
-  await launch(page);
-  for (const name of ['host.html', 'relay.js']) {
-    const res = await page.request.get(`/plug/${name}`);
-    expect(res.status()).toBe(200);
-    expect(await res.body()).toEqual(readFileSync(new URL(`../../src/plugin-host/${name}`, import.meta.url)));
-  }
-  const html = await (await page.request.get('/plug/host.html')).text();
-  expect(html).toContain(`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src plug: 'self'; worker-src blob:" />`);
+test('仲介の relay.js は本体と同じオリジンの /plugin-host/relay.js から元のファイルと同じバイト列で配信され、iframe は host.html を srcdoc に持つ（plug: の iframe ではない）', async ({ page }) => {
+  await launch(page, { files: { [DOC]: utf8('はじめ') }, openPath: DOC, isolated: { plugins: [] } });
+  const res = await page.request.get('/plugin-host/relay.js');
+  expect(res.status()).toBe(200);
+  expect(res.headers()['content-type']).toContain('javascript');
+  expect(await res.body()).toEqual(readFileSync(new URL('../../src/plugin-host/relay.js', import.meta.url)));
+  // 独自プロトコルの置き場は、もうない。
+  expect((await page.request.get('/plug/relay.js')).headers()['content-type'] ?? '').not.toContain('javascript');
+
+  await expect(hostFrame(page)).toHaveCount(1);
+  await expect(hostFrame(page)).toHaveAttribute('sandbox', 'allow-scripts');
+  await expect(hostFrame(page)).not.toHaveAttribute('src', /.*/);
+  const html = readFileSync(new URL('../../src/plugin-host/host.html', import.meta.url), 'utf8');
+  expect(await hostFrame(page).getAttribute('srcdoc')).toBe(html);
+  expect(html).toContain(`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; worker-src blob:; connect-src 'none'; img-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'" />`);
+  // 送り元の URL は about:srcdoc（Tauri は、この送り元からのネイティブへの呼び出しをリモートの扱いにする）。
+  expect(page.frames().filter((f) => f.url() === 'about:srcdoc')).toHaveLength(1);
+  expect(page.frames().some((f) => f.url().includes('plug'))).toBe(false);
 });
 
 test('ショートカットで部品のコマンドが実行され、本体に結果（done）が届く。本体の入力は止まらない', async ({ page }) => {
@@ -139,7 +150,7 @@ test('部品のコードは、本体のページの DOM と window、ネット�
   expect(await stopped(page, 'e2e-reach')).toEqual([]);
 
   // 仲介の iframe の中の文脈（部品のコードは動かない）も、本体の DOM と window に届かない。
-  const frame = page.frames().find((f) => f.url().endsWith('/plug/host.html'));
+  const frame = relayFrame(page);
   expect(frame).toBeDefined();
   const reach = await frame!.evaluate(() => {
     const attempt = (fn: () => unknown) => {
@@ -176,7 +187,7 @@ test('仲介の iframe から送られた決めていない形のメッセージ
     window.postMessage({ v: 0, kind: 'command', plugin: 'e2e-ok', id: 'forged', title: 'forged', shortcut: 'Mod+Shift+Q' }, '*');
   });
   // iframe の中の文脈から、決めていない形のメッセージを送る。
-  const frame = page.frames().find((f) => f.url().endsWith('/plug/host.html'))!;
+  const frame = relayFrame(page)!;
   await frame.evaluate(() => {
     parent.postMessage({ v: 0, kind: 'stopped', plugin: 'e2e-ok', reason: 'x'.repeat(1000) }, '*');
     parent.postMessage({ v: 0, kind: 'steal', plugin: 'e2e-ok' }, '*');
@@ -192,10 +203,10 @@ test('仲介の iframe から送られた決めていない形のメッセージ
   await expect.poll(async () => (await trace(page)).some((e) => e.type === 'done')).toBe(true);
 });
 
-test('ブラウザ版では、host.html の meta の CSP が効く（blob の Worker だけ許し、inline の script、blob 以外の Worker、ネットワークは止まる）', async ({ page }) => {
+test('host.html の meta の CSP が効く（blob の Worker だけ許し、inline の script、blob 以外の Worker、ネットワークは止まる）', async ({ page }) => {
   await open(page, ['e2e-ok']);
   await expect.poll(async () => (await trace(page)).some((e) => e.type === 'ready')).toBe(true);
-  const frame = page.frames().find((f) => f.url().endsWith('/plug/host.html'))!;
+  const frame = relayFrame(page)!;
   const result = await frame.evaluate(async () => {
     const violations: string[] = [];
     document.addEventListener('securitypolicyviolation', (e) => violations.push(e.violatedDirective));
@@ -212,8 +223,8 @@ test('ブラウザ版では、host.html の meta の CSP が効く（blob の Wo
         const w = new Worker(URL.createObjectURL(new Blob(['postMessage(1)'], { type: 'text/javascript' })));
         w.terminate();
       }),
-      fileWorker: await attempt(() => new Worker('/plug/relay.js').terminate()),
-      fetch: await attempt(() => fetch('/plug/host.html')),
+      fileWorker: await attempt(() => new Worker('/plugin-host/relay.js').terminate()),
+      fetch: await attempt(() => fetch('/plugin-host/relay.js')),
       inlineScript: await attempt(() => {
         const s = document.createElement('script');
         s.textContent = 'window.__inline = 1';
@@ -233,4 +244,86 @@ test('ブラウザ版では、host.html の meta の CSP が効く（blob の Wo
   // （eval は、DevTools 経由の評価が CSP を免除されるので、ここでは試さない。Worker の中の eval は、e2e-reach の部品が確かめる。）
   expect(result.out.inlineScript).toBe('allowed');
   expect(result.violations).toEqual(expect.arrayContaining(['script-src-elem', 'connect-src']));
+});
+
+test('仲介の文脈と、そこから作る blob の Worker からのネットワーク（fetch、XHR、画像、WebSocket、importScripts、入れ子の Worker）は、CSP に止められる', async ({ page }) => {
+  await open(page, ['e2e-ok']);
+  await expect.poll(async () => (await trace(page)).some((e) => e.type === 'ready')).toBe(true);
+  const frame = relayFrame(page)!;
+  const result = await frame.evaluate(async () => {
+    const violations: string[] = [];
+    document.addEventListener('securitypolicyviolation', (e) => violations.push(`${e.violatedDirective}`));
+    const url = `${new URL(document.baseURI).origin}/plugin-host/relay.js`;
+    const settle = async (fn: () => Promise<unknown>) => {
+      try {
+        await fn();
+        return 'allowed';
+      } catch (e) {
+        return `blocked:${(e as Error).name}`;
+      }
+    };
+    const out = {
+      fetch: await settle(() => fetch(url)),
+      xhr: await settle(
+        () =>
+          new Promise((resolve, reject) => {
+            const q = new XMLHttpRequest();
+            q.open('GET', url);
+            q.onload = () => resolve('loaded');
+            q.onerror = () => reject(new Error('xhr network error'));
+            q.send();
+          }),
+      ),
+      image: await settle(
+        () =>
+          new Promise((resolve, reject) => {
+            const i = new Image();
+            i.onload = () => resolve('loaded');
+            i.onerror = () => reject(new Error('image error'));
+            i.src = url;
+          }),
+      ),
+      websocket: await settle(
+        () =>
+          new Promise((resolve, reject) => {
+            const w = new WebSocket(url.replace('http', 'ws'));
+            w.onopen = () => resolve('open');
+            w.onerror = () => reject(new Error('ws error'));
+          }),
+      ),
+    };
+    // 子の iframe は、frame-src 'none' に止められる（違反が記録される）。
+    const child = document.createElement('iframe');
+    child.src = url;
+    document.body.appendChild(child);
+    await new Promise((r) => setTimeout(r, 300));
+    child.remove();
+    // blob の Worker（relay.js が部品を動かすのと同じ作り方）の中から。
+    const workerSource = `
+      const out = {};
+      const violations = [];
+      self.addEventListener('securitypolicyviolation', (e) => violations.push(e.violatedDirective));
+      const settle = async (fn) => { try { await fn(); return 'allowed'; } catch (e) { return 'blocked:' + e.name; } };
+      (async () => {
+        out.fetch = await settle(() => fetch(${JSON.stringify(url)}));
+        out.xhr = await settle(() => new Promise((res, rej) => { const q = new XMLHttpRequest(); q.open('GET', ${JSON.stringify(url)}); q.onload = () => res('loaded'); q.onerror = () => rej(new Error('xhr network error')); q.send(); }));
+        out.websocket = await settle(() => new Promise((res, rej) => { const w = new WebSocket(${JSON.stringify(url.replace('http', 'ws'))}); w.onopen = () => res('open'); w.onerror = () => rej(new Error('ws error')); }));
+        out.importScripts = await settle(async () => importScripts('http://127.0.0.1:1/x.js'));
+        out.nestedWorker = await settle(async () => { new Worker(${JSON.stringify(url)}).terminate(); });
+        await new Promise((r) => setTimeout(r, 200));
+        postMessage({ out, violations });
+      })();`;
+    const worker = new Worker(URL.createObjectURL(new Blob([workerSource], { type: 'text/javascript' })));
+    const fromWorker = await new Promise<{ out: Record<string, string>; violations: string[] }>((resolve, reject) => {
+      worker.onmessage = (e) => resolve(e.data);
+      worker.onerror = () => reject(new Error('worker error'));
+      setTimeout(() => reject(new Error('worker timeout')), 10000);
+    });
+    worker.terminate();
+    await new Promise((r) => setTimeout(r, 200));
+    return { out, violations, fromWorker };
+  });
+  for (const key of ['fetch', 'xhr', 'image', 'websocket'] as const) expect(result.out[key], key).toMatch(/^blocked/);
+  expect(result.violations).toEqual(expect.arrayContaining(['connect-src', 'img-src', 'frame-src']));
+  for (const key of ['fetch', 'xhr', 'websocket', 'importScripts', 'nestedWorker']) expect(result.fromWorker.out[key], key).toMatch(/^blocked/);
 });

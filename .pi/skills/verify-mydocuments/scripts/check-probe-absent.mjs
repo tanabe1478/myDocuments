@@ -4,7 +4,8 @@
 //   node .pi/skills/verify-mydocuments/scripts/check-probe-absent.mjs                       dist/ と通常の debug 実行ファイル（target/debug）を検査（どちらかが無ければ飛ばす）
 //   node .pi/skills/verify-mydocuments/scripts/check-probe-absent.mjs --expect-present <file>   対照: 検証用のビルド（実行ファイル、またはその dist）には印が出ること
 // 印: __mdeIsolationProbe（検証用のコードの印）、isolation_probe_（記録用のネイティブのコマンド名）、__mdeE2EActionFixture（段 2 のテスト用の部品の印）。
-// dist/plug/ は、ブラウザ版（e2e）だけが配信する Worker のホスト。本番の dist には出ない（Tauri 版は plug: から返す）。
+// R8 で独自プロトコル plug: はなくなった。dist/plugin-host/relay.js は本番の dist にも出る（仲介のコード。srcdoc の仲介の iframe が読む）。
+// dist/plugin-host/ には relay.js だけがあり、検証用の probe-frame.js（VITE_ISOLATION_PROBE=1 のビルドだけ）は出ない。dist/plug/ も出ない。
 // dist のビルドは npm run build、実行ファイルは tauri.mjs build（--probe なし）。どちらも検証用のビルドをした後に、通常のビルドをし直してから使う。
 import fs from 'node:fs';
 import path from 'node:path';
@@ -47,7 +48,14 @@ const check = (label, p) => {
 check('dist/（本番のフロントエンド）', path.join(ROOT, 'dist'));
 check('通常の debug 実行ファイル', TAURI_BIN);
 if (fs.existsSync(path.join(ROOT, 'dist', 'plug'))) {
-  console.log('NG   dist/plug/ が出力されています（e2e のビルドだけが出すもの）');
+  console.log('NG   dist/plug/ が出力されています（独自プロトコル plug: は R8 でなくなった。古いビルドの残りか、ビルドの設定の戻り）');
   bad++;
+}
+const hostDir = path.join(ROOT, 'dist', 'plugin-host');
+if (fs.existsSync(path.join(ROOT, 'dist'))) {
+  const names = fs.existsSync(hostDir) ? fs.readdirSync(hostDir).sort() : [];
+  const ok = names.length === 1 && names[0] === 'relay.js' && fs.readFileSync(path.join(hostDir, 'relay.js')).equals(fs.readFileSync(path.join(ROOT, 'src', 'plugin-host', 'relay.js')));
+  console.log(`${ok ? 'OK  ' : 'NG  '} dist/plugin-host/: ${JSON.stringify(names)}（relay.js だけで、src/plugin-host/relay.js と同じバイト列のはず）`);
+  if (!ok) bad++;
 }
 process.exit(bad === 0 ? 0 : 1);

@@ -401,7 +401,7 @@ test.describe('ショートカットの Alt と AltGr (e)', () => {
 
 test.describe('部品が止まったとき (f)', () => {
   const stopFromRelay = (page: Page, plugin: string) =>
-    page.frames().find((f) => f.url().endsWith('/plug/host.html'))!.evaluate((p) => parent.postMessage({ v: 0, kind: 'stopped', plugin: p, reason: 'テストのための停止' }, '*'), plugin);
+    page.frames().find((f) => f.url() === 'about:srcdoc')!.evaluate((p) => parent.postMessage({ v: 0, kind: 'stopped', plugin: p, reason: 'テストのための停止' }, '*'), plugin);
 
   test('止まると、メニューの項目は消え（開いているメニューからも）、ショートカットは何もしない。入力と保存は続く', async ({ page }) => {
     await start(page, { pluginPermissions: GRANTED });
