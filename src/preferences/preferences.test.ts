@@ -19,6 +19,7 @@ const DEFAULTS_WITH_PLUGINS = {
   markupDisplay: 'cursorLine',
   typingSound: false,
   typingSoundVolume: 'medium',
+  typingSoundTimbre: 'keyboard',
 };
 
 describe('normalizePreferences', () => {
@@ -57,6 +58,7 @@ describe('normalizePreferences', () => {
       markupDisplay: 'always',
       typingSound: true,
       typingSoundVolume: 'high',
+      typingSoundTimbre: 'typewriter',
     };
     expect(normalizePreferences(valid)).toEqual(valid);
   });
@@ -163,6 +165,8 @@ describe('background and accessibility fields (R3-1)', () => {
       // タイピング音で増えた項目（既定はオフ、音量は中）。
       typingSound: DEFAULTS_WITH_PLUGINS.typingSound,
       typingSoundVolume: DEFAULTS_WITH_PLUGINS.typingSoundVolume,
+      // 音色（既定はキーボード）。
+      typingSoundTimbre: DEFAULTS_WITH_PLUGINS.typingSoundTimbre,
     });
   });
 

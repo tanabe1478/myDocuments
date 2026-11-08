@@ -86,18 +86,23 @@ describe('src/features/: what a bundled plugin may import', () => {
         'features/typing-sound/extension.ts',
         'features/typing-sound/keys.ts',
         'features/typing-sound/player.ts',
+        'features/typing-sound/onset.ts',
         'features/typing-sound/sounds.ts',
         'features/typing-sound/e2eProbe.ts',
         'features/typing-sound/keys.test.ts',
         'features/typing-sound/player.test.ts',
+        'features/typing-sound/onset.test.ts',
         'features/typing-sound/plugin.test.ts',
       ]),
     );
     expect(specifiers(path.join(FEATURES, 'typing-sound', 'extension.ts'))).toEqual(expect.arrayContaining(['@codemirror/state', '@codemirror/view', './player']));
-    // 素材は、自分のフォルダの sounds/ の中のものだけを、Vite の ?url で取り込む。
+    // 素材は、自分のフォルダの sounds/ の中のものだけを、Vite の ?url で取り込む（キーボード 10 個、加工後のタイプライター 8 個）。
+    // 元の録音（sounds/typewriter/original/）は import しない（dist に入れない）。
     const sounds = specifiers(path.join(FEATURES, 'typing-sound', 'sounds.ts'));
-    expect(sounds).toHaveLength(10);
-    for (const spec of sounds) expect(spec).toMatch(/^\.\/sounds\/keypress-\d{3}\.wav\?url$/);
+    expect(sounds).toHaveLength(18);
+    expect(sounds.filter((spec) => /^\.\/sounds\/keypress-\d{3}\.wav\?url$/.test(spec))).toHaveLength(10);
+    expect(sounds.filter((spec) => /^\.\/sounds\/typewriter\/typewriter-[1-8]\.wav\?url$/.test(spec))).toHaveLength(8);
+    expect(sounds.some((spec) => spec.includes('original'))).toBe(false);
     // 本体の設定・OS の判定・ネイティブへの入口（bridge）・本体の画面を、部品は直接 import しない。
     for (const f of files.filter((f) => isInside(f, path.join(FEATURES, 'typing-sound')))) {
       const bad = specifiers(f).filter((spec) => /preferences|shortcuts|platform|bridge|\/ui\/|\/editor\//.test(spec));

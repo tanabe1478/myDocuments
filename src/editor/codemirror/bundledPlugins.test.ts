@@ -283,12 +283,13 @@ describe('bundled plugins together', () => {
     ]);
   });
 
-  it('keeps the extension order of the list (Markdown display, focus mode, list continuation, typewriter mode, typing sound), and the shortcuts apart (typing sound has none)', () => {
+  it('keeps the extension order of the list (Markdown display, focus mode, list continuation, typewriter mode, typing sound timbre, typing sound), and the shortcuts apart (typing sound has none)', () => {
     expect(registry.editorExtensions.map((e) => e.settingKey)).toEqual([
       'markupDisplay',
       'focusMode',
       'listContinuation',
       'typewriterMode',
+      'typingSoundTimbre',
       'typingSound',
       'typingSoundVolume',
     ]);
@@ -297,6 +298,32 @@ describe('bundled plugins together', () => {
       ['typewriter.toggle', 'Mod+Shift+T'],
       ['typing-sound.toggle', undefined],
     ]);
+  });
+
+  it('applies the saved settings one by one in the registered order, as the app does at startup: a saved timbre typewriter fetches only the typewriter files (never the keyboard ones first)', () => {
+    const fetched: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      fetched.push(url);
+      return { ok: true, arrayBuffer: async () => new ArrayBuffer(8) };
+    }));
+    vi.stubGlobal('AudioContext', undefined);
+    try {
+      const own = createPluginRegistry(bundledPlugins);
+      const own1 = createCodeMirrorAdapter(own.editorExtensions);
+      own1.mount(host);
+      const saved: Record<string, unknown> = { typingSound: true, typingSoundTimbre: 'typewriter', typingSoundVolume: 'high' };
+      for (const extension of own.editorExtensions) own1.setPluginSetting(extension.settingKey, saved[extension.settingKey] ?? own.settings.find((s) => s.key === extension.settingKey)?.defaultValue);
+      expect(fetched).toHaveLength(8);
+      expect(fetched.every((url) => /typewriter-[1-8]/.test(url))).toBe(true);
+      // 実行中に音色を戻すと、そのときキーボードの素材を読む。
+      own1.setPluginSetting('typingSoundTimbre', 'keyboard');
+      expect(fetched).toHaveLength(18);
+      expect(fetched.slice(8).every((url) => /keypress-\d{3}/.test(url))).toBe(true);
+      own1.destroy();
+      own.dispose();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('focus mode and typewriter mode can be on at once (the combination of live-markup.spec)', () => {

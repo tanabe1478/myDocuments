@@ -141,7 +141,7 @@ test.describe('リストの継続 (Run 11)', () => {
   });
 
   test('設定画面の最後のラジオ（「音」の節の音量）でも、Tab は設定画面の中で循環する（選択が最後の「大」でも、そうでなくても）', async ({ page }) => {
-    // 「編集」の節は最後ではなくなった（「音」の節が続く）。DOM 順で最後のラジオは、「音」の節の「大」。
+    // 「編集」の節は最後ではなくなった（「音」の節が続く）。DOM 順で最後のラジオ（の組）は、「音」の節の音量（音色の組は音量の前にある）。
     for (const volume of ['low', 'medium', 'high']) {
       const other = await page.context().newPage();
       await launchWith(other, LOOSE, { typingSoundVolume: volume });
@@ -150,13 +150,13 @@ test.describe('リストの継続 (Run 11)', () => {
       await expect(root).toBeVisible();
       const insideDialog = () => other.evaluate(() => !!document.activeElement?.closest('[data-testid=settings-dialog]'));
       // 選択中のラジオ（Tab で止まる側）へフォーカスし、Tab で最初の項目（閉じるボタン）へ戻る。
-      await root.getByTestId('settings-sound').locator('input[type=radio]:checked').focus();
+      await root.getByTestId('settings-sound').locator('input[name=typing-sound-volume]:checked').focus();
       await other.keyboard.press('Tab');
       expect(await insideDialog(), volume).toBe(true);
       await expect(root.getByTestId('settings-close'), volume).toBeFocused();
       // 最初の項目から Shift+Tab で、選択中のラジオへ戻る。
       await other.keyboard.press('Shift+Tab');
-      await expect(root.getByTestId('settings-sound').locator('input[type=radio]:checked'), volume).toBeFocused();
+      await expect(root.getByTestId('settings-sound').locator('input[name=typing-sound-volume]:checked'), volume).toBeFocused();
     }
   });
 

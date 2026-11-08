@@ -34,7 +34,7 @@ function render(prefs: StoredPreferences, onChange = vi.fn(), settingsItems = re
 }
 
 describe('SoundSettings (the 音 section)', () => {
-  it('has a heading 音 and the volume radios 小・中・大, in that order, with 中 selected by default', () => {
+  it('has a heading 音, the timbre radios (キーボード・タイプライター) before the volume radios 小・中・大, with キーボード and 中 selected by default', () => {
     render(stored());
     const section = container.querySelector('section')!;
     expect(section.getAttribute('data-testid')).toBe('settings-sound');
@@ -42,17 +42,32 @@ describe('SoundSettings (the 音 section)', () => {
     expect(section.getAttribute('aria-labelledby')).toBe(section.querySelector('h3')?.id);
     const radios = Array.from(section.querySelectorAll<HTMLInputElement>('input[type="radio"]'));
     expect(radios.map((r) => [r.name, r.value, r.checked, r.closest('label')?.textContent])).toEqual([
+      ['typing-sound-timbre', 'keyboard', true, 'キーボード'],
+      ['typing-sound-timbre', 'typewriter', false, 'タイプライター'],
       ['typing-sound-volume', 'low', false, '小'],
       ['typing-sound-volume', 'medium', true, '中'],
       ['typing-sound-volume', 'high', false, '大'],
     ]);
-    expect(section.querySelector('legend')?.textContent).toBe('タイピング音の大きさ');
+    expect(Array.from(section.querySelectorAll('legend')).map((l) => l.textContent)).toEqual(['タイピング音の音色', 'タイピング音の大きさ']);
   });
 
-  it('selects the saved value', () => {
-    render(stored({ typingSoundVolume: 'high' }));
+  it('selects the saved values', () => {
+    render(stored({ typingSoundVolume: 'high', typingSoundTimbre: 'typewriter' }));
     const checked = Array.from(container.querySelectorAll<HTMLInputElement>('input[type="radio"]')).filter((r) => r.checked);
-    expect(checked.map((r) => r.value)).toEqual(['high']);
+    expect(checked.map((r) => r.value)).toEqual(['typewriter', 'high']);
+  });
+
+  it('shows キーボード for an unknown saved timbre', () => {
+    render(stored({ typingSoundTimbre: 'piano' }));
+    const checked = Array.from(container.querySelectorAll<HTMLInputElement>('input[type="radio"]')).filter((r) => r.checked);
+    expect(checked.map((r) => r.value)).toEqual(['keyboard', 'medium']);
+  });
+
+  it('reports a timbre change as a patch of the setting key', () => {
+    const onChange = render(stored());
+    const typewriter = container.querySelector<HTMLInputElement>('input[value="typewriter"]')!;
+    act(() => typewriter.click());
+    expect(onChange).toHaveBeenCalledWith({ typingSoundTimbre: 'typewriter' });
   });
 
   it('reports a change as a patch of the setting key', () => {

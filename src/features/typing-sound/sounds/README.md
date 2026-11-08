@@ -1,4 +1,6 @@
-# タイピング音の素材
+# タイピング音の素材（キーボード）
+
+タイピング音には音色が 2 つある。このフォルダは「キーボード」の素材。「タイプライター」の素材（Cassie-OrbitGames、CC0。加工あり）の出典と加工は typewriter/README.md。
 
 このフォルダの WAV ファイル 10 個は、Unicae Games の「Keyboard Soundpack #1」の単発の打鍵音（Single Keys）。バイト列は元のまま（形式の変換、音量の正規化、切り詰めをしていない）。
 

@@ -1,0 +1,269 @@
+{
+ "seed": {
+  "files": {
+   "/docs/sound.md": {
+    "text": "- 一つ目"
+   }
+  },
+  "openPath": "/docs/sound.md",
+  "preferences": {
+   "theme": "light",
+   "autoHideChrome": false,
+   "typingSound": true
+  }
+ },
+ "steps": [
+  {
+   "press": "ControlOrMeta+o"
+  },
+  {
+   "expect": {
+    "testId": "doc-title",
+    "equals": "sound.md"
+   }
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2ETypingSound.fetchedTimbres",
+    "equals": [
+     "keyboard"
+    ],
+    "timeout": 4000
+   },
+   "note": "オンで起動（音色は既定のキーボード）。キーボードの素材だけを fetch する"
+  },
+  {
+   "press": "ControlOrMeta+,"
+  },
+  {
+   "expect": {
+    "eval": "[...document.querySelector('[data-testid=settings-sound]').querySelectorAll('legend')].map((l) => l.textContent)",
+    "equals": [
+     "タイピング音の音色",
+     "タイピング音の大きさ"
+    ]
+   },
+   "note": "「音」の節は、音色が音量の前"
+  },
+  {
+   "expect": {
+    "eval": "[...document.querySelector('[data-testid=settings-sound]').querySelectorAll('input[type=radio]')].map((r) => r.value + (r.checked ? '*' : ''))",
+    "equals": [
+     "keyboard*",
+     "typewriter",
+     "low",
+     "medium*",
+     "high"
+    ]
+   },
+   "note": "既定は、音色がキーボード、音量が中"
+  },
+  {
+   "expect": {
+    "eval": "(document.querySelector('[data-testid=settings-sound]').scrollIntoView({ block: 'end' }), true)",
+    "equals": true
+   },
+   "note": "撮影のため、「音」の節が見える位置までスクロールする"
+  },
+  {
+   "screenshot": "settings-timbre-keyboard"
+  },
+  {
+   "click": "[data-testid=settings-close]"
+  },
+  {
+   "click": ".cm-content"
+  },
+  {
+   "press": "ControlOrMeta+End"
+  },
+  {
+   "press": "x"
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2ETypingSound.decodedCount",
+    "equals": 10,
+    "timeout": 4000
+   },
+   "note": "最初のキーで、キーボードの 10 個をデコードする（このキーは鳴らない）"
+  },
+  {
+   "wait": 60
+  },
+  {
+   "press": "a"
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2ETypingSound.requests.map((r) => r.timbre)",
+    "equals": [
+     "keyboard"
+    ]
+   },
+   "note": "キー 1 回につき要求が 1 回（キーボード）"
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2ETypingSound.requests[0].startDelayMs < 5",
+    "equals": true
+   },
+   "note": "keydown から start を呼ぶまでが 5ms 未満"
+  },
+  {
+   "press": "ControlOrMeta+,"
+  },
+  {
+   "check": {
+    "panel": true,
+    "role": "radio",
+    "name": "タイプライター"
+   }
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.savedPreferences.at(-1).typingSoundTimbre",
+    "equals": "typewriter",
+    "timeout": 4000
+   },
+   "note": "debounce の後に bridge へ保存される"
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2ETypingSound.fetchedTimbres",
+    "equals": [
+     "keyboard",
+     "typewriter"
+    ],
+    "timeout": 4000
+   },
+   "note": "切り替えたとき、タイプライターの素材だけを読む（キーボードは読み直さない）"
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2ETypingSound.fetches",
+    "equals": 2
+   }
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2ETypingSound.decodedTimbres",
+    "equals": [
+     "keyboard",
+     "typewriter"
+    ],
+    "timeout": 4000
+   }
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2ETypingSound.decodedCount",
+    "equals": 8
+   },
+   "note": "タイプライターは 8 個"
+  },
+  {
+   "expect": {
+    "eval": "(document.querySelector('[data-testid=settings-sound]').scrollIntoView({ block: 'end' }), true)",
+    "equals": true
+   }
+  },
+  {
+   "screenshot": "settings-timbre-typewriter"
+  },
+  {
+   "click": "[data-testid=settings-close]"
+  },
+  {
+   "click": ".cm-content"
+  },
+  {
+   "press": "ControlOrMeta+End"
+  },
+  {
+   "wait": 60
+  },
+  {
+   "press": "b"
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2ETypingSound.requests.map((r) => r.timbre)",
+    "equals": [
+     "keyboard",
+     "typewriter"
+    ]
+   },
+   "note": "次のキーは、タイプライターの素材で 1 回"
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2ETypingSound.requests[1].index < 8",
+    "equals": true
+   }
+  },
+  {
+   "press": "ControlOrMeta+,"
+  },
+  {
+   "check": {
+    "panel": true,
+    "role": "radio",
+    "name": "キーボード"
+   }
+  },
+  {
+   "click": "[data-testid=settings-close]"
+  },
+  {
+   "click": ".cm-content"
+  },
+  {
+   "press": "ControlOrMeta+End"
+  },
+  {
+   "wait": 60
+  },
+  {
+   "press": "c"
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2ETypingSound.requests.map((r) => r.timbre)",
+    "equals": [
+     "keyboard",
+     "typewriter",
+     "keyboard"
+    ]
+   },
+   "note": "キーボードに戻すと、キーボードの素材で鳴る"
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2ETypingSound.fetches",
+    "equals": 2
+   },
+   "note": "読み直さない"
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.editor.getText()",
+    "equals": "- 一つ目xabc"
+   },
+   "note": "入力した文字は変わらない"
+  },
+  {
+   "reload": true
+  },
+  {
+   "press": "ControlOrMeta+,"
+  },
+  {
+   "expect": {
+    "eval": "document.querySelector('[data-testid=settings-sound]').querySelector('input[name=typing-sound-timbre]:checked').value",
+    "equals": "keyboard"
+   },
+   "note": "再読み込み後も、音色が残る（最後に選んだキーボード）"
+  }
+ ]
+}

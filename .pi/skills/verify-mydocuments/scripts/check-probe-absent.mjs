@@ -3,6 +3,7 @@
 // 使い方（リポジトリのルートで）:
 //   node .pi/skills/verify-mydocuments/scripts/check-probe-absent.mjs                       dist/ と通常の debug 実行ファイル（target/debug）を検査（どちらかが無ければ飛ばす）
 //   node .pi/skills/verify-mydocuments/scripts/check-probe-absent.mjs --expect-present <file>   対照: 検証用のビルド（実行ファイル、またはその dist）には印が出ること
+// 打鍵音の WAV の数（18 個）と、元の録音が入らないことも検査する（R10）。
 // 印: __mdeIsolationProbe（検証用のコードの印）、isolation_probe_（記録用のネイティブのコマンド名）、__mdeE2EActionFixture（段 2 のテスト用の部品の印）、
 // __mdeE2ETypingSound（タイピング音の、e2e のビルドだけの音の要求の数え方の印。R9）。
 // R8 で独自プロトコル plug: はなくなった。dist/plugin-host/relay.js は本番の dist にも出る（仲介のコード。srcdoc の仲介の iframe が読む）。
@@ -57,6 +58,18 @@ if (fs.existsSync(path.join(ROOT, 'dist'))) {
   const names = fs.existsSync(hostDir) ? fs.readdirSync(hostDir).sort() : [];
   const ok = names.length === 1 && names[0] === 'relay.js' && fs.readFileSync(path.join(hostDir, 'relay.js')).equals(fs.readFileSync(path.join(ROOT, 'src', 'plugin-host', 'relay.js')));
   console.log(`${ok ? 'OK  ' : 'NG  '} dist/plugin-host/: ${JSON.stringify(names)}（relay.js だけで、src/plugin-host/relay.js と同じバイト列のはず）`);
+  if (!ok) bad++;
+}
+// 打鍵音の素材（R10）: dist/assets の WAV はちょうど 18 個（キーボード 10、加工後のタイプライター 8）で、
+// 元の録音（sounds/typewriter/original/ の typewriter1.wav から typewriter8.wav。アプリでは import しない）は入らない。
+const assetsDir = path.join(ROOT, 'dist', 'assets');
+if (fs.existsSync(assetsDir)) {
+  const wavs = fs.readdirSync(assetsDir).filter((f) => f.endsWith('.wav')).sort();
+  const keyboard = wavs.filter((f) => /^keypress-\d{3}-/.test(f));
+  const typewriter = wavs.filter((f) => /^typewriter-[1-8]-/.test(f));
+  const originals = wavs.filter((f) => /^typewriter\d-/.test(f));
+  const ok = wavs.length === 18 && keyboard.length === 10 && typewriter.length === 8 && originals.length === 0;
+  console.log(`${ok ? 'OK  ' : 'NG  '} dist/assets の WAV: ${wavs.length} 個（キーボード ${keyboard.length}、タイプライター ${typewriter.length}、元の録音 ${originals.length}）`);
   if (!ok) bad++;
 }
 process.exit(bad === 0 ? 0 : 1);

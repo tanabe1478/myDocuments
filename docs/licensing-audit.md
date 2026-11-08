@@ -9,7 +9,7 @@ MDE 本体と、npm・cargo の直接依存および推移依存（依存の依�
 - MDE 本体は MIT（`LICENSE`、"Copyright (c) 2026 MDE Contributors"）。MDE のコードを取り込む場合は、著作権表示と許諾文を残す必要がある。
 - 依存は npm 585 件・cargo 559 件。強いコピーレフト（GPL・AGPL 系）で、選択の余地がないものは 0 件。ライセンス表記がないものも 0 件（`khroma` は `package.json` に欠けていたが、LICENSE ファイルが MIT だった）。
 - MIT 以外で注意が要るのは MPL-2.0（ファイル単位のコピーレフト）、CC-BY-4.0（帰属表示）、同梱される KaTeX フォント（個別のライセンス未確認）の 3 点。
-- 音声・動画は、監査した MDE（`phase0/vendor/MDE`）には含まれない。仕様 §4.3 の環境音は、素材とライセンスの確認を別途行う必要がある（環境音は ADR-002 で後回し）。このリポジトリ（`src/`）には、R9 で、CC0 の打鍵音 10 個が入った（下の「このリポジトリの同梱の音声」）。
+- 音声・動画は、監査した MDE（`phase0/vendor/MDE`）には含まれない。仕様 §4.3 の環境音は、素材とライセンスの確認を別途行う必要がある（環境音は ADR-002 で後回し）。このリポジトリ（`src/`）には、R9 で、CC0 の打鍵音 10 個が入り、R10 で、CC0 のタイプライターの録音 8 個（加工あり）が入った（下の「このリポジトリの同梱の音声」と「2 つ目の素材（R10）」）。
 - MDE のロゴ画像（`src-tauri/icons/`）は MDE の識別そのもので、フォークしても再利用しない。
 
 ## 依存の集計
@@ -69,7 +69,7 @@ MIT、BSD-2/3-Clause、ISC、Apache-2.0、Unicode-3.0（`icu_*` など）は、�
 | 画像 | `public/vite.svg`、`public/tauri.svg` | Vite・Tauri のテンプレートのロゴ。`vite.svg` は `index.html:5` が favicon として参照、`tauri.svg` は参照されていない。削除する |
 | フォント（MDE 自身） | なし | `@font-face` やフォントファイルはリポジトリにない。CSS は Inter・Cascadia Code などの名前を指定するだけ（`src/editor/milkdown-dark.css:14,51`）で、同梱していない。外部フォント CDN の URL も、ビルド後の CSS にない（`https://` を検索して 0 件） |
 | フォント（依存由来） | `npm run build` の `dist/assets/*` | KaTeX フォント 59 ファイル（20 ファミリ）がビルド成果物に入る。由来は `@milkdown/crepe` と `mermaid` が依存する `katex@0.16.47`。`katex` パッケージは MIT だが、`node_modules/katex/dist/katex.js:6977` に「SIL Open Font License 1.1」と書かれた箇所があり、フォントファイル個別のライセンスは未確認 |
-| 音声 | MDE: なし。このリポジトリ: WAV 10 個（`src/features/typing-sound/sounds/`） | MDE は `git ls-files` に音声ファイルなし。このリポジトリの打鍵音は、下の「このリポジトリの同梱の音声」 |
+| 音声 | MDE: なし。このリポジトリ: 配布する WAV 18 個（打鍵音 10 個と、加工したタイプライターの音 8 個。`src/features/typing-sound/sounds/`）と、加工前の録音 8 個（配布物に入らない） | MDE は `git ls-files` に音声ファイルなし。このリポジトリの打鍵音は、下の「このリポジトリの同梱の音声」と「2 つ目の素材（R10）」 |
 | 動画 | なし | 同上 |
 
 ### このリポジトリの同梱の音声（R9）
@@ -89,6 +89,24 @@ MIT、BSD-2/3-Clause、ISC、Apache-2.0、Unicode-3.0（`icu_*` など）は、�
 - 既存製品（OmmWriter など）の音源は使っていない（仕様の対象外の項目「既存製品の UI・音声・画像素材をそのまま再現すること」）。
 - 作者の配布物には、使わなかった録音（人間のタイピング 10 個、生成音 7 個、単発の残り 22 個）も入っているが、このリポジトリには入れていない。
 - CC0 の表示は出典のページと配布物の readme.txt に基づく。OpenGameArt のページの記載が後から変わっていないかは、取得した時点より後は未確認。
+
+### 2 つ目の素材: タイプライターの音（R10）
+
+タイピング音の音色「タイプライター」の素材。キーボードの素材（上）とは別の出典で、加工している。
+
+| 項目 | 内容 |
+| --- | --- |
+| 出典 | Cassie-OrbitGames「Typewriter Sounds」（OpenGameArt、https://opengameart.org/content/typewriter-sounds ）。ページの説明は「Recorded these on my phone for one of my games」 |
+| 作者 | Cassie-OrbitGames |
+| ライセンス | CC0 1.0（出典のページの License(s) 欄）。帰属表示は不要だが、出典と作者を記録する（仕様 §4.3、§10） |
+| 使ったファイル | typewriter1.wav から typewriter8.wav の 8 個すべて。22050 Hz、16bit（typewriter1.wav だけ 1ch、ほかは 2ch） |
+| 加工 | した。2ch は 1ch に平均、ローパス（3500 Hz）、打撃の尖りを縮める、最初の打撃の 8 ms 前から 0.22 秒を切り出して終わりをフェード、int16 に書き出す。`scripts/make-typewriter-sounds.mjs`（依存なし）が元の 8 個から作り、`--check` で同梱のファイルとバイト列が一致することを確かめる。加工の値は `src/features/typing-sound/sounds/typewriter/README.md` |
+| 場所 | 元の録音（バイト列は配布されたまま）は `src/features/typing-sound/sounds/typewriter/original/`。アプリでは import しないので、dist に入らない。加工後の 8 個（1ch、22050 Hz、0.22 秒）は `src/features/typing-sound/sounds/typewriter/`。Vite が `dist/assets/` に出し、本体と同じオリジンから fetch する（CSP は変えていない） |
+| SHA-256 | 元の 8 個と加工後の 8 個のそれぞれを、`src/features/typing-sound/sounds/typewriter/README.md` に記録 |
+
+- 加工後のファイルは元の録音を変えたものだが、元が CC0 なので、同じく CC0 として扱える。
+- OpenGameArt のページの License(s) 欄が CC0 であることは、取得した時点で確かめた。それより後に記載が変わっていないかは未確認。
+- 既存製品（OmmWriter など）の音源は使っていない。
 
 ## 取り込む場合の扱い
 

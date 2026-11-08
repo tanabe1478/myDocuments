@@ -51,6 +51,21 @@ Phase 1 の執筆キャンバス（背景、フォーカスモード、タイプ
 - 実際の日本語入力（Microsoft IME、macOS の日本語入力、Mozc）で、変換中の keydown が 1 キーにつき 1 回数えられるか（e2e は CDP で key が Process、keyCode が 229 の keydown を送って確かめた）。
 - 音量の小・中・大が、実際のスピーカーやヘッドホンで、聞き分けられる大きさの差になっているか（gain は 0.25、0.5、1.0 の 6 dB ずつ。聞いて決めたものではない）。
 
+## 追記: タイピング音に音色を足し、音の遅れを直した（R10）
+
+R9 のタイピング音に、音色「タイプライター」を足した。既定は R9 の音（キーボード）のままで、設定画面の「音」の節のラジオ「音色」で切り替える。環境音の MVP 外しの決定は変えない。
+
+- 2 つ目の素材: Cassie-OrbitGames「Typewriter Sounds」の録音 8 個（CC0。OpenGameArt、https://opengameart.org/content/typewriter-sounds ）を、柔らかく加工した（ローパス、打撃の尖りを縮める、切り出し）。元の録音はバイト列のまま `src/features/typing-sound/sounds/typewriter/original/` に置き（dist には入らない）、加工後の 8 個を `src/features/typing-sound/sounds/typewriter/` に置いた。加工は `scripts/make-typewriter-sounds.mjs` が元から作り直せる（`--check` でバイト列の一致を確かめる）。出典・作者・ライセンス・加工・SHA-256 は `sounds/typewriter/README.md` と `docs/licensing-audit.md`。
+- 動作: 鳴らす規則（キー、間引き、同時の上限、直前と同じ素材を避ける、高さと音量の揺れ、Enter の低い音）は両方の音色で同じ。オフの間は何も読まない。オンのときは選んでいる音色の素材だけを fetch とデコードし、切り替えたときに新しい音色の素材を読む（読んだものは保持する）。音色ごとに gain を掛けて、同じ音量の段階での大きさをそろえた。
+- 音の遅れ（実機で「打鍵より音が遅れる」）: キーボードの素材は、頭に 3 ms から 55 ms の無音がある。デコードのあと、素材ごとに「振幅が最大値の 10% を最初に超える点の 2 ms 前」を求め、`source.start(0, offset)` でそこから鳴らす。素材のファイルは変えない。AudioContext は `latencyHint: 'interactive'` で作り、作れない環境では指定なしに戻す。keydown から start までに、await、タイマー、requestAnimationFrame はない。
+- 依存: 音声のライブラリは足していない。本体の CSP、capabilities、ネイティブのコマンドは変えていない。
+
+### 追記の時点で未確認のこと
+
+- 実際の Tauri の窓（WKWebView）で、耳で分かる遅れが残るか。縮むのは素材の頭の無音の分（キーボードで 3 ms から 53 ms）で、出力の遅延（AudioContext の baseLatency、outputLatency、OS とオーディオ機器の遅延）は、この変更では縮まない。
+- タイプライターの音が、実際のスピーカーやヘッドホンで、キーボードと同じ大きさに聞こえるか（gain は素材の RMS を測って決めた。聞いて決めたものではない）。
+- Windows（WebView2）と Linux（WebKitGTK）の WebView での再生と遅れ。
+
 ## 未検証
 
 - 環境音を外したことによる、MVP の利用者像（§2）への影響。利用者の反応は未確認。

@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
-import { EditorState, Prec, type Extension } from '@codemirror/state';
+import { Compartment, EditorState, Prec, type Extension } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPluginRegistry, type CommandContext } from '../../plugin-api';
-import { TYPING_SOUND_SETTING_KEY, TYPING_SOUND_VOLUME_SETTING_KEY, typingSoundPlugin } from '.';
-import { typingSoundExtension, volumeFacet } from './extension';
-import type { TypingSoundPlayer, TypingSoundVolume } from './player';
+import { TYPING_SOUND_SETTING_KEY, TYPING_SOUND_TIMBRE_SETTING_KEY, TYPING_SOUND_VOLUME_SETTING_KEY, typingSoundPlugin } from '.';
+import { timbreFacet, typingSoundExtension, volumeFacet } from './extension';
+import type { TypingSoundPlayer, TypingSoundTimbre, TypingSoundVolume } from './player';
 import { SOUND_URLS } from './sounds';
 
 const ENV = { textKind: 'markdown', openExternalUrl: () => {}, isMacPlatform: () => false } as const;
@@ -31,18 +31,23 @@ describe('typing-sound plugin registration', () => {
     expect(registry().records).toEqual([{ id: 'typing-sound', name: 'タイピング音', version: '1.0.0', status: 'active', reason: null }]);
   });
 
-  it('registers typingSound (boolean, off by default) and typingSoundVolume (low | medium | high, medium by default)', () => {
+  it('registers typingSound (boolean, off by default), typingSoundVolume (low | medium | high, medium by default) and typingSoundTimbre (keyboard | typewriter, keyboard by default)', () => {
     const settings = registry().settings;
-    expect(settings.map((s) => s.key)).toEqual(['typingSound', 'typingSoundVolume']);
+    expect(settings.map((s) => s.key)).toEqual(['typingSound', 'typingSoundVolume', 'typingSoundTimbre']);
     expect(TYPING_SOUND_SETTING_KEY).toBe('typingSound');
     expect(TYPING_SOUND_VOLUME_SETTING_KEY).toBe('typingSoundVolume');
-    const [on, volume] = settings;
+    expect(TYPING_SOUND_TIMBRE_SETTING_KEY).toBe('typingSoundTimbre');
+    const [on, volume, timbre] = settings;
     expect(on).toMatchObject({ key: 'typingSound', defaultValue: false });
     expect(on?.normalize(true)).toBe(true);
     for (const bad of [undefined, null, 1, 'true', [], {}]) expect(on?.normalize(bad), String(bad)).toBe(false);
     expect(volume).toMatchObject({ key: 'typingSoundVolume', defaultValue: 'medium' });
     for (const ok of ['low', 'medium', 'high']) expect(volume?.normalize(ok)).toBe(ok);
     for (const bad of [undefined, null, 1, 'loud', 'LOW', '', true, {}]) expect(volume?.normalize(bad), String(bad)).toBe('medium');
+    expect(timbre).toMatchObject({ key: 'typingSoundTimbre', defaultValue: 'keyboard' });
+    for (const ok of ['keyboard', 'typewriter']) expect(timbre?.normalize(ok)).toBe(ok);
+    // 知らない値（古い版、手で書き換えた値、型違い）は keyboard に戻る。
+    for (const bad of [undefined, null, 1, 'piano', 'Typewriter', 'KEYBOARD', '', true, [], ['typewriter'], {}]) expect(timbre?.normalize(bad), String(bad)).toBe('keyboard');
   });
 
   it('puts the checkbox in the writing aids section after the host auto-hide item (order 400)', () => {
@@ -51,8 +56,25 @@ describe('typing-sound plugin registration', () => {
     ]);
   });
 
+  it('puts the timbre radio (キーボード・タイプライター) first in the sound section, before the volume', () => {
+    const items = registry().settingsItems('sound.body');
+    expect(items.map((i) => i.settingKey)).toEqual(['typingSoundTimbre', 'typingSoundVolume']);
+    expect(items[0]).toMatchObject({
+      pluginId: 'typing-sound',
+      placement: 'sound.body',
+      kind: 'radio',
+      settingKey: 'typingSoundTimbre',
+      name: 'typing-sound-timbre',
+      legend: 'タイピング音の音色',
+      options: [
+        { value: 'keyboard', label: 'キーボード' },
+        { value: 'typewriter', label: 'タイプライター' },
+      ],
+    });
+  });
+
   it('puts the volume radio (小・中・大) in the new sound section', () => {
-    const [item] = registry().settingsItems('sound.body');
+    const item = registry().settingsItems('sound.body').find((i) => i.settingKey === 'typingSoundVolume');
     expect(item).toMatchObject({
       pluginId: 'typing-sound',
       placement: 'sound.body',
@@ -65,7 +87,11 @@ describe('typing-sound plugin registration', () => {
         { value: 'high', label: '大' },
       ],
     });
-    expect(registry().settingsItems('sound.body')).toHaveLength(1);
+    expect(registry().settingsItems('sound.body')).toHaveLength(2);
+  });
+
+  it('registers the timbre extension before the on/off extension (the host applies saved settings in this order, so the saved timbre is in place when sound turns on)', () => {
+    expect(registry().editorExtensions.map((e) => e.settingKey)).toEqual(['typingSoundTimbre', 'typingSound', 'typingSoundVolume']);
   });
 
   it('registers the toggle command without a shortcut', () => {
@@ -94,20 +120,22 @@ describe('typing-sound plugin registration', () => {
     }
   });
 
-  it('has 10 sound URLs, all different', () => {
-    expect(SOUND_URLS).toHaveLength(10);
-    expect(new Set(SOUND_URLS).size).toBe(10);
-    for (const url of SOUND_URLS) expect(url).toMatch(/keypress-\d{3}.*\.wav$/);
+  it('has 10 keyboard sound URLs and 8 typewriter sound URLs, all different', () => {
+    expect(SOUND_URLS.keyboard).toHaveLength(10);
+    expect(SOUND_URLS.typewriter).toHaveLength(8);
+    expect(new Set([...SOUND_URLS.keyboard, ...SOUND_URLS.typewriter]).size).toBe(18);
+    for (const url of SOUND_URLS.keyboard) expect(url).toMatch(/keypress-\d{3}.*\.wav$/);
+    for (const url of SOUND_URLS.typewriter) expect(url).toMatch(/typewriter-[1-8].*\.wav$/);
   });
 });
 
 /** 記録するだけの player。 */
 function spyPlayer() {
-  const calls: Array<{ key: string; volume: TypingSoundVolume; prevented: boolean }> = [];
+  const calls: Array<{ key: string; volume: TypingSoundVolume; timbre: TypingSoundTimbre; prevented: boolean }> = [];
   const player: TypingSoundPlayer = {
     prepare: vi.fn(),
-    handleKeyDown: vi.fn((e, volume) => {
-      calls.push({ key: e.key, volume, prevented: (e as KeyboardEvent).defaultPrevented });
+    handleKeyDown: vi.fn((e, volume, timbre) => {
+      calls.push({ key: e.key, volume, timbre, prevented: (e as KeyboardEvent).defaultPrevented });
     }),
     dispose: vi.fn(),
   };
@@ -148,6 +176,32 @@ describe('the extension observes keydown in the body only', () => {
       ['a', 'low'],
       ['b', 'high'],
     ]);
+  });
+
+  it('passes the timbre of the state (keyboard by default), starts loading that timbre, and reads the new timbre when it changes while the extension is on', () => {
+    const { player, calls } = spyPlayer();
+    const compartment = new Compartment();
+    const v = mount([typingSoundExtension(player), compartment.of(timbreFacet.of('typewriter'))]);
+    expect(player.prepare).toHaveBeenLastCalledWith('typewriter');
+    press(v.contentDOM, 'a');
+    v.dispatch({ effects: compartment.reconfigure(timbreFacet.of('keyboard')) });
+    expect(player.prepare).toHaveBeenCalledTimes(2);
+    expect(player.prepare).toHaveBeenLastCalledWith('keyboard');
+    press(v.contentDOM, 'b');
+    expect(calls.map((c) => [c.key, c.timbre])).toEqual([
+      ['a', 'typewriter'],
+      ['b', 'keyboard'],
+    ]);
+    // 音色が変わらない更新（入力、同じ値の再設定）では、prepare を呼ばない。
+    v.dispatch({ changes: { from: 0, insert: 'x' } });
+    v.dispatch({ effects: compartment.reconfigure(timbreFacet.of('keyboard')) });
+    expect(player.prepare).toHaveBeenCalledTimes(2);
+
+    const plain = spyPlayer();
+    const v2 = mount(typingSoundExtension(plain.player));
+    expect(plain.player.prepare).toHaveBeenLastCalledWith('keyboard');
+    press(v2.contentDOM, 'a');
+    expect(plain.calls[0]?.timbre).toBe('keyboard');
   });
 
   it('only observes: does not preventDefault or stop the event, and the editor still gets it (an input handler after us still runs)', () => {
@@ -229,7 +283,7 @@ describe('the extension observes keydown in the body only', () => {
 
 describe('from the plugin: off means no fetch and no AudioContext', () => {
   function stubAudio() {
-    const created: Array<{ close: ReturnType<typeof vi.fn> }> = [];
+    const created: Array<{ close: ReturnType<typeof vi.fn>; args: unknown[] }> = [];
     class FakeAudioContext {
       state = 'running';
       destination = {};
@@ -240,9 +294,11 @@ describe('from the plugin: off means no fetch and no AudioContext', () => {
       decodeAudioData = vi.fn(async () => ({ duration: 0.25 }));
       createGain = () => ({ gain: { value: 1 }, connect() {}, disconnect() {} });
       createBufferSource = () => ({ buffer: null, playbackRate: { value: 1 }, onended: null, connect() {}, disconnect() {}, start() {} });
-      constructor() {
+      constructor(...args: unknown[]) {
+        this.args = args;
         created.push(this);
       }
+      args: unknown[];
     }
     const fetchMock = vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(100) }));
     vi.stubGlobal('AudioContext', FakeAudioContext);
@@ -264,19 +320,52 @@ describe('from the plugin: off means no fetch and no AudioContext', () => {
     r.dispose();
   });
 
-  it('with the setting on: fetches the 10 files at once, and creates the AudioContext at the first sounding key only', async () => {
+  it('with the setting on: fetches the 10 keyboard files at once (not the typewriter files), and creates the AudioContext at the first sounding key only', async () => {
     const { created, fetchMock } = stubAudio();
     const r = registry();
     const v = mount(extensionFor(r, true)!);
     expect(fetchMock).toHaveBeenCalledTimes(10);
+    expect(fetchMock.mock.calls.map((call) => (call as unknown[])[0])).toEqual([...SOUND_URLS.keyboard]);
     expect(created).toHaveLength(0);
     press(v.contentDOM, 'Shift');
     press(v.contentDOM, 'ArrowLeft');
     expect(created).toHaveLength(0);
     press(v.contentDOM, 'a');
     expect(created).toHaveLength(1);
+    // 遅延の少ない指定で作る。
+    expect(created[0]?.args).toEqual([{ latencyHint: 'interactive' }]);
     press(v.contentDOM, 'b');
     expect(created).toHaveLength(1);
+    r.dispose();
+  });
+
+  it('with the timbre typewriter: fetches only the 8 typewriter files; switching to the keyboard reads the keyboard files then, and switching back reads nothing more', () => {
+    const { fetchMock } = stubAudio();
+    const r = registry();
+    const timbreExtension = (value: string) => r.editorExtensions.find((e) => e.settingKey === 'typingSoundTimbre')!.create(value, ENV);
+    const compartment = new Compartment();
+    const v = mount([extensionFor(r, true)!, compartment.of(timbreExtension('typewriter'))]);
+    expect(fetchMock.mock.calls.map((call) => (call as unknown[])[0])).toEqual([...SOUND_URLS.typewriter]);
+    v.dispatch({ effects: compartment.reconfigure(timbreExtension('keyboard')) });
+    expect(fetchMock.mock.calls.slice(8).map((call) => (call as unknown[])[0])).toEqual([...SOUND_URLS.keyboard]);
+    v.dispatch({ effects: compartment.reconfigure(timbreExtension('typewriter')) });
+    expect(fetchMock).toHaveBeenCalledTimes(18);
+    // 知らない値が渡されても keyboard になる（読んだ素材の再読み込みもない）。
+    v.dispatch({ effects: compartment.reconfigure(timbreExtension('piano')) });
+    expect(fetchMock).toHaveBeenCalledTimes(18);
+    r.dispose();
+  });
+
+  it('while the setting is off, changing the timbre fetches nothing and creates nothing', () => {
+    const { created, fetchMock } = stubAudio();
+    const r = registry();
+    const timbreExtension = (value: string) => r.editorExtensions.find((e) => e.settingKey === 'typingSoundTimbre')!.create(value, ENV);
+    const compartment = new Compartment();
+    const v = mount([extensionFor(r, false)!, compartment.of(timbreExtension('keyboard'))]);
+    v.dispatch({ effects: compartment.reconfigure(timbreExtension('typewriter')) });
+    for (const k of ['a', 'Enter']) press(v.contentDOM, k);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(created).toEqual([]);
     r.dispose();
   });
 
