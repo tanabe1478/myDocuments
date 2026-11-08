@@ -3,7 +3,8 @@
 // 使い方（リポジトリのルートで）:
 //   node .pi/skills/verify-mydocuments/scripts/check-probe-absent.mjs                       dist/ と通常の debug 実行ファイル（target/debug）を検査（どちらかが無ければ飛ばす）
 //   node .pi/skills/verify-mydocuments/scripts/check-probe-absent.mjs --expect-present <file>   対照: 検証用のビルド（実行ファイル、またはその dist）には印が出ること
-// 印: __mdeIsolationProbe（検証用のコードの印）、isolation_probe_（記録用のネイティブのコマンド名）、__mdeE2EActionFixture（段 2 のテスト用の部品の印）。
+// 印: __mdeIsolationProbe（検証用のコードの印）、isolation_probe_（記録用のネイティブのコマンド名）、__mdeE2EActionFixture（段 2 のテスト用の部品の印）、
+// __mdeE2ETypingSound（タイピング音の、e2e のビルドだけの音の要求の数え方の印。R9）。
 // R8 で独自プロトコル plug: はなくなった。dist/plugin-host/relay.js は本番の dist にも出る（仲介のコード。srcdoc の仲介の iframe が読む）。
 // dist/plugin-host/ には relay.js だけがあり、検証用の probe-frame.js（VITE_ISOLATION_PROBE=1 のビルドだけ）は出ない。dist/plug/ も出ない。
 // dist のビルドは npm run build、実行ファイルは tauri.mjs build（--probe なし）。どちらも検証用のビルドをした後に、通常のビルドをし直してから使う。
@@ -11,7 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { ROOT, TAURI_BIN, parseArgs, rel } from './lib.mjs';
 
-const MARKS = ['__mdeIsolationProbe', 'isolation_probe_', '__mdeE2EActionFixture'];
+const MARKS = ['__mdeIsolationProbe', 'isolation_probe_', '__mdeE2EActionFixture', '__mdeE2ETypingSound'];
 const args = parseArgs(process.argv.slice(2));
 
 function filesUnder(p) {

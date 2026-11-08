@@ -99,10 +99,10 @@ test.describe('リストの継続 (Run 11)', () => {
   test('(b)(c) 設定画面の「編集」で「リストの形に合わせる」に変えると空行が入り、戻すとすぐ入らなくなる。再読み込み後も保たれる', async ({ page }) => {
     await launchWith(page, LOOSE);
 
-    // 「編集」の節は「外観」の後にあり、既定は「空行を入れない」。
+    // 「編集」の節は「外観」の後にあり（そのあとに「音」の節がある）、既定は「空行を入れない」。
     await page.keyboard.press('ControlOrMeta+,');
     const sections = dialog(page).locator('.settings-section h3');
-    await expect(sections).toHaveText(['外観', '編集']);
+    await expect(sections).toHaveText(['外観', '編集', '音']);
     const editing = dialog(page).getByTestId('settings-editing');
     await expect(editing.getByRole('radio', { name: '空行を入れない' })).toBeChecked();
     await expect(editing.getByRole('radio', { name: 'リストの形に合わせる' })).not.toBeChecked();
@@ -140,22 +140,23 @@ test.describe('リストの継続 (Run 11)', () => {
     ).toBeChecked();
   });
 
-  test('「編集」の節の最後のラジオでも、Tab は設定画面の中で循環する（選択が「空行を入れない」でも「リストの形に合わせる」でも）', async ({ page }) => {
-    for (const mode of ['tight', 'preserve']) {
+  test('設定画面の最後のラジオ（「音」の節の音量）でも、Tab は設定画面の中で循環する（選択が最後の「大」でも、そうでなくても）', async ({ page }) => {
+    // 「編集」の節は最後ではなくなった（「音」の節が続く）。DOM 順で最後のラジオは、「音」の節の「大」。
+    for (const volume of ['low', 'medium', 'high']) {
       const other = await page.context().newPage();
-      await launchWith(other, LOOSE, { listContinuation: mode });
+      await launchWith(other, LOOSE, { typingSoundVolume: volume });
       await other.keyboard.press('ControlOrMeta+,');
       const root = dialog(other);
       await expect(root).toBeVisible();
       const insideDialog = () => other.evaluate(() => !!document.activeElement?.closest('[data-testid=settings-dialog]'));
       // 選択中のラジオ（Tab で止まる側）へフォーカスし、Tab で最初の項目（閉じるボタン）へ戻る。
-      await root.getByTestId('settings-editing').locator('input[type=radio]:checked').focus();
+      await root.getByTestId('settings-sound').locator('input[type=radio]:checked').focus();
       await other.keyboard.press('Tab');
-      expect(await insideDialog(), mode).toBe(true);
-      await expect(root.getByTestId('settings-close'), mode).toBeFocused();
+      expect(await insideDialog(), volume).toBe(true);
+      await expect(root.getByTestId('settings-close'), volume).toBeFocused();
       // 最初の項目から Shift+Tab で、選択中のラジオへ戻る。
       await other.keyboard.press('Shift+Tab');
-      await expect(root.getByTestId('settings-editing').locator('input[type=radio]:checked'), mode).toBeFocused();
+      await expect(root.getByTestId('settings-sound').locator('input[type=radio]:checked'), volume).toBeFocused();
     }
   });
 

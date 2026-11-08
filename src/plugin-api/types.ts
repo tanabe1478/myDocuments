@@ -298,8 +298,9 @@ export interface CommandRegistration {
  * - editing.body: 「編集」の節の本文。節の見出しの下に、項目が並ぶ（枠はホストが持たず、項目が自分の枠を持つ）。
  * - appearance.body: 「外観」の節の本文。ホストの枠（フォント、文字組み、紙の幅、テーマ、背景、コントラスト、執筆の補助）と
  *   同じ並びの中に、項目が自分の枠を持って並ぶ。並びは order の数で決め、ホストの枠も同じ数の尺度で並ぶ（HOST_APPEARANCE_ORDER）。
+ * - sound.body: 「音」の節の本文。節の見出しの下に、項目が並ぶ（editing.body と同じ。枠は項目が持つ）。項目がなければ節を出さない。
  */
-export const SETTINGS_PLACEMENTS = ['appearance.writingAids', 'editing.body', 'appearance.body'] as const;
+export const SETTINGS_PLACEMENTS = ['appearance.writingAids', 'editing.body', 'appearance.body', 'sound.body'] as const;
 export type SettingsPlacement = (typeof SETTINGS_PLACEMENTS)[number];
 
 /** 置き場所ごとに置ける項目の種類（ホストがその場所で描ける種類）。合わない登録は、登録の例外になる。 */
@@ -307,6 +308,7 @@ export const SETTINGS_PLACEMENT_KINDS = {
   'appearance.writingAids': 'checkbox',
   'editing.body': 'radio',
   'appearance.body': 'radio',
+  'sound.body': 'radio',
 } as const satisfies Record<SettingsPlacement, SettingsItemKind>;
 
 /**

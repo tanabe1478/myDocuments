@@ -14,6 +14,9 @@
 //                      悪化の検出の確認に使う。結果は perf/out/ に出し（perf/results/ には置かない）、mode.injectInputDelayMs に記録する。
 //   --open-sidebar    計測専用: Web UI を、左サイドバーを開いた状態（部品のパネルが見えている）で計測する。既定は閉じた状態。
 //                      結果は perf/out/ に出し（perf/results/ には置かない）、mode.openSidebar に記録する。
+//   --typing-sound    計測専用: Web UI を、設定「タイピング音」をオンにした状態（保存済みの設定として渡す）で計測する。音量は既定（中）。既定はオフ。
+//                      結果は perf/out/ に出し（perf/results/ には置かない）、mode.typingSound に記録する。--browsers chromium と併せて使う
+//                      （Playwright の chromium は --mute-audio で起動する。webkit は音が出うるので、この選択肢では使わない）。
 //   --datasets a,b     計測専用: Web UI の計測を、指定した文書（A〜D）に限る（例: --datasets C）。結果は perf/out/ に出し、mode.datasets に記録する。
 // 各 group は失敗しても他を続け、失敗した item は status: "failed" と reason を結果に残す。
 // 終了コード: 失敗した item があれば 1（結果 JSON は書く）。
@@ -26,6 +29,9 @@ import { OUT_DIR, RESULTS_DIR, ROOT, ensureDir, environment, failedItem, gitInfo
 import { buildWeb, measureWeb, webPlan } from './lib/web.mjs';
 
 const args = parseArgs(process.argv.slice(2));
+function browserList(a) {
+  return typeof a.browsers === 'string' ? a.browsers.split(',') : ['chromium', 'webkit'];
+}
 const quick = args.quick === true;
 const webOnly = args['web-only'] === true;
 const skipBuild = args['skip-build'] === true;
@@ -35,9 +41,15 @@ if (!Number.isFinite(injectInputDelayMs) || injectInputDelayMs < 0) {
   process.exit(2);
 }
 const openSidebar = args['open-sidebar'] === true;
+const typingSound = args['typing-sound'] === true;
+if (typingSound && browserList(args).includes('webkit')) {
+  console.error('--typing-sound は --browsers chromium と併せて使ってください（webkit は、実際に音が出うるので使わない）');
+  process.exit(2);
+}
+const seedPrefs = openSidebar || typingSound ? { ...(openSidebar ? { sidebarOpen: true } : {}), ...(typingSound ? { typingSound: true } : {}) } : null;
 const datasetIds = typeof args.datasets === 'string' ? args.datasets.split(',') : null;
 const only = typeof args.only === 'string' ? args.only.split(',') : null;
-const browsers = typeof args.browsers === 'string' ? args.browsers.split(',') : ['chromium', 'webkit'];
+const browsers = browserList(args);
 const want = (g) => (only ? only.includes(g) : webOnly ? g === 'web' : true);
 const log = (m) => console.error(`[perf] ${m}`);
 
@@ -63,7 +75,7 @@ if (want('web')) {
   try {
     if (!skipBuild || !fs.existsSync(path.join(OUT_DIR, 'web-dist'))) buildWeb(log);
     const webFixtures = datasetIds ? fixtures.filter((f) => datasetIds.includes(f.id)) : fixtures;
-    const r = await measureWeb({ browsers, fixtures: webFixtures, quick, log, injectInputDelayMs, openSidebar });
+    const r = await measureWeb({ browsers, fixtures: webFixtures, quick, log, injectInputDelayMs, seedPrefs });
     items.push(...r.items);
     Object.assign(browserVersions, r.versions);
   } catch (e) {
@@ -114,7 +126,7 @@ const result = {
   generatedAt: new Date().toISOString(),
   durationSec: Math.round((Date.now() - started) / 1000),
   command: cmd,
-  mode: { quick, webOnly, only, browsers, ...(injectInputDelayMs > 0 ? { injectInputDelayMs } : {}), ...(openSidebar ? { openSidebar } : {}), ...(datasetIds ? { datasets: datasetIds } : {}) },
+  mode: { quick, webOnly, only, browsers, ...(injectInputDelayMs > 0 ? { injectInputDelayMs } : {}), ...(openSidebar ? { openSidebar } : {}), ...(typingSound ? { typingSound } : {}), ...(datasetIds ? { datasets: datasetIds } : {}) },
   commit: git,
   environment: {
     ...env,
@@ -130,12 +142,12 @@ const result = {
 let outFile;
 if (typeof args.out === 'string') {
   outFile = path.resolve(args.out);
-  if (injectInputDelayMs > 0 && outFile.startsWith(`${RESULTS_DIR}${path.sep}`)) {
-    console.error('遅延を注入した結果は perf/results/ に置けません（基準値になってしまうため）。');
+  if ((injectInputDelayMs > 0 || typingSound) && outFile.startsWith(`${RESULTS_DIR}${path.sep}`)) {
+    console.error('遅延を注入した結果と、タイピング音をオンにした結果は perf/results/ に置けません（基準値になってしまうため）。');
     process.exit(2);
   }
 }
-else if (openSidebar || datasetIds) outFile = path.join(OUT_DIR, `variant${openSidebar ? '-sidebar' : ''}${datasetIds ? `-${datasetIds.join('')}` : ''}${quick ? '-quick' : ''}-${date}-${git.short}.json`);
+else if (openSidebar || typingSound || datasetIds) outFile = path.join(OUT_DIR, `variant${openSidebar ? '-sidebar' : ''}${typingSound ? '-typing-sound' : ''}${datasetIds ? `-${datasetIds.join('')}` : ''}${quick ? '-quick' : ''}-${date}-${git.short}.json`);
 else if (injectInputDelayMs > 0) outFile = path.join(OUT_DIR, `inject-${injectInputDelayMs}ms${quick ? '-quick' : ''}-${date}-${git.short}.json`);
 else if (quick) outFile = path.join(OUT_DIR, `quick-${date}-${git.short}.json`);
 else {

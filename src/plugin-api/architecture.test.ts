@@ -37,8 +37,9 @@ describe('src/features/: what a bundled plugin may import', () => {
   const files = listFiles(FEATURES);
   const pluginDirs = readdirSync(FEATURES).filter((d) => statSync(path.join(FEATURES, d)).isDirectory());
 
-  it('has the bundled plugins (typewriter, focus, list-continuation, markdown), each in its own folder', () => {
+  it('has the bundled plugins (typewriter, focus, list-continuation, markdown, typing-sound), each in its own folder', () => {
     expect(pluginDirs).toContain('typewriter');
+    expect(pluginDirs).toContain('typing-sound');
     expect(pluginDirs).toContain('markdown');
     expect(pluginDirs).toContain('focus');
     expect(pluginDirs).toContain('list-continuation');
@@ -74,6 +75,33 @@ describe('src/features/: what a bundled plugin may import', () => {
     // ホストの設定の型（src/preferences/）を import しない（部品が自分の型を持つ）。
     for (const f of files.filter((f) => isInside(f, path.join(FEATURES, 'list-continuation')))) {
       expect(specifiers(f).filter((spec) => spec.includes('preferences')), rel(f)).toEqual([]);
+    }
+  });
+
+  it('the files of the typing-sound plugin are covered by the import rule (checked on their own, so the rule cannot silently skip them)', () => {
+    const own = files.filter((f) => isInside(f, path.join(FEATURES, 'typing-sound'))).map(rel);
+    expect(own).toEqual(
+      expect.arrayContaining([
+        'features/typing-sound/index.ts',
+        'features/typing-sound/extension.ts',
+        'features/typing-sound/keys.ts',
+        'features/typing-sound/player.ts',
+        'features/typing-sound/sounds.ts',
+        'features/typing-sound/e2eProbe.ts',
+        'features/typing-sound/keys.test.ts',
+        'features/typing-sound/player.test.ts',
+        'features/typing-sound/plugin.test.ts',
+      ]),
+    );
+    expect(specifiers(path.join(FEATURES, 'typing-sound', 'extension.ts'))).toEqual(expect.arrayContaining(['@codemirror/state', '@codemirror/view', './player']));
+    // 素材は、自分のフォルダの sounds/ の中のものだけを、Vite の ?url で取り込む。
+    const sounds = specifiers(path.join(FEATURES, 'typing-sound', 'sounds.ts'));
+    expect(sounds).toHaveLength(10);
+    for (const spec of sounds) expect(spec).toMatch(/^\.\/sounds\/keypress-\d{3}\.wav\?url$/);
+    // 本体の設定・OS の判定・ネイティブへの入口（bridge）・本体の画面を、部品は直接 import しない。
+    for (const f of files.filter((f) => isInside(f, path.join(FEATURES, 'typing-sound')))) {
+      const bad = specifiers(f).filter((spec) => /preferences|shortcuts|platform|bridge|\/ui\/|\/editor\//.test(spec));
+      expect(bad, rel(f)).toEqual([]);
     }
   });
 
@@ -163,6 +191,7 @@ describe('the host does not know any plugin by name', () => {
     'ui/EditingSettings.tsx',
     'ui/SettingsDialog.tsx',
     'ui/RadioSettingsItem.tsx',
+    'ui/SoundSettings.tsx',
   ];
 
   it('lists files that exist', () => {
@@ -188,9 +217,13 @@ describe('the host does not know any plugin by name', () => {
     /markdownDecorations/i,
     /lineKinds/i,
     /cm-md-(?!blank\b)/i,
+    // R9: タイピング音。
+    /typingSound/i,
+    /typing-sound/i,
+    /typing sound/i,
   ];
 
-  it('has no plugin names in the host files (typewriter, focusMode, focusRange, cm-md-dim, setFocusMode, listContinuation, insertNewlineContinue, setListContinuation, markupDisplay, liveMarkup, taskToggle, linkOpen, markdownDecorations, lineKinds, cm-md-* except cm-md-blank; any case, comments included)', () => {
+  it('has no plugin names in the host files (typewriter, focusMode, focusRange, cm-md-dim, setFocusMode, listContinuation, insertNewlineContinue, setListContinuation, markupDisplay, liveMarkup, taskToggle, linkOpen, markdownDecorations, lineKinds, cm-md-* except cm-md-blank, typingSound, typing-sound; any case, comments included)', () => {
     const hits = HOST.flatMap((f) => {
       const text = readFileSync(path.join(SRC, f), 'utf8');
       return NAMES.filter((n) => n.test(text)).map((n) => `${f}: ${n.source}`);
@@ -227,6 +260,10 @@ describe('the host does not know any plugin by name', () => {
       'lineKinds',
       "'.cm-md-h1'",
       "'cm-md-task-done'",
+      'prefs.typingSound',
+      'prefs.typingSoundVolume',
+      "from './features/typing-sound'",
+      'the typing sound plugin',
     ]) {
       expect(NAMES.some((n) => n.test(sample)), sample).toBe(true);
     }
@@ -271,5 +308,31 @@ describe('bundled plugins are loaded only from the list in src/features/index.ts
       }
     }
     expect(violations).toEqual([]);
+  });
+});
+
+describe('the e2e-only probe of the typing sound does not reach the production bundle (ADR-002, R9)', () => {
+  const MARK = '__mdeE2ETypingSound';
+  const all = listFiles(SRC);
+  const code = (f: string) => readFileSync(f, 'utf8');
+
+  it('among the files that can be bundled (not tests), the mark string is only in e2eProbe.ts', () => {
+    const carriers = all.filter((f) => !/\.test\./.test(f) && code(f).includes(MARK)).map(rel).sort();
+    expect(carriers).toEqual(['features/typing-sound/e2eProbe.ts']);
+  });
+
+  it('the only non-test use of the probe is behind __E2E__, so the build constant false removes it', () => {
+    const users = all.filter((f) => !/\.test\./.test(f) && /createTypingSoundE2EProbe/.test(code(f)) && !f.endsWith('e2eProbe.ts'));
+    expect(users.map(rel)).toEqual(['features/typing-sound/index.ts']);
+    const body = code(users[0]!);
+    expect([...body.matchAll(/createTypingSoundE2EProbe\(\)/g)]).toHaveLength(1);
+    expect(body).toMatch(/__E2E__\s*\?\s*createTypingSoundE2EProbe\(\)\s*:\s*undefined/);
+  });
+
+  it('__E2E__ is true only for VITE_E2E=1 (vite.config.ts), and check-probe-absent looks for the mark in dist/', () => {
+    const config = readFileSync(path.resolve(SRC, '..', 'vite.config.ts'), 'utf8');
+    expect(config).toMatch(/__E2E__:\s*JSON\.stringify\(process\.env\.VITE_E2E === '1'\)/);
+    const checker = readFileSync(path.resolve(SRC, '..', '.pi/skills/verify-mydocuments/scripts/check-probe-absent.mjs'), 'utf8');
+    expect(checker).toContain(`'${MARK}'`);
   });
 });

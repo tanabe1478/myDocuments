@@ -36,17 +36,20 @@ export function webPlan(quick) {
 
 const SCROLL_SPEED_PX_PER_SEC = 2400;
 
-/** 計測専用（--open-sidebar）: ページを開く前に、左サイドバーを開いた状態の設定を seed として渡す。アプリのコードは変えない。 */
-function sidebarSeedScript() {
-  window.__E2E_SEED__ = { ...(window.__E2E_SEED__ ?? {}), preferences: { sidebarOpen: true } };
+/**
+ * 計測専用（--open-sidebar、--typing-sound）: ページを開く前に、保存済みの設定（左サイドバーを開く、タイピング音をオン）を seed として渡す。
+ * アプリのコードは変えない。seedPrefs が null なら何も渡さない（既定の状態）。
+ */
+function seedScript(prefs) {
+  window.__E2E_SEED__ = { ...(window.__E2E_SEED__ ?? {}), preferences: prefs };
 }
 
-async function newPage(browser, url, injectDelayMs = 0, openSidebar = false) {
+async function newPage(browser, url, injectDelayMs = 0, seedPrefs = null) {
   const context = await browser.newContext({ viewport: VIEWPORT });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  if (openSidebar) await page.addInitScript(sidebarSeedScript);
+  if (seedPrefs) await page.addInitScript(seedScript, seedPrefs);
   await page.addInitScript(inPageSourceFor(injectDelayMs));
   await page.goto(url);
   await page.waitForSelector('html[data-ready="true"]', { timeout: 15_000 });
@@ -250,9 +253,10 @@ function pushStats(items, id, group, samples, extra = {}) {
  * Web UI の全項目を計測する。戻り値は item の配列と、環境（ブラウザの版）。
  * opts: { browsers, fixtures, quick, log, injectInputDelayMs }
  * injectInputDelayMs: 計測専用。全 keydown に足すビジーウェイト（ms）。検出の確認に使う（docs/perf-baseline.md）。
- * openSidebar: 計測専用（--open-sidebar）。左サイドバーを開いた状態（部品のパネルが見えている）で計測する。既定は閉じた状態。
+ * seedPrefs: 計測専用（--open-sidebar、--typing-sound）。保存済みの設定として渡す値（例: { sidebarOpen: true }、{ typingSound: true }）。
+ *   左サイドバーを開いた状態（部品のパネルが見えている）や、タイピング音をオンにした状態で計測する。null は既定の状態。
  */
-export async function measureWeb({ browsers, fixtures, quick, log, injectInputDelayMs = 0, openSidebar = false }) {
+export async function measureWeb({ browsers, fixtures, quick, log, injectInputDelayMs = 0, seedPrefs = null }) {
   const plan = webPlan(quick);
   const items = [];
   const versions = {};
@@ -277,7 +281,7 @@ export async function measureWeb({ browsers, fixtures, quick, log, injectInputDe
         for (let i = 0; i < (quick ? 2 : 5); i++) {
           const context = await browser.newContext({ viewport: VIEWPORT });
           const page = await context.newPage();
-          if (openSidebar) await page.addInitScript(sidebarSeedScript);
+          if (seedPrefs) await page.addInitScript(seedScript, seedPrefs);
           await page.addInitScript(() => { window.__t0 = performance.now(); });
           await page.goto(url);
           await page.waitForSelector('html[data-ready="true"]');
@@ -293,7 +297,7 @@ export async function measureWeb({ browsers, fixtures, quick, log, injectInputDe
         // ---- 読み込み（開く操作 → 本文の表示） ----
         let leftOpen = null;
         try {
-          leftOpen = await newPage(browser, url, injectInputDelayMs, openSidebar);
+          leftOpen = await newPage(browser, url, injectInputDelayMs, seedPrefs);
           const samples = await openDataset(leftOpen.page, t, { reps: plan.openReps });
           const valid = samples.filter((x) => x !== null);
           pushStats(items, `web.open.${name}.${t.id}`, 'open', valid, { metric: 'Mod+O の keydown から本文の先頭行とタイトルが画面に出た次のフレームの後まで', bytes: t.bytes, timeouts: samples.length - valid.length });
@@ -306,7 +310,7 @@ export async function measureWeb({ browsers, fixtures, quick, log, injectInputDe
         for (const where of ['end', 'middle']) {
           let ctx = null;
           try {
-            ctx = await newPage(browser, url, injectInputDelayMs, openSidebar);
+            ctx = await newPage(browser, url, injectInputDelayMs, seedPrefs);
             const { page } = ctx;
             await openDataset(page, t, { reps: 1 });
             await caretAt(page, where);
@@ -349,7 +353,7 @@ export async function measureWeb({ browsers, fixtures, quick, log, injectInputDe
       if (c) {
         let ctx = null;
         try {
-          ctx = await newPage(browser, url, injectInputDelayMs, openSidebar);
+          ctx = await newPage(browser, url, injectInputDelayMs, seedPrefs);
           await openDataset(ctx.page, c, { reps: 1 });
           const r = await scrollRun(ctx.page, plan.scrollMs);
           const f = stats(r.frames);
@@ -368,7 +372,7 @@ export async function measureWeb({ browsers, fixtures, quick, log, injectInputDe
       for (const t of targets.filter((x) => x.id === 'B' || x.id === 'C')) {
         let ctx = null;
         try {
-          ctx = await newPage(browser, url, injectInputDelayMs, openSidebar);
+          ctx = await newPage(browser, url, injectInputDelayMs, seedPrefs);
           await openDataset(ctx.page, t, { reps: 1 });
           await caretAt(ctx.page, 'middle');
           const f = await modeToggle(ctx.page, 'f', FOCUS_ON, FOCUS_OFF, plan.modeReps);

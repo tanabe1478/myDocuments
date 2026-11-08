@@ -11,7 +11,15 @@ const IMAGE_ID = 'ab12'.repeat(16);
 const pluginSettings = createPluginRegistry(bundledPlugins).settings;
 const normalizePreferences = (raw: unknown) => normalizeWith(raw, pluginSettings);
 /** 部品の設定が加わった既定値（これまで DEFAULT_PREFERENCES にあった項目を含む）。 */
-const DEFAULTS_WITH_PLUGINS = { ...DEFAULT_PREFERENCES, focusMode: false, typewriterMode: false, listContinuation: 'tight', markupDisplay: 'cursorLine' };
+const DEFAULTS_WITH_PLUGINS = {
+  ...DEFAULT_PREFERENCES,
+  focusMode: false,
+  typewriterMode: false,
+  listContinuation: 'tight',
+  markupDisplay: 'cursorLine',
+  typingSound: false,
+  typingSoundVolume: 'medium',
+};
 
 describe('normalizePreferences', () => {
   it('uses the defaults for missing or non-object input', () => {
@@ -47,6 +55,8 @@ describe('normalizePreferences', () => {
       hideBackground: true,
       listContinuation: 'preserve',
       markupDisplay: 'always',
+      typingSound: true,
+      typingSoundVolume: 'high',
     };
     expect(normalizePreferences(valid)).toEqual(valid);
   });
@@ -150,6 +160,9 @@ describe('background and accessibility fields (R3-1)', () => {
       listContinuation: DEFAULTS_WITH_PLUGINS.listContinuation,
       // Run 12 で増えた項目。
       markupDisplay: DEFAULTS_WITH_PLUGINS.markupDisplay,
+      // タイピング音で増えた項目（既定はオフ、音量は中）。
+      typingSound: DEFAULTS_WITH_PLUGINS.typingSound,
+      typingSoundVolume: DEFAULTS_WITH_PLUGINS.typingSoundVolume,
     });
   });
 
@@ -371,9 +384,11 @@ describe('stored shape of plugin settings (R1: typewriter, R2: focus mode, R3: l
   const bytes = (prefs: unknown) => JSON.stringify(sortKeys(prefs), null, 2) + '\n';
 
   it('saves the same bytes as before for every case, including old and broken files', () => {
+    // 正本は R1 の前の保存の形。あとから足した部品（タイピング音）の設定は含まないので、その部品を除いた一覧で確かめる。
+    const before = createPluginRegistry(bundledPlugins.filter((p) => p.manifest.id !== 'typing-sound')).settings;
     expect(golden.length).toBeGreaterThanOrEqual(10);
     for (const c of golden) {
-      expect(bytes(normalizePreferences(c.input)), c.name).toBe(c.expected);
+      expect(bytes(normalizeWith(c.input, before)), c.name).toBe(c.expected);
     }
   });
 

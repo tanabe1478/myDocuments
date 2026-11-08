@@ -1,6 +1,6 @@
 ---
 name: verify-mydocuments
-description: Immersive Markdown Editor（Tauri 2 + CodeMirror 6 の没入型 Markdown エディタ）の動作を、実ユーザー面で再現可能に起動・操作・証跡化する。primary は VITE_E2E ビルドの Web UI を Playwright（chromium）で操作する面、secondary は macOS の Tauri debug ビルドの窓の観測。文書の保存、設定画面（外観と編集の節）と外観、左サイドバーとエクスプローラー（フォルダツリー、作成・名前の変更・ゴミ箱への移動、外部の変更の自動反映、同梱の段 2 の部品「パスをコピー」と部品の権限の確認、部品のパネルと同梱の部品「アウトライン」）、執筆モード、保存の信頼性、書き心地（Enter でのリストの継続、カーソルのない行で記法を隠す記号の表示、⌘/Ctrl+クリックでリンクを開く操作、隠した行のチェックボックスのクリックでの切り替えを含む）を変えたとき、または変更を検証して証跡を残したいときに使う。
+description: Immersive Markdown Editor（Tauri 2 + CodeMirror 6 の没入型 Markdown エディタ）の動作を、実ユーザー面で再現可能に起動・操作・証跡化する。primary は VITE_E2E ビルドの Web UI を Playwright（chromium）で操作する面、secondary は macOS の Tauri debug ビルドの窓の観測。文書の保存、設定画面（外観と編集の節）と外観、左サイドバーとエクスプローラー（フォルダツリー、作成・名前の変更・ゴミ箱への移動、外部の変更の自動反映、同梱の段 2 の部品「パスをコピー」と部品の権限の確認、部品のパネルと同梱の部品「アウトライン」）、同梱の部品「タイピング音」（設定画面の「執筆の補助」のチェックと「音」の節の音量、鳴らす要求の数え方）、執筆モード、保存の信頼性、書き心地（Enter でのリストの継続、カーソルのない行で記法を隠す記号の表示、⌘/Ctrl+クリックでリンクを開く操作、隠した行のチェックボックスのクリックでの切り替えを含む）を変えたとき、または変更を検証して証跡を残したいときに使う。
 ---
 
 # verify-mydocuments
@@ -86,7 +86,7 @@ steps は上から順に実行し、外れたら止めて exit 1 にする。
 - 観測: observe（名前。files に仮想パスを並べると、バイト数、bom、crlf、lf、text を記録）、eval（ページ内で式を評価して記録）。
 - 検査: expect。対象は eval（式）か、testId / role+name / label / text / css のいずれか（設定画面の中なら panel: true）。read は text（既定）、count、visible、focused、attr:<name>、css:<prop>。比較は equals、not、contains、matches（正規表現）、gte、lte。timeout（既定 3000ms）まで再試行する。note は報告用の説明。
 
-key の ControlOrMeta はその OS の Mod キー（macOS は Cmd、それ以外は Ctrl）。安定したハンドルは data-testid（doc-title、unsaved-mark、toast、conflict-bar、conflict-diff、conflict-reload、conflict-keep、diff-dialog、recovery-dialog、settings-button、settings-dialog、settings-editing、sidebar、sidebar-toggle、sidebar-close、sidebar-empty、open-folder、retry-folder、restore-failure、change-folder、refresh-folder、new-file、new-folder、folder-name、file-tree、explorer-tree-area、tree-item、tree-note、tree-name-input、tree-name-error、tree-context-menu、confirm-trash、trash-ok、trash-cancel、char-count、canvas-bg、canvas-bg-image、canvas-surface、contrast-ratio、contrast-warning ほか）と、.cm-content、.cm-line、aria の名前（ツリーは role treeitem と名前）（dialog「設定」、radio「単色」「窓いっぱい」など）。観測の入口は window.__mdeE2E（calls、physicalWrites、log、conflicts、drafts、backups、savedPreferences、session、openedFolder、listed、watched、watchedFolders、trashed、renames、openedUrls（リンクを開く操作で渡された URL。ブラウザは開かない）、clipboard（クリップボードに書かれた文字列の記録。OS のクリップボードには書かない）、savedPluginPermissions（保存された部品の権限の決定）、closed、fullscreen、editor.getText()、readFile(path)）。
+key の ControlOrMeta はその OS の Mod キー（macOS は Cmd、それ以外は Ctrl）。安定したハンドルは data-testid（doc-title、unsaved-mark、toast、conflict-bar、conflict-diff、conflict-reload、conflict-keep、diff-dialog、recovery-dialog、settings-button、settings-dialog、settings-editing、sidebar、sidebar-toggle、sidebar-close、sidebar-empty、open-folder、retry-folder、restore-failure、change-folder、refresh-folder、new-file、new-folder、folder-name、file-tree、explorer-tree-area、tree-item、tree-note、tree-name-input、tree-name-error、tree-context-menu、confirm-trash、trash-ok、trash-cancel、char-count、canvas-bg、canvas-bg-image、canvas-surface、contrast-ratio、contrast-warning ほか）と、.cm-content、.cm-line、aria の名前（ツリーは role treeitem と名前）（dialog「設定」、radio「単色」「窓いっぱい」など）。観測の入口は window.__mdeE2E（calls、physicalWrites、log、conflicts、drafts、backups、savedPreferences、session、openedFolder、listed、watched、watchedFolders、trashed、renames、openedUrls（リンクを開く操作で渡された URL。ブラウザは開かない）、clipboard（クリップボードに書かれた文字列の記録。OS のクリップボードには書かない）、savedPluginPermissions（保存された部品の権限の決定）、closed、fullscreen、editor.getText()、readFile(path)）。タイピング音の音の要求は別に window.__mdeE2ETypingSound（fetches、contexts、decoded、decodedCount、requests。e2e のビルドだけ）。
 
 ## Evidence
 
@@ -138,6 +138,7 @@ npm run perf                            # 全部。macOS 実機で Tauri の rel
 npm run perf:compare -- <base.json> <new.json>   # 悪化した項目を一覧にして exit 1。引数を省くと perf/results/ の最新 2 件
 npm run perf:test                       # 比較の仕組み（perf/lib/judge.mjs）の単体テスト（node:test）
 npm run perf -- --quick --web-only --inject-input-delay 3   # 計測専用: 全 keydown に 3ms のビジーウェイトを足す。悪化を検出できるかの確認用（結果は perf/out/ だけ）
+npm run perf -- --only web --browsers chromium --typing-sound --out perf/out/<name>.json   # 計測専用: 設定「タイピング音」をオンにして計測（chromium は --mute-audio で起動する。webkit では使わない）。結果は perf/out/ だけ
 ```
 
 - 計測項目: Tauri 実機の起動時間（cold / warm）と全プロセス合計の RSS（空、100KB、1MB）、Web UI の入力から描画まで（A〜D、末尾と中央。フレーム単位）、入力の処理時間（keydown から CodeMirror の更新通知まで。フレームに丸められない）、IME 確定（chromium の CDP による模擬）、1MB のスクロールのフレーム時間、開く操作、フォーカス・タイプライターの切替、docio の読み書き（Rust の example を release で 200 回）、配布物のサイズ。

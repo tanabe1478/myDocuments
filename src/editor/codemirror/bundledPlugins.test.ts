@@ -275,18 +275,27 @@ describe('list continuation through the adapter (was setListContinuation)', () =
 });
 
 describe('bundled plugins together', () => {
-  it('lists the writing aids as focus mode (100), typewriter mode (200), in that order', () => {
+  it('lists the writing aids as focus mode (100), typewriter mode (200), typing sound (400), in that order', () => {
     expect(registry.settingsItems('appearance.writingAids').map((i) => [i.label, i.order, i.settingKey])).toEqual([
       ['フォーカスモード', 100, 'focusMode'],
       ['タイプライターモード', 200, 'typewriterMode'],
+      ['タイピング音', 400, 'typingSound'],
     ]);
   });
 
-  it('keeps the extension order of the list (Markdown display, focus mode, list continuation, typewriter mode), and the shortcuts apart', () => {
-    expect(registry.editorExtensions.map((e) => e.settingKey)).toEqual(['markupDisplay', 'focusMode', 'listContinuation', 'typewriterMode']);
+  it('keeps the extension order of the list (Markdown display, focus mode, list continuation, typewriter mode, typing sound), and the shortcuts apart (typing sound has none)', () => {
+    expect(registry.editorExtensions.map((e) => e.settingKey)).toEqual([
+      'markupDisplay',
+      'focusMode',
+      'listContinuation',
+      'typewriterMode',
+      'typingSound',
+      'typingSoundVolume',
+    ]);
     expect(registry.commands.map((c) => [c.id, c.shortcut?.text])).toEqual([
       ['focus.toggle', 'Mod+Shift+F'],
       ['typewriter.toggle', 'Mod+Shift+T'],
+      ['typing-sound.toggle', undefined],
     ]);
   });
 
