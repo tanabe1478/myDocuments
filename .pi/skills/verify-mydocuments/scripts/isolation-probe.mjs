@@ -207,7 +207,7 @@ export function judge({ canary, net, report, clipboard = [], permissionsFile = n
   };
   const r7Failures = [
     ...(docUndeclared && !r7Ok.undeclaredGotNothing ? ['document.read を宣言していない部品に、本文またはカーソルの位置が届いた'] : []),
-    ...(outlineReport && !r7Ok.outlineHiddenNoDoc ? ['パネルが見えていない（サイドバーが閉じている）のに、同梱の部品に本文が届いた'] : []),
+    ...(outlineReport && !r7Ok.outlineHiddenNoDoc ? ['パネルが見えていない（右ペインが閉じている。起動時は閉じている）のに、同梱の部品に本文が届いた'] : []),
   ];
   const r7Incomplete = [
     ...r7Bad.filter((b) => !b.stoppedByRelay).map((b) => `R7 の不正な呼び出し（${b.plugin}）が、部品を止めたと確認できない`),
@@ -279,7 +279,7 @@ function markdown(j) {
     for (const b of j.r7.badCalls) lines.push(`- 不正な呼び出し（${b.plugin}）: ${b.stoppedByRelay ? '部品を止めた' : '止めていない'}（${b.stoppedReason ?? 'なし'}）`);
     lines.push(`- document.read を宣言した部品（対照）が受け取った本文: ${JSON.stringify(j.r7.declaredGotDocument)}`);
     lines.push(`- document.read を宣言していない部品が受け取った本文: ${JSON.stringify(j.r7.undeclaredGotDocument)}（0 のはず）`);
-    lines.push(`- 同梱の部品（アウトライン。本物の relay.js の上）: ready ${j.r7.outline.ready}、パネル ${JSON.stringify(j.r7.outline.panels)}、状態 ${j.r7.outline.status}、サイドバーが閉じている間に届いた本文 ${j.r7.outline.docDeliveredWhileHidden} 件（0 のはず）`);
+    lines.push(`- 同梱の部品（アウトライン。本物の relay.js の上）: ready ${j.r7.outline.ready}、パネル ${JSON.stringify(j.r7.outline.panels)}、状態 ${j.r7.outline.status}、パネルが見えていない間（右ペインが閉じている間）に届いた本文 ${j.r7.outline.docDeliveredWhileHidden} 件（0 のはず）`);
     if (j.r7Incomplete.length > 0) lines.push('', `未確認（INCOMPLETE の理由。R7）: ${JSON.stringify(j.r7Incomplete)}`);
     lines.push('');
   }

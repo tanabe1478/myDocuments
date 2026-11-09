@@ -655,7 +655,10 @@ test.describe('ほかの機能との組み合わせ (Q5)', () => {
 
   test('アウトライン: 表のある文書でも、見出しの項目を押すとその行へ移り、表は原文のまま', async ({ page }) => {
     const text = `# 見出し A\n\n${TABLE}\n\n## 見出し B\n\n${FILLER}\n\n# 見出し C\n\n${TABLE}\n\n終わり`;
-    await openDoc(page, text, { sidebarOpen: true });
+    await openDoc(page, text);
+    // 部品のパネルは右ペイン（R13。起動時は閉じている）に出る。上部バーのボタンで開く。
+    await page.getByTestId('right-pane-toggle').click();
+    await expect(page.getByTestId('right-pane')).toHaveAttribute('data-open', 'true');
     const items = page.getByTestId('plugin-panel-item');
     await expect(items).toHaveText(['見出し A', '見出し B', '見出し C']);
     await items.nth(2).click();

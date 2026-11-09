@@ -231,8 +231,8 @@ test.describe('左サイドバー (b)', () => {
     await expect(sidebar(page).getByRole('heading', { name: 'エクスプローラー' })).toBeVisible();
     await expect(sidebar(page).getByText('フォルダはまだ開かれていません')).toBeVisible();
     // ボタンは「フォルダを開く」だけ（閉じるボタンは重ねて表示するときだけ。Run 9 でフォルダを開く入口が入った）。
-    // 部品のパネル（同梱のアウトライン。R7）の見出しのボタンが、エクスプローラーの下に 1 つ増えた。閉じるボタンはない。
-    await expect(sidebar(page).getByRole('button')).toHaveCount(2);
+    // 部品のパネル（R7）は、R13 で右ペインへ移ったので、左のサイドバーには出ない。
+    await expect(sidebar(page).getByRole('button')).toHaveCount(1);
     await expect(sidebar(page).getByRole('button', { name: 'フォルダを開く' })).toBeVisible();
 
     // 動きの終わりを待ってから、矩形を比べる。
@@ -479,7 +479,7 @@ test.describe('狭い窓のサイドバー', () => {
     await expect(page.locator('.app')).toHaveAttribute('data-sidebar-mode', 'push');
     await expect.poll(async () => (await rect(page, '.workspace')).left).toBe(SIDEBAR);
     await expect.poll(async () => Math.round((await columnBox(page)).width)).toBe(320);
-    await expect(sidebar(page).getByRole('button')).toHaveCount(2); // 閉じるボタンはなく、「フォルダを開く」と、部品のパネル（アウトライン。R7）の見出しだけ
+    await expect(sidebar(page).getByRole('button')).toHaveCount(1); // 閉じるボタンはなく、「フォルダを開く」だけ（部品のパネルは R13 から右ペイン）
 
     await page.setViewportSize({ width: 619, height: 700 });
     await expect(page.locator('.app')).toHaveAttribute('data-sidebar-mode', 'overlay');

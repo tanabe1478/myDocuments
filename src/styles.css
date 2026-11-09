@@ -83,8 +83,8 @@ body {
   overflow: hidden;
 }
 
-/* 本文の領域。左サイドバーを除いた残り全部で、本文面・本文・上下のバー・競合バー・トーストはこの中に置く（位置の基準）。
-   サイドバーを開くと、この領域が右へ押し出されて狭くなる（重ならない）。 */
+/* 本文の領域。左サイドバーと右ペインを除いた残り全部で、本文面・本文・上下のバー・競合バー・トーストはこの中に置く（位置の基準）。
+   左サイドバーを開くと右へ、右ペインを開くと左へ押し出されて、この領域が狭くなる（重ならない）。 */
 .workspace {
   position: relative;
   display: flex;
@@ -94,7 +94,7 @@ body {
   min-height: 0;
 }
 
-/* 背景層（z 0、窓全体）→ 本文面（z 1）→ 本文（z 2）→ 上下のバー（z 5）→ サイドバー（z 6）→ 設定画面（z 8）→ トースト（z 10）→ 確認のダイアログ（z 20）。 */
+/* 背景層（z 0、窓全体）→ 本文面（z 1）→ 本文（z 2）→ 上下のバー（z 5）→ サイドバーと右ペイン（z 6）→ 設定画面（z 8）→ トースト（z 10）→ 確認のダイアログ（z 20）。 */
 .canvas-bg {
   position: absolute;
   inset: 0;
@@ -215,7 +215,8 @@ body {
 .settings-dialog button:focus-visible,
 .settings-dialog input:focus-visible,
 .settings-dialog select:focus-visible,
-.sidebar button:focus-visible {
+.sidebar button:focus-visible,
+.right-pane button:focus-visible {
   outline: 2px solid var(--md-color-link);
   outline-offset: 2px;
 }
@@ -591,7 +592,8 @@ body {
   gap: 8px;
 }
 
-.sidebar h2 {
+.sidebar h2,
+.right-pane h2 {
   margin: 0;
   font-size: 12px;
   font-weight: 600;
@@ -779,15 +781,60 @@ body {
   font-size: 12px;
 }
 
-/* 部品のパネル（ADR-005 の R7）。エクスプローラーの下の節。部品の文字列は、文字として描かれる（見た目は、ここの決まった指定だけ）。 */
+/* 右ペイン（ADR-005 の R13）。本文の領域の右に、幅 260px で置く（push）。閉じているときは幅 0 で、見えず、フォーカスも受けない（inert）。
+   窓が狭くて、左の押し出し分と合わせて本文が最小幅を割るとき（data-mode='overlay'）は、本文を動かさず、本文の上に重ねる。
+   配色と文字は左サイドバーと同じ。境界線は左側。 */
+.right-pane {
+  position: relative;
+  z-index: 6;
+  flex: none;
+  box-sizing: border-box;
+  width: 0;
+  overflow: hidden;
+  visibility: hidden;
+  background: var(--md-color-panel);
+  color: var(--md-color-text);
+  font: 13px/1.5 system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI", "Noto Sans CJK JP", sans-serif;
+}
+
+.right-pane[data-open='true'] {
+  width: 260px;
+  visibility: visible;
+}
+
+.right-pane[data-mode='overlay'] {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 260px;
+  max-width: 100%;
+  transform: translateX(100%);
+}
+
+.right-pane[data-mode='overlay'][data-open='true'] {
+  transform: none;
+  box-shadow: 0 0 28px rgba(0, 0, 0, 0.28);
+}
+
+.right-pane-inner {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 260px;
+  height: 100%;
+  padding: 52px 16px 12px;
+  border-left: 1px solid var(--md-color-border);
+}
+
+/* 部品のパネル（ADR-005 の R7。R13 から右ペインの中）。部品の文字列は、文字として描かれる（見た目は、ここの決まった指定だけ）。
+   高さはペイン全体を使い、はみ出る分はここがスクロールする。 */
 .plugin-panels {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-height: 0;
-  max-height: 50%;
   margin: 8px -8px 0;
   padding: 0 8px;
   overflow: auto;
-  border-top: 1px solid var(--md-color-border);
 }
 
 /* 節ごとには縮まない（パネルが複数あっても、各節が欠けない）。はみ出る分は、パネルの領域全体がスクロールする。 */
@@ -990,6 +1037,21 @@ body {
   }
 
   .sidebar[data-open='true'] {
+    transition:
+      width 0.18s ease,
+      transform 0.18s ease,
+      visibility 0s;
+  }
+
+  /* 右ペインの開閉も同じ。 */
+  .right-pane {
+    transition:
+      width 0.18s ease,
+      transform 0.18s ease,
+      visibility 0s linear 0.18s;
+  }
+
+  .right-pane[data-open='true'] {
     transition:
       width 0.18s ease,
       transform 0.18s ease,

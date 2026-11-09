@@ -403,11 +403,14 @@ test.describe('Tab でのインデント (4)', () => {
     expect(await editorText(page)).toBe('  - ab');
     await expect(page.locator('.cm-content')).toBeFocused();
 
+    // 部品のパネルは最初の描画のあとに登録されるので、ボタンが出るのを待ってから、フォーカスの順序を確かめる。
+    await expect(page.getByTestId('right-pane-toggle')).toBeVisible();
     await page.keyboard.press('Escape');
     await page.keyboard.press('Shift+Tab');
     await expect(page.locator('.cm-content')).not.toBeFocused();
-    // 本文の直前にフォーカスできるのは、上部バーの最後の部品（設定ボタン）。
-    await expect(page.getByTestId('settings-button')).toBeFocused();
+    // 本文の直前にフォーカスできるのは、上部バーの最後の部品。部品のパネルがあるとき（同梱のアウトライン）は、
+    // 歯車の右にある右ペインの開閉ボタン（R13）。パネルが 1 つもなければ設定ボタン。
+    await expect(page.getByTestId('right-pane-toggle')).toBeFocused();
     expect(await editorText(page)).toBe('  - ab');
   });
 

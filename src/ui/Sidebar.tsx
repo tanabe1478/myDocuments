@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { useCallback, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { basename } from '../document/state';
 import type { ExplorerController, ExplorerState } from '../explorer/controller';
 import { buildTree } from '../explorer/tree';
@@ -21,8 +21,6 @@ interface Props {
   onClose(): void;
   /** 部品（段 2）が、ツリーの右クリックに足した項目。ファイルとフォルダの行のメニューに、本体の項目のあと、区切りを入れて並ぶ。 */
   pluginMenuItems?: readonly RegisteredMenuItem[];
-  /** 部品のパネルの節（エクスプローラーの下。フォルダを開いていなくても出る）。閉じているときは、サイドバーごと inert なので、フォーカスを受けない。 */
-  pluginPanels?: ReactNode;
 }
 
 /** 右クリックメニューの対象。path が null なら、ツリーの空き領域（作成先はルート）。 */
@@ -45,13 +43,13 @@ const ITEM_ITEMS: readonly MenuItem[] = [
 ];
 
 /**
- * 左サイドバー。中身はエクスプローラー（フォルダのツリー）。フォルダを選ぶまでは「フォルダを開く」ボタンだけ
+ * 左サイドバー。中身はエクスプローラー（フォルダのツリー）だけ（部品のパネルは、R13 から右ペイン。src/ui/RightPane.tsx）。フォルダを選ぶまでは「フォルダを開く」ボタンだけ
  * （前回のフォルダを開けなかったときは、その旨と「再試行」も）。
  * 閉じているときは、見えず、フォーカスも受けない（inert）。開閉は上部バーの左端のボタンか Mod+B。
  * 重ねて表示するとき（狭い窓）は、上部バーの開閉ボタンが隠れるので、中に閉じるボタンを置く。Esc でも閉じる。
  * 見出しの「新しいファイル」「新しいフォルダ」と、ツリーの右クリックメニューから、作成・名前の変更・ゴミ箱への移動ができる。
  */
-export function Sidebar({ open, mode, explorer, explorerState, currentPath, onOpenFile, onClose, pluginMenuItems = [], pluginPanels = null }: Props) {
+export function Sidebar({ open, mode, explorer, explorerState, currentPath, onOpenFile, onClose, pluginMenuItems = [] }: Props) {
   const { root, dirs, expanded, selected, edit, restoreFailure } = explorerState;
   const nodes = useMemo(() => (root === null ? [] : buildTree(root, dirs, expanded)), [root, dirs, expanded]);
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -234,7 +232,6 @@ export function Sidebar({ open, mode, explorer, explorerState, currentPath, onOp
             </div>
           </>
         )}
-        {pluginPanels}
       </div>
       {menu && (
         <TreeContextMenu

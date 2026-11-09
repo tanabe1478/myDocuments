@@ -1,8 +1,10 @@
 import { expect, type CDPSession, type Page } from '@playwright/test';
 import { docTitle, editorText, fileBytes, launch, setDialogPaths, test, unsavedMark, utf8 } from './helpers';
 
-// 部品のパネルと、同梱の部品「アウトライン」（ADR-005 の R7）。サイドバーのパネルに見出しの一覧が出て、項目を押すとその行へ移る。
-// 部品の文字列は文字として描かれる。本文は、権限 document.read を宣言した部品にだけ、入力が止まった後に、パネルが見えているときだけ届く。
+// 部品のパネルと、同梱の部品「アウトライン」（ADR-005 の R7）。右ペイン（R13。起動時は閉じている。上部バーのボタンか Option+Cmd+B で開く）の
+// パネルに見出しの一覧が出て、項目を押すとその行へ移る。
+// 部品の文字列は文字として描かれる。本文は、権限 document.read を宣言した部品にだけ、入力が止まった後に、パネルが見えているとき
+// （右ペインが開いていて、節がたたまれていない）だけ届く。右ペインの開閉、狭い窓、ショートカットは right-pane.spec.ts。
 // テスト用の部品（src/isolated-plugins/e2eFixtures.ts）は、seed の isolated.plugins に名前を書いたときだけ読み込まれる。
 
 const DOC = '/docs/note.md';
@@ -15,7 +17,17 @@ const outlineItems = (page: Page) => panel(page).getByTestId('plugin-panel-item'
 const outlineTexts = (page: Page) => outlineItems(page).allTextContents();
 const consoleLogs = new WeakMap<Page, string[]>();
 
-async function open(page: Page, options: { files?: Record<string, number[]>; plugins?: string[]; sidebar?: boolean; doc?: string } = {}) {
+/** 右ペインを、上部バーのボタンで開く（起動時は閉じている）。 */
+async function openRightPane(page: Page) {
+  const toggle = page.getByTestId('right-pane-toggle');
+  // 入力のあとは上部バーが自動で隠れている（ポインタを通さない）ので、ポインタを動かして戻してから押す。
+  await page.mouse.move(40 + Math.floor(Math.random() * 200), 300);
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByTestId('right-pane')).toHaveAttribute('data-open', 'true');
+}
+
+async function open(page: Page, options: { files?: Record<string, number[]>; plugins?: string[]; sidebar?: boolean; rightPane?: boolean; doc?: string } = {}) {
   const logs: string[] = [];
   consoleLogs.set(page, logs);
   page.on('console', (m) => logs.push(m.text()));
@@ -23,11 +35,12 @@ async function open(page: Page, options: { files?: Record<string, number[]>; plu
   await launch(page, {
     files: { [DOC]: utf8(MD), ...options.files },
     openPath: doc,
-    preferences: { sidebarOpen: options.sidebar ?? true },
+    preferences: { sidebarOpen: options.sidebar ?? false },
     isolated: { plugins: options.plugins ?? [], activateTimeoutMs: 8000, runTimeoutMs: 8000 },
   });
   await page.keyboard.press('ControlOrMeta+o');
   await expect(docTitle(page)).toHaveText(doc.split('/').at(-1)!);
+  if (options.rightPane ?? true) await openRightPane(page);
 }
 const stoppedReasons = (page: Page, plugin: string) => {
   const prefix = `[plugin] 部品「${plugin}」を止めました: `;
@@ -45,7 +58,7 @@ const cursorLine = (page: Page) => page.evaluate(() => {
 const editorFocused = (page: Page) => page.evaluate(() => document.activeElement?.closest('.cm-content') !== null && document.activeElement?.closest('.cm-content') !== undefined);
 
 test.describe('アウトライン: 見出しの一覧', () => {
-  test('Markdown の見出しが、エクスプローラーの下のパネルに、深さつきで並ぶ', async ({ page }) => {
+  test('Markdown の見出しが、右ペインのパネルに、深さつきで並ぶ', async ({ page }) => {
     await open(page);
     await expect(panel(page)).toBeVisible();
     await expect(panel(page).getByRole('button', { name: /アウトライン/ })).toHaveAttribute('aria-expanded', 'true');
@@ -53,13 +66,19 @@ test.describe('アウトライン: 見出しの一覧', () => {
     await expect(outlineItems(page)).toHaveCount(3);
     expect(await outlineItems(page).evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.depth))).toEqual(['0', '1', '0']);
     await expect(page.getByRole('list', { name: 'アウトラインの項目' })).toBeVisible();
-    // エクスプローラーの下に出る（フォルダを開いていなくても）。
-    await expect(page.getByTestId('sidebar-empty')).toBeVisible();
-    const explorerBox = (await page.getByTestId('sidebar-empty').boundingBox())!;
-    const panelBox = (await panel(page).boundingBox())!;
-    expect(panelBox.y).toBeGreaterThan(explorerBox.y + explorerBox.height - 1);
-    // 部品が登録したパネルで、見出しは部品の title。
-    await expect(page.getByTestId('sidebar').getByRole('heading', { level: 2, name: 'エクスプローラー' })).toBeVisible();
+    // 右ペインの中に出る（左サイドバーのエクスプローラーの下ではない。フォルダを開いていなくても出る）。
+    await expect(page.getByRole('complementary', { name: 'パネル' }).getByTestId('plugin-panels')).toBeVisible();
+    await expect(page.getByTestId('sidebar').getByTestId('plugin-panels')).toHaveCount(0);
+    // 開く動き（幅の変化）が終わってから、矩形を比べる。
+    await expect
+      .poll(async () => {
+        const paneBox = (await page.getByTestId('right-pane').boundingBox())!;
+        const panelBox = (await panel(page).boundingBox())!;
+        return paneBox.width === 260 && panelBox.x >= paneBox.x && panelBox.x + panelBox.width <= paneBox.x + paneBox.width + 1;
+      })
+      .toBe(true);
+    // 部品が登録したパネルで、見出しは部品の title。ペインの見出しは「パネル」。
+    await expect(page.getByTestId('right-pane').getByRole('heading', { level: 2, name: 'パネル' })).toBeVisible();
   });
 
   test('入力で更新される（入力が止まった後）。カーソルのある節が強調される', async ({ page }) => {
@@ -164,14 +183,14 @@ test.describe('アウトライン: 見出しへの移動', () => {
     expect(await editorFocused(page)).toBe(true);
   });
 
-  test('Tab で一覧に入る項目は 1 つだけ（現在の項目）。サイドバーを閉じると、パネルはフォーカスを受けない', async ({ page }) => {
+  test('Tab で一覧に入る項目は 1 つだけ（現在の項目）。右ペインを閉じると、パネルはフォーカスを受けない', async ({ page }) => {
     await open(page);
     await expect.poll(() => outlineTexts(page)).toEqual(['第一章', '第一節', '第二章']);
     const tabStops = await outlineItems(page).evaluateAll((els) => els.filter((e) => (e as HTMLElement).tabIndex === 0).length);
     expect(tabStops).toBe(1);
-    await page.keyboard.press('ControlOrMeta+b');
-    await expect(page.getByTestId('sidebar')).toHaveAttribute('data-open', 'false');
-    await expect(page.getByTestId('sidebar')).toHaveAttribute('inert', '');
+    await page.getByTestId('right-pane-toggle').click();
+    await expect(page.getByTestId('right-pane')).toHaveAttribute('data-open', 'false');
+    await expect(page.getByTestId('right-pane')).toHaveAttribute('inert', '');
     const focusable = await page.evaluate(() => {
       const els = Array.from(document.querySelectorAll<HTMLElement>('[data-testid=plugin-panels] button'));
       els.forEach((e) => e.focus());
@@ -209,8 +228,8 @@ test.describe('アウトライン: 見出しへの移動', () => {
 });
 
 test.describe('アウトライン: 本文を送る時機', () => {
-  test('サイドバーを閉じている間は本文を送らない。開くと最新を送る。たたんでいる間も送らない', async ({ page }) => {
-    await open(page, { sidebar: false });
+  test('右ペインを閉じている間は本文を送らない。開くと最新を送る。たたんでいる間も送らない', async ({ page }) => {
+    await open(page, { rightPane: false });
     await page.waitForTimeout(800);
     expect(await traceOf(page, 'outline', 'doc')).toEqual([]);
     expect(await traceOf(page, 'outline', 'selection')).toEqual([]);
@@ -221,7 +240,7 @@ test.describe('アウトライン: 本文を送る時機', () => {
     await page.waitForTimeout(800);
     expect(await traceOf(page, 'outline', 'doc')).toEqual([]);
     // 開くと、最新を送る。
-    await page.keyboard.press('ControlOrMeta+b');
+    await openRightPane(page);
     await expect.poll(() => outlineTexts(page)).toEqual(['第一章', '第一節', '第二章', '閉じている間に書いた']);
     const docs = await traceOf(page, 'outline', 'doc');
     expect(docs).toHaveLength(1);
@@ -356,15 +375,16 @@ test.describe('パネル: 上限と不正な形で、その部品だけが止ま
 });
 
 test.describe('パネルとサイドバー', () => {
-  test('フォルダを開くと、ツリーの下にパネルが出る。サイドバーの開閉（Mod+B）は今まで通り', async ({ page }) => {
-    await open(page, { files: { '/work/a.md': utf8('# A\n'), '/work/b.md': utf8('# B\n') } });
+  test('フォルダを開いても、パネルは右ペインにあり、左のツリーの下には出ない。サイドバーの開閉（Mod+B）は今まで通り', async ({ page }) => {
+    await open(page, { sidebar: true, files: { '/work/a.md': utf8('# A\n'), '/work/b.md': utf8('# B\n') } });
     await setDialogPaths(page, { folder: '/work' });
     await page.getByTestId('open-folder').click();
     await expect(page.getByTestId('file-tree')).toBeVisible();
     await expect(panel(page)).toBeVisible();
+    await expect(page.getByTestId('sidebar').getByTestId('plugin-panels')).toHaveCount(0);
     const tree = (await page.getByTestId('explorer-tree-area').boundingBox())!;
     const panelBox = (await panel(page).boundingBox())!;
-    expect(panelBox.y).toBeGreaterThanOrEqual(tree.y + tree.height - 1);
+    expect(panelBox.x).toBeGreaterThanOrEqual(tree.x + tree.width - 1);
     // 開いた文書は、ツリーから別の文書へ切り替えられ、アウトラインも切り替わる。
     await page.getByRole('treeitem', { name: 'b.md' }).click();
     await expect.poll(() => outlineTexts(page)).toEqual(['B']);

@@ -1,3 +1,5 @@
+import { isAltGraphInput } from '../plugin-api/shortcut';
+
 export type ShortcutAction =
   | 'new'
   | 'open'
@@ -5,6 +7,7 @@ export type ShortcutAction =
   | 'saveAs'
   | 'settings'
   | 'sidebar'
+  | 'rightPane'
   | 'fullscreen';
 
 /** matchShortcut が見る、KeyboardEvent の部分。 */
@@ -17,6 +20,8 @@ export interface KeyLike {
   shiftKey: boolean;
   isComposing?: boolean;
   keyCode?: number;
+  /** AltGr（Windows と Linux の、右 Alt などで文字を入れる修飾）の判定に使う。KeyboardEvent は持っている。なければ AltGr とは見なさない。 */
+  getModifierState?(key: string): boolean;
 }
 
 export function isMacPlatform(): boolean {
@@ -28,6 +33,8 @@ export function isMacPlatform(): boolean {
  * macOS は Cmd、それ以外は Ctrl（以下 Mod）。
  * 新規 Mod+N、開く Mod+O、保存 Mod+S、別名保存 Mod+Shift+S、設定画面 Mod+,、サイドバー Mod+B。
  * 部品（src/plugin-api/）が登録したコマンドのショートカットは、ここでは扱わない（部品の一覧が持つ。ここの固定のショートカットが先に判定される）。
+ * 右ペイン（部品のパネル。ADR-005 の R13）は macOS が Option+Cmd+B、Windows / Linux が Ctrl+Alt+B（Shift なし）。
+ * macOS の Option つきは e.key が別の文字になるので、物理キー（e.code の KeyB）で判定する。Windows / Linux は、AltGr による入力には合わない。
  * 全画面は macOS が Ctrl+Cmd+F、Windows / Linux が F11（各 OS の標準）。
  * 検索の Mod+F（Shift なし）は CodeMirror の持ち物なので、ここでは扱わない。
  * IME の変換中のキーは対象にしない。
@@ -44,6 +51,10 @@ export function matchShortcut(e: KeyLike, mac: boolean): ShortcutAction | null {
   }
 
   const primary = mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+  if (primary && e.altKey && !e.shiftKey) {
+    if (mac) return e.code === 'KeyB' ? 'rightPane' : null;
+    return letter === 'b' && !isAltGraphInput(e) ? 'rightPane' : null;
+  }
   if (!primary || e.altKey) return null;
   if (!e.shiftKey && (e.key === ',' || e.code === 'Comma')) return 'settings';
   switch (letter) {

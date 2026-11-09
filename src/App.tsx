@@ -35,8 +35,9 @@ import { PermissionDialog } from './ui/PermissionDialog';
 import { PluginPanels } from './ui/PluginPanels';
 import { RecoveryDialog } from './ui/RecoveryDialog';
 import { SettingsDialog } from './ui/SettingsDialog';
+import { RIGHT_PANE_ID, RightPane } from './ui/RightPane';
 import { Sidebar, SIDEBAR_ID } from './ui/Sidebar';
-import { sidebarMode, sidebarReserve } from './ui/sidebarLayout';
+import { rightPaneMode, rightPaneReserve, sidebarMode, sidebarReserve } from './ui/sidebarLayout';
 import { isMacPlatform, matchShortcut, shouldRunPluginCommand } from './ui/shortcuts';
 import { Toast, type ToastNotice } from './ui/Toast';
 import { toastLayout } from './ui/toastLayout';
@@ -161,10 +162,18 @@ export function App({
   const permissionState = useSyncExternalStore(permissions.subscribe, permissions.getState);
   /** 部品（段 2）が足した、ツリーの右クリックの項目。部品が登録・停止するたびに変わる。 */
   const pluginMenuItems = useSyncExternalStore(plugins.subscribe, () => plugins.menuItems);
-  /** 部品（段 2）が足した、サイドバーのパネル。部品が登録・停止し、項目を送るたびに変わる。 */
+  /** 部品（段 2）が足したパネル（右ペインに出る）。部品が登録・停止し、項目を送るたびに変わる。 */
   const pluginPanels = useSyncExternalStore(plugins.subscribePanels, () => plugins.panels);
   /** たたんでいるパネルの id（保存しない。起動のたびに、すべて開いている）。 */
   const [collapsedPanels, setCollapsedPanels] = useState<ReadonlySet<string>>(() => new Set());
+  /** 右ペインを開いているか（ADR-005 の R13。保存しない。起動時は必ず閉じている）。パネルが 1 つもないときは、閉じた扱い。 */
+  const [rightPaneWanted, setRightPaneWanted] = useState(false);
+  const hasPanels = pluginPanels.length > 0;
+  const rightPaneOpen = rightPaneWanted && hasPanels;
+  // パネルが 1 つもなくなったら、開いていた記憶も捨てる（あとでパネルが現れても、閉じた状態から始まる）。
+  useEffect(() => {
+    if (!hasPanels) setRightPaneWanted(false);
+  }, [hasPanels]);
 
   const state = useSyncExternalStore(controller.subscribe, controller.getState);
   const external = useSyncExternalStore(controller.subscribe, controller.getExternal);
@@ -333,10 +342,11 @@ export function App({
   const viewportWidth = useViewportWidth();
   const sidebarOpen = prefs.sidebarOpen;
 
-  // パネルが見えているか（サイドバーが開いていて、節がたたまれていない）を部品の一覧に伝える。見えているパネルを持つ部品だけが、本文を受け取る。
+  // パネルが見えているか（右ペインが開いていて、節がたたまれていない）を部品の一覧に伝える。見えているパネルを持つ部品だけが、本文を受け取る。
+  // 左サイドバーの開閉は関係しない。
   // 見えたときは、保留を待たず最新を届ける。依存は文字列にして、項目が届くたびには動かさない。
   const panelIdsKey = pluginPanels.map((p) => p.id).join('\n');
-  const visiblePanelsKey = sidebarOpen ? pluginPanels.filter((p) => !collapsedPanels.has(p.id)).map((p) => p.id).join('\n') : '';
+  const visiblePanelsKey = rightPaneOpen ? pluginPanels.filter((p) => !collapsedPanels.has(p.id)).map((p) => p.id).join('\n') : '';
   useEffect(() => {
     const visible = new Set(visiblePanelsKey === '' ? [] : visiblePanelsKey.split('\n'));
     for (const id of panelIdsKey === '' ? [] : panelIdsKey.split('\n')) plugins.setPanelVisible(id, visible.has(id));
@@ -364,16 +374,20 @@ export function App({
     adapterRef.current?.goToLineStart(item.offset);
   }, []);
   const sidebarLayoutMode = sidebarMode(viewportWidth);
-  // 本文の領域（サイドバーを除いた領域）の幅。狭い窓では、サイドバーは本文の上に重なるので、引かない。
-  const reserve = sidebarReserve(sidebarOpen, viewportWidth);
+  // 右ペインの push / overlay は、左の押し出し分を引いた残りで決まる。
+  const leftReserve = sidebarReserve(sidebarOpen, viewportWidth);
+  const rightPaneLayoutMode = rightPaneMode(viewportWidth, leftReserve);
+  const rightReserve = rightPaneReserve(rightPaneOpen, viewportWidth, leftReserve);
+  // 本文の領域（左右のペインを除いた領域）の幅。狭い窓では、ペインは本文の上に重なるので、引かない。
+  const bodyWidth = viewportWidth - leftReserve - rightReserve;
   const lineChars = charsPerLine(
-    columnWidth(viewportWidth - reserve, prefs.maxWidthPx),
+    columnWidth(bodyWidth, prefs.maxWidthPx),
     prefs.fontSizePx,
     prefs.letterSpacing,
   );
 
   // トースト: 本文の領域の中で、列の外に場所があれば右下、なければ本文に重ねる。重ねている間は、覆う高さをエディタのスクロール余白に渡す。
-  const toast = useMemo(() => toastLayout(viewportWidth - reserve, prefs.maxWidthPx), [viewportWidth, reserve, prefs.maxWidthPx]);
+  const toast = useMemo(() => toastLayout(bodyWidth, prefs.maxWidthPx), [bodyWidth, prefs.maxWidthPx]);
   const setCoveredHeight = useCallback((px: number) => adapterRef.current?.setBottomInset(px), []);
 
   const reveal = useCallback(() => setTyping(false), []);
@@ -403,6 +417,14 @@ export function App({
   /** 重ねて表示中のサイドバーを閉じる（中の閉じるボタン・Esc から）。 */
   const closeSidebar = useCallback(() => {
     setPrefs((p) => ({ ...p, sidebarOpen: false }));
+    adapterRef.current?.focus();
+  }, []);
+
+  const toggleRightPane = useCallback(() => setRightPaneWanted((v) => !v), []);
+
+  /** 重ねて表示中の右ペインを閉じる（中の閉じるボタン・Esc から）。本文にフォーカスを戻す。 */
+  const closeRightPane = useCallback(() => {
+    setRightPaneWanted(false);
     adapterRef.current?.focus();
   }, []);
 
@@ -502,6 +524,10 @@ export function App({
           // 設定画面（モーダル）を開いている間は、後ろのレイアウトを動かさない。
           if (!settingsOpen) toggleSidebar();
           break;
+        case 'rightPane':
+          // 設定画面（モーダル）を開いている間と、部品のパネルが 1 つもないときは、何もしない。
+          if (!settingsOpen && hasPanels) toggleRightPane();
+          break;
         case 'fullscreen':
           bridge.toggleFullscreen().catch((err) => notify({ kind: 'error', message: describeError(err) }));
           break;
@@ -509,7 +535,7 @@ export function App({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [bridge, controller, runCommand, toggleSettings, toggleSidebar, settingsOpen, cycleRegion, notify, plugins, commandContext]);
+  }, [bridge, controller, runCommand, toggleSettings, toggleSidebar, toggleRightPane, hasPanels, settingsOpen, cycleRegion, notify, plugins, commandContext]);
 
   useEffect(() => {
     document.title = `${dirty ? '● ' : ''}${title} - Immersive Markdown Editor`;
@@ -551,6 +577,8 @@ export function App({
       data-surface={prefs.surfaceWidth}
       data-sidebar={sidebarOpen ? 'open' : 'closed'}
       data-sidebar-mode={sidebarLayoutMode}
+      data-right-pane={rightPaneOpen ? 'open' : 'closed'}
+      data-right-pane-mode={rightPaneLayoutMode}
       data-conflict={isConflictBarVisible(external) ? 'true' : 'false'}
     >
       <CanvasBackground layer={canvas.layer} imageUrl={image.url} />
@@ -563,7 +591,6 @@ export function App({
         onOpenFile={(path) => void openFromExplorer(path)}
         onClose={closeSidebar}
         pluginMenuItems={pluginMenuItems}
-        pluginPanels={<PluginPanels panels={pluginPanels} collapsed={collapsedPanels} onToggle={togglePanel} onActivate={activatePanelItem} />}
       />
       <div className="workspace" data-testid="workspace">
         <div className="canvas-surface" data-testid="canvas-surface" aria-hidden="true" style={{ opacity: canvas.surfaceOpacity }} />
@@ -601,6 +628,20 @@ export function App({
           >
             <GearIcon />
           </button>
+          {hasPanels && (
+            <button
+              type="button"
+              className="chrome-button icon-button"
+              data-testid="right-pane-toggle"
+              aria-label="パネル"
+              aria-expanded={rightPaneOpen}
+              aria-controls={RIGHT_PANE_ID}
+              title={`パネル（${isMacPlatform() ? '⌥⌘B' : 'Ctrl+Alt+B'}）`}
+              onClick={toggleRightPane}
+            >
+              <RightPaneIcon />
+            </button>
+          )}
         </header>
         <ConflictBar
           external={external}
@@ -623,6 +664,11 @@ export function App({
         </footer>
         <Toast notice={notice} layout={toast} onDismiss={dismissNotice} onCoveredHeight={setCoveredHeight} />
       </div>
+      {hasPanels && (
+        <RightPane open={rightPaneOpen} mode={rightPaneLayoutMode} onClose={closeRightPane}>
+          <PluginPanels panels={pluginPanels} collapsed={collapsedPanels} onToggle={togglePanel} onActivate={activatePanelItem} />
+        </RightPane>
+      )}
       {settingsOpen && (
         <SettingsDialog
           prefs={prefs}
@@ -663,6 +709,15 @@ function SidebarIcon() {
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.4">
       <rect x="1.7" y="2.7" width="12.6" height="10.6" rx="1.8" />
       <line x1="6" y1="2.7" x2="6" y2="13.3" />
+    </svg>
+  );
+}
+
+function RightPaneIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.4">
+      <rect x="1.7" y="2.7" width="12.6" height="10.6" rx="1.8" />
+      <line x1="10" y1="2.7" x2="10" y2="13.3" />
     </svg>
   );
 }

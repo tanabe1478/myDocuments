@@ -67,7 +67,8 @@ describe('writing canvas shortcuts', () => {
   it('Mod+B needs the modifier alone: not plain B, not with Shift or Alt', () => {
     expect(matchShortcut(key('b'), false)).toBeNull();
     expect(matchShortcut(key('B', { ctrlKey: true, shiftKey: true }), false)).toBeNull();
-    expect(matchShortcut(key('b', { ctrlKey: true, altKey: true }), false)).toBeNull();
+    // Mod+Alt+B は、サイドバーではなく右ペイン（R13）。サイドバーとしては動かない。
+    expect(matchShortcut(key('b', { ctrlKey: true, altKey: true }), false)).toBe('rightPane');
     expect(matchShortcut(key('b', { metaKey: true, ctrlKey: true }), true)).toBeNull();
   });
 
@@ -112,5 +113,56 @@ describe('writing canvas shortcuts', () => {
   it('ignores the new shortcuts during IME composition', () => {
     expect(matchShortcut(key('F', { ctrlKey: true, shiftKey: true, isComposing: true }), false)).toBeNull();
     expect(matchShortcut({ ...key('F11'), keyCode: 229 }, false)).toBeNull();
+  });
+});
+
+describe('右ペインの開閉（ADR-005 の R13）: Option+Cmd+B / Ctrl+Alt+B', () => {
+  const mac = (over: Partial<KeyLike> = {}): KeyLike => ({ ...key('b', { metaKey: true, altKey: true }), ...over });
+  const win = (over: Partial<KeyLike> = {}): KeyLike => ({ ...key('b', { ctrlKey: true, altKey: true }), ...over });
+
+  it('macOS: Option+Cmd+B（Option で e.key が別の文字になっても、物理キー KeyB で判定する）', () => {
+    expect(matchShortcut(mac(), true)).toBe('rightPane');
+    expect(matchShortcut(mac({ key: '∫' }), true)).toBe('rightPane');
+    expect(matchShortcut(mac({ key: 'Dead' }), true)).toBe('rightPane');
+    expect(matchShortcut(mac({ code: 'KeyN', key: 'n' }), true)).toBeNull();
+  });
+
+  it('Windows / Linux: Ctrl+Alt+B（論理キーが英字でない配列では物理キー）', () => {
+    expect(matchShortcut(win(), false)).toBe('rightPane');
+    expect(matchShortcut(win({ key: 'B' }), false)).toBe('rightPane');
+    expect(matchShortcut(win({ key: 'Process' }), false)).toBe('rightPane');
+  });
+
+  it('Windows / Linux: AltGr による入力には合わない', () => {
+    expect(matchShortcut(win({ getModifierState: (k: string) => k === 'AltGraph' }), false)).toBeNull();
+    expect(matchShortcut(win({ key: 'ß', code: 'KeyB' }), false)).toBeNull();
+  });
+
+  it('Shift 付き、修飾キーが足りない・余る、OS が違う組み合わせは対象にしない', () => {
+    expect(matchShortcut(mac({ shiftKey: true }), true)).toBeNull();
+    expect(matchShortcut(win({ shiftKey: true }), false)).toBeNull();
+    expect(matchShortcut(key('b', { metaKey: true }), true)).toBe('sidebar');
+    expect(matchShortcut(key('b', { altKey: true }), true)).toBeNull();
+    expect(matchShortcut(key('b', { altKey: true }), false)).toBeNull();
+    expect(matchShortcut(mac({ ctrlKey: true }), true)).toBeNull();
+    expect(matchShortcut(win({ metaKey: true }), false)).toBeNull();
+    expect(matchShortcut(mac(), false)).toBeNull();
+    expect(matchShortcut(win(), true)).toBeNull();
+  });
+
+  it('IME の変換中は対象にしない', () => {
+    expect(matchShortcut(mac({ isComposing: true }), true)).toBeNull();
+    expect(matchShortcut(mac({ keyCode: 229 }), true)).toBeNull();
+    expect(matchShortcut(win({ isComposing: true }), false)).toBeNull();
+    expect(matchShortcut(win({ keyCode: 229 }), false)).toBeNull();
+  });
+
+  it('今のショートカットは変わらない（Mod+B はサイドバー、Alt つきのほかの文字は対象外）', () => {
+    expect(matchShortcut(key('b', { metaKey: true }), true)).toBe('sidebar');
+    expect(matchShortcut(key('b', { ctrlKey: true }), false)).toBe('sidebar');
+    expect(matchShortcut(key('c', { metaKey: true, altKey: true }), true)).toBeNull();
+    expect(matchShortcut(key('c', { ctrlKey: true, altKey: true }), false)).toBeNull();
+    expect(matchShortcut(key('f', { metaKey: true, ctrlKey: true }), true)).toBe('fullscreen');
+    expect(matchShortcut(key('S', { metaKey: true, shiftKey: true }), true)).toBe('saveAs');
   });
 });
