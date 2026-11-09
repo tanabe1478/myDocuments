@@ -1,4 +1,5 @@
-import { Annotation, Facet } from '@codemirror/state';
+import { Annotation, Facet, type EditorState } from '@codemirror/state';
+import type { EditorView } from '@codemirror/view';
 
 /*
  * 部品どうしが互いを import しないための、共通の約束。
@@ -27,3 +28,44 @@ export const skipCaretFollow = Annotation.define<boolean>();
 export const ownsCaretScroll = Facet.define<boolean, boolean>({
   combine: (values) => values.some(Boolean),
 });
+
+/**
+ * Tab / Shift+Tab を、文脈に応じて部品が先に受けるための入口（Markdown の表のセルの移動など）。
+ * ホストの字下げのキー割り当ては、Esc の直後でなければ、これを順に呼び、true を返したものがあればそこで終える
+ * （字下げはしない）。どれも true を返さなければ、これまでどおりの字下げ。backward は Shift+Tab のとき true。
+ * Esc の直後の Tab（本文の外へフォーカスを移す決まり）は、ホストがこの前に判断するので、ここには届かない。
+ */
+export const tabHandlers = Facet.define<(view: EditorView, backward: boolean) => boolean, readonly ((view: EditorView, backward: boolean) => boolean)[]>({
+  combine: (values) => values,
+});
+
+/** 行番号（1 始まり）の範囲。from・to を含む。 */
+export interface LineSpan {
+  readonly from: number;
+  readonly to: number;
+}
+
+/**
+ * 弱く表示するブロックの class。行の装飾（行の class）が届かない、行をまたいで置き換えた表示（表など）が、
+ * 弱くするべきときに自分の要素へ付ける。見た目（不透明度と遷移）は、弱く表示する部品が決める。
+ */
+export const DIMMED_BLOCK_CLASS = 'cm-dimmed-block';
+
+/**
+ * 「いま弱くしない行の範囲」を答える関数（フォーカスモードのように、行を弱く表示する部品が提供する）。
+ * null は、弱くしない（対象なし）。この Facet に何も提供されていなければ、どのブロックも弱くしない。
+ */
+export const dimExemptLines = Facet.define<(state: EditorState) => LineSpan | null, readonly ((state: EditorState) => LineSpan | null)[]>({
+  combine: (values) => values,
+});
+
+/**
+ * 行 firstLine〜lastLine を占めるブロックを、弱く表示するべきか。提供された範囲のどれかと重ならなければ true。
+ */
+export function isDimmedBlock(state: EditorState, firstLine: number, lastLine: number): boolean {
+  for (const provide of state.facet(dimExemptLines)) {
+    const exempt = provide(state);
+    if (exempt !== null && (lastLine < exempt.from || firstLine > exempt.to)) return true;
+  }
+  return false;
+}

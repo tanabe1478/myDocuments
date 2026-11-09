@@ -338,6 +338,108 @@ describe('bundled plugins together', () => {
   });
 });
 
+describe('tables through the adapter (ADR-006)', () => {
+  const TABLE = '| a | b |\n|---|---|\n| 1 |  |';
+  const DOC = `intro\n\n${TABLE}\n\n- item`;
+  const T = DOC.indexOf(TABLE);
+
+  function load(text = DOC): EditorView {
+    adapter.mount(host);
+    adapter.setText(text);
+    const view = viewOf();
+    ensureSyntaxTree(view.state, view.state.doc.length, 10_000);
+    view.dispatch({});
+    return view;
+  }
+
+  function press(view: EditorView, key: string, init: KeyboardEventInit = {}): KeyboardEvent {
+    const event = new KeyboardEvent('keydown', { key, code: key, keyCode: key === 'Tab' ? 9 : key === 'Escape' ? 27 : 0, bubbles: true, cancelable: true, ...init });
+    view.contentDOM.dispatchEvent(event);
+    return event;
+  }
+
+  const head = (view: EditorView) => view.state.selection.main.head;
+
+  it('Tab and Shift+Tab move between the cells in the original text of a table, with either display setting, and take the key (no indent, no focus move)', () => {
+    for (const display of ['cursorLine', 'always']) {
+      const view = load();
+      adapter.setPluginSetting('markupDisplay', display);
+      view.dispatch({ selection: { anchor: T + 2 } });
+      const heads: number[] = [];
+      for (let i = 0; i < 3; i++) {
+        expect(press(view, 'Tab').defaultPrevented).toBe(true);
+        heads.push(head(view));
+      }
+      // b、次の行の 1、空のセル（左の | の後ろの空白の 1 つ後ろ）。
+      expect(heads).toEqual([T + 6, T + 22, T + 26]);
+      expect(press(view, 'Tab').defaultPrevented).toBe(true); // 最後のセル: 動かないが、キーは受ける
+      expect(head(view)).toBe(T + 26);
+      expect(press(view, 'Tab', { shiftKey: true }).defaultPrevented).toBe(true);
+      expect(head(view)).toBe(T + 22);
+      expect(adapter.getText()).toBe(DOC);
+      adapter.destroy();
+      host.replaceChildren();
+      adapter = createCodeMirrorAdapter(registry.editorExtensions);
+    }
+  });
+
+  it('an Esc just before Tab leaves the key to the browser (focus moves out), even in a table; any other key in between brings the cell move back', () => {
+    const view = load();
+    view.dispatch({ selection: { anchor: T + 2 } });
+    press(view, 'Escape');
+    expect(press(view, 'Tab').defaultPrevented).toBe(false);
+    expect(head(view)).toBe(T + 2);
+    press(view, 'ArrowRight');
+    expect(press(view, 'Tab').defaultPrevented).toBe(true);
+  });
+
+  it('outside a table, for a range selection, and inside a blockquote table, Tab indents as before', () => {
+    const view = load(`${DOC}\n\n> | q |\n> |---|\n> | 1 |`);
+    // リストの項目: これまでどおり字下げ。
+    view.dispatch({ selection: { anchor: DOC.indexOf('- item') + 3 } });
+    press(view, 'Tab');
+    expect(adapter.getText()).toContain('\n  - item');
+    // 範囲を選んでいる表の中: 1 行の範囲では何も入らず、複数行では 2 字下げ。
+    view.dispatch({ selection: { anchor: T + 2, head: T + 5 } });
+    press(view, 'Tab');
+    expect(adapter.getText()).toContain(`\n${TABLE}\n`);
+    view.dispatch({ selection: { anchor: T + 2, head: T + 14 } });
+    press(view, 'Tab');
+    expect(adapter.getText()).toContain('\n  | a | b |\n  |---|---|\n| 1 |  |');
+    // 引用の中の表: 引用の段が深くなる。
+    const q = adapter.getText().indexOf('> | 1 |');
+    view.dispatch({ selection: { anchor: q + 3 } });
+    press(view, 'Tab');
+    expect(adapter.getText()).toContain('> > | 1 |');
+  });
+
+  it('focus mode dims a displayed table that is not in the cursor paragraph, and stops dimming when it is turned off', () => {
+    const view = load();
+    const table = () => host.querySelector('.cm-md-table');
+    expect(table()).not.toBeNull();
+    expect(table()!.classList.contains('cm-dimmed-block')).toBe(false);
+    adapter.setPluginSetting('focusMode', true);
+    expect(table()!.classList.contains('cm-dimmed-block')).toBe(true);
+    // カーソルが表の隣の段落でも、表は別の段落（空行で分かれている）。
+    view.dispatch({ selection: { anchor: DOC.length } });
+    expect(table()!.classList.contains('cm-dimmed-block')).toBe(true);
+    adapter.setPluginSetting('focusMode', false);
+    expect(table()!.classList.contains('cm-dimmed-block')).toBe(false);
+  });
+
+  it('switches the table at once with the display setting, and shows nothing special for plain text; the text never changes', () => {
+    const view = load();
+    expect(host.querySelectorAll('.cm-md-table')).toHaveLength(1);
+    adapter.setPluginSetting('markupDisplay', 'always');
+    expect(host.querySelectorAll('.cm-md-table')).toHaveLength(0);
+    adapter.setPluginSetting('markupDisplay', 'cursorLine');
+    expect(host.querySelectorAll('.cm-md-table')).toHaveLength(1);
+    adapter.setTextKind('plain');
+    expect(host.querySelectorAll('.cm-md-table')).toHaveLength(0);
+    expect(view.state.doc.toString()).toBe(DOC);
+  });
+});
+
 describe('shared conventions', () => {
   it('the checkbox click marks its transaction with skipCaretFollow (and keeps its userEvent)', () => {
     const seen: Array<{ marked: boolean; userEvent: boolean }> = [];

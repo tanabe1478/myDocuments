@@ -13,6 +13,8 @@
 - FEEL-9: 記号の表示。既定（設定画面「外観」の「記号の表示」が「カーソルのある行だけ」）では、カーソルのない行の記法が隠れる（見出しの #、箇条書きは • に置き換え、タスクはチェックボックスの形、リンクの []() と自動リンクの <>、強調・取り消し線・インラインコードの記号、引用の >）。カーソルのある行と選択にかかる行は記号が見える。コードフェンス、frontmatter、参照リンク、画像、番号付きの番号は今のまま。文書のテキストは変わらない。「常に表示」にするとすぐ今までと同じ見た目になり、保存され、再読み込み後も保たれる。.txt には効かない。
 - FEEL-10: リンクを開く。⌘+クリック（macOS）、Ctrl+クリック（Windows と Linux）で、リンクの文字・URL・自動リンク・裸の URL を既定のブラウザで開く。開けるのは http と https だけで、それ以外は開かず、トースト「このリンクは開けません」。普通のクリックはカーソルを置くだけ。修飾キーを押している間、リンクの上でポインタの形が変わる。カーソルは動かない。
 - FEEL-11: タスクの切り替え。記号を隠した行のチェックボックスを、修飾キーなしの左クリックすると、文書の `[ ]` と `[x]`（`[X]` を含む）の 1 文字だけが切り替わる。カーソル・選択・スクロール位置は動かず、その行は隠したまま。Undo 1 回で戻り、Redo でやり直せる。入れ子、引用の中、`*` と `+` のタスクも同じ。ポインタは pointer、role は checkbox で aria-checked が状態に合う。本文のクリック、カーソル行の `[ ]`、設定「常に表示」、修飾キー付き、右・中クリック、IME の変換中は切り替えない。すばやく 2 回クリックすると元に戻り、語は選択されない。キーボードでの切り替えはない。
+- FEEL-12: 表の表示（ADR-006）。既定（「記号の表示」が「カーソルのある行だけ」）では、カーソルが表の外にあるとき、トップレベルの Markdown の表が表の形で表示される（見出しは th、本文は td。区切りの行は出ない。配置は区切りの行の `:` に従い、列の数は見出しのセルの数。空のセルは列に数え、足りないセルは空、余るセルは出ない。セルの中の `\|` は `|` と表示。強調・取り消し線・コード・リンク・自動リンク・裸の URL は、隠した行と同じ見た目で、画像・参照リンク・HTML は原文の文字のまま）。選択が表に触れる（端の一致を含む）と、その表だけが原文に戻る。表をクリックすると、クリックしたセルの中身の末尾にカーソルが入る（セルの外は一番近いセル。Shift+クリックは選択を伸ばす。右・中クリックは何もしない。⌘/Ctrl+クリックと Alt+クリックも同じで、リンクは開かない）。上下キー（mac は Ctrl-n / Ctrl-p も）で、表の上下の行から表に入れる（表を飛ばさない）。検索で表の中の一致に移ると原文になる。表示の切り替え、出入り、Tab の移動で、文書のバイト列は変わらず、Undo の履歴に何も積まない。「常に表示」、.txt、引用やリストの中の表は、原文のまま。表の幅は本文の幅を超えず、セルの中で折り返す。色は明暗のテーマに追従する。
+- FEEL-13: 表の中の Tab。原文の表の中で、選択が空のとき、Tab は次のセルの中身の頭、Shift+Tab は前のセルの中身の頭へカーソルを移す（区切りの行を飛ばし、行をまたぎ、空のセルにも止まる。外側の `|` のない行の最初のセルは行頭から数える）。最初のセルで Shift+Tab、最後のセルで Tab は、動かずにキーを受ける。設定「常に表示」でも効く。Esc の直後の Tab は本文の外へフォーカスを移す。範囲を選んでいるとき、表の外、引用の中の表は、これまでの字下げのまま。
 
 ## How to get to it (user POV)
 
@@ -23,6 +25,7 @@
 - 記号の表示は設定画面（Mod+, か設定ボタン）の「外観」の節の「記号の表示」（ラジオ「カーソルのある行だけ」「常に表示」）。隠す・見せるは、カーソルや選択を動かすだけで切り替わる。
 - リンクを開く操作は、本文のリンクの上での Mod+クリック（macOS は ⌘、Windows と Linux は Ctrl）。drive の click の modifiers: ["ControlOrMeta"] がその OS の Mod キーになる。
 - チェックボックスの切り替えは、記号を隠した行のチェックボックス（.cm-md-task）のクリック。drive の click に css で `.cm-line:nth-child(n) .cm-md-task` を指定する。切り替えの Undo は ControlOrMeta+z。
+- 表は、表の外にカーソルがあるだけで表の形になる（専用の操作はない）。表のクリック、上下キー（Mac は Ctrl-n / Ctrl-p も）、検索（Mod+f）で表に入る。原文の表の中で Tab と Shift+Tab。drive の click に css で `.cm-md-table tbody tr:nth-child(n) td:nth-child(m)` を指定する。
 - 折り返しは窓の幅と本文の最大幅で決まる。ぶら下げインデントはリスト等の行を書くだけで働く。
 
 ## Driving it with Playwright（メモリ bridge）
@@ -44,6 +47,9 @@ Preconditions: Launch 済みで Doctor が全 PASS。カーソルや選択は、
 | feel-list-continuation.json | 項目の間に空行のあるリストの末尾で Enter。続けて「次の項目」と入力して保存。Mod+, で「編集」の節を開き「リストの形に合わせる」にして Esc、Enter、Undo。「空行を入れない」へ戻して Enter。最後に「リストの形に合わせる」にして reload | 既定では末尾に「\n- 」だけが入り（空行なし）、保存された本文は「- 次の項目」で終わる。「リストの形に合わせる」では「\n\n- 」が入り、Undo 1 回で戻る。戻すとすぐ「\n- 」になる。保存された設定の listContinuation が preserve になり、reload 後も選ばれている。画像は before-enter.png、after-enter-tight.png、settings-editing-light.png、after-enter-preserve.png、after-enter-tight-again.png、after-reload-preserve.png |
 | feel-list-continuation-dark.json | ダークで設定画面を開き、「編集」の節までスクロール | 節の見出しが「外観」「編集」の順。「リストの継続」の既定は「空行を入れない」。画像は settings-editing-dark.png |
 | feel-selection-collapse.json | 5 行の文書で、選択して ArrowUp、ArrowDown、Shift+ArrowUp、Shift+ArrowDown | 選択の anchor と head の位置が、下向きの選択は ArrowDown で末尾、ArrowUp で先頭へ畳まれる。上向きの選択も ArrowUp で先頭へ畳まれる。Shift 付きは anchor が動かず head が 1 行ずつ。先頭行の ArrowUp は行頭、末尾行の ArrowDown は行末 |
+| feel-table-display.json | 見出し・表（配置、空のセル、`\|`、強調・コード・リンク・取り消し線）・リストを含む文書を、ライトで開く。表の外（1 行目）から、表の最初のセルをクリック、Tab を 4 回、Shift+Tab、Mod+Home、Mod+s | カーソルが表の外のとき、表が表の形になる（th 3、td 9、2 列目は右寄せ、3 列目は中央、`\|` は縦線 1 文字、区切りの行は出ない）。クリックで表が原文になり、カーソルはりんごの末尾。Tab で、次のセル、赤いの頭、次の行の最初のセル（区切りの行を飛ばす）、空のセルの頭（左の `\|` の後ろの空白の 1 つ後ろ）。Shift+Tab で戻る。フォーカスは本文のまま。表の外へ出ると表示に戻る。physicalWrites は 0（本文は変わらない）。画像は table-display.png、table-source.png、table-after-tab.png |
+| feel-table-display-dark.json | 同じ文書をダークで開き、表のセルをクリック | 表が表の形で出る。枠の色は --md-color-border（ダーク）。クリックで原文になる。画像は table-display-dark.png、table-source-dark.png |
+| feel-table-always.json | 設定「常に表示」で同じ文書を開き、表の 1 行目へ移って Tab | 表は原文のまま（`.cm-md-table` は 0）。区切りの行が見える。Tab で、最初のセル、次のセル、区切りの行を飛ばして次の行の最初のセルへ。画像は table-always.png |
 
 ```
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/feel-caret-position.json
@@ -63,6 +69,9 @@ node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenari
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/feel-selection-collapse.json
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/feel-list-continuation.json
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/feel-list-continuation-dark.json
+node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/feel-table-display.json
+node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/feel-table-display-dark.json
+node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/feel-table-always.json
 ```
 
 ## Gotchas
@@ -86,3 +95,9 @@ node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenari
 - チェックボックスのクリックは、クリックした行が切り替え後も隠れたままで、選択も動かない。次のクリックの位置は変わらないので、座標を測り直さなくてよい（記号を見せる行のクリックとの違い）。本文のクリックでは、その行が見える状態に変わる。
 - 切り替えない操作（修飾キー付き、IME の変換中）の検査は、合成イベントとの組み合わせが必要で、tests/e2e/live-markup.spec.ts (k) が持つ。この Skill のシナリオは、本文のクリックまで。複数カーソルはアプリが有効にしていないので、UI からは確かめられない（単体テストだけ）。
 - 実 IME で記号を隠した行の前後を変換する検証は、この Skill のシナリオに含めない（tests/e2e/live-markup.spec.ts が CDP で模擬する）。
+- 表の検証は、最初にカーソルを表の外に置く（文書の最初の行を表にしない。click の position を `{ x: 5, y: 5 }` にして、表の上の余白を押し、Mod+Home）。カーソルが表の端（先頭の行頭、最後の行末）にあると、端の一致も「触れている」になり、表は原文になる。Mod+End も、末尾が表なら原文になる。
+- CodeMirror は表示範囲の外を描画しないので、遠い表は DOM に `.cm-md-table` がない。数を数えるシナリオは、表が画面に入る位置で行う。
+- 表を表示しているとき、`.cm-line` には表の行が存在しない（表は 1 つのブロック）。原文の行の検査は、カーソルを表に入れてから行う。引用の中の表は表示せず、行ごとに `>` を隠す（行の文字列に `>` が出ない）。
+- Tab のシナリオは、クリックした位置がセルの中身の末尾であることに依存する。クリックの直後の Tab は、そのセルの次のセルへ移る（同じセルの頭ではない）。Esc の直後の Tab は本文の外へフォーカスを移す（tests/e2e/table-display.spec.ts が確かめる）。
+- 表の見た目（列の幅、折り返し）は、フォントの実測に依存する。数値は、シナリオでは配置と色と数だけを見る。幅と折り返しの検査は tests/e2e/table-display.spec.ts（520px の窓で、横スクロールが出ないこと）。
+- 実 IME と実機（WKWebView）での表の出入りは、この Skill のシナリオに含めない。IME の変換中に表の DOM を作り直さないことは、tests/e2e/table-display.spec.ts が CDP の模擬で確かめる。

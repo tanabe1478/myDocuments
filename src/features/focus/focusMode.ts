@@ -1,6 +1,6 @@
 import { RangeSetBuilder, StateEffect, type Extension } from '@codemirror/state';
 import { Decoration, ViewPlugin, type DecorationSet, type EditorView, type ViewUpdate } from '@codemirror/view';
-import { AFTER_COMPOSITION_MS, type TextKind } from '../../plugin-api';
+import { AFTER_COMPOSITION_MS, dimExemptLines, type TextKind } from '../../plugin-api';
 import { focusRange } from './focusRange';
 import { focusTheme } from './theme';
 
@@ -83,6 +83,10 @@ class FocusModePlugin {
  */
 export function focusModeExtension(kind: TextKind = 'markdown'): Extension {
   return [
+    // 行の装飾が届かないブロック（行をまたいで置き換えた表示。表など）が、弱くするかを決めるために、弱くしない範囲を答える。
+    dimExemptLines.of((state) =>
+      focusRange(state.doc.lines, (n) => state.doc.line(n).text, state.doc.lineAt(state.selection.main.head).number, kind === 'markdown'),
+    ),
     ViewPlugin.define((view) => new FocusModePlugin(view, kind), {
       decorations: (plugin) => plugin.decorations,
       eventHandlers: {

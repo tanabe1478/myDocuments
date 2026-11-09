@@ -2,12 +2,14 @@ import { PLUGIN_API_VERSION, type Plugin } from '../../plugin-api';
 import { linkOpenExtension } from './linkOpen';
 import { markdownDecorations } from './markdownDecorations';
 import { DEFAULT_MARKUP_DISPLAY, MARKUP_DISPLAY_SETTING_KEY, normalizeMarkupDisplay, type MarkupDisplay } from './markupDisplay';
+import { tableDisplay } from './tableDisplay';
+import { tableKeys } from './tableKeys';
 import { taskToggleExtension } from './taskToggle';
 import { markdownTheme } from './theme';
 
 /**
  * Markdown の見た目（見出し・強調・リンクなどの装飾、記法記号の隠し方 ADR-004、チェックボックスのクリック、
- * ⌘/Ctrl+クリックでリンクを開く操作）。同梱の部品（段 3: エディタの中の拡張）。
+ * ⌘/Ctrl+クリックでリンクを開く操作、表の表示と Tab でのセルの移動 ADR-006）。同梱の部品（段 3: エディタの中の拡張）。
  *
  * 本体との約束（ADR-005 の R4）:
  * - Markdown の文書には、本体が Markdown の言語（構文木）を入れる。この部品はその構文木を読むだけで、言語は入れない。
@@ -33,7 +35,9 @@ export const markdownPlugin: Plugin = {
       setting: display,
       dependsOnTextKind: true,
       create: (value, { textKind, openExternalUrl, isMacPlatform }) =>
-        textKind === 'plain' ? [] : [markdownDecorations(value), linkOpenExtension(openExternalUrl, isMacPlatform), taskToggleExtension(), markdownTheme],
+        textKind === 'plain'
+          ? []
+          : [markdownDecorations(value), tableDisplay(), tableKeys(), linkOpenExtension(openExternalUrl, isMacPlatform), taskToggleExtension(), markdownTheme],
     });
     ctx.registerSettingsItem({
       placement: 'appearance.body',

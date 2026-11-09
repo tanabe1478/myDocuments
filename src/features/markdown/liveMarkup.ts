@@ -62,7 +62,7 @@ const ATX_HEADING = /^ATXHeading[1-6]$/;
 /** 同じ文書の frontmatter の判定を使い回す（選択だけが変わる更新で、先頭から読み直さない）。 */
 const frontmatterCache = new WeakMap<Text, number | null>();
 
-function frontmatterEnd(doc: Text): number | null {
+export function frontmatterEnd(doc: Text): number | null {
   let end = frontmatterCache.get(doc);
   if (end === undefined) {
     end = frontmatterEndLine(doc.lines, (n) => doc.line(n).text);

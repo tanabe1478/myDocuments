@@ -1,0 +1,215 @@
+{
+  "seed": {
+    "files": {
+      "/docs/table.md": {
+        "text": "# 表の見本\n\n前の段落です。\n\n| 果物 | 個数 | 備考 |\n|:-----|-----:|:----:|\n| りんご | 3 | **赤い** と `code` |\n| みかん |  | [リンク](https://example.com) |\n| a \\| b | 1 | ~~売り切れ~~ *残り少し* |\n\n後ろの段落です。\n\n- 箇条書き\n- もう一つ"
+      }
+    },
+    "openPath": "/docs/table.md",
+    "preferences": {
+      "theme": "light",
+      "autoHideChrome": false
+    }
+  },
+  "steps": [
+    {
+      "press": "ControlOrMeta+o"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "table.md"
+      }
+    },
+    {
+      "click": {
+        "css": ".cm-content",
+        "position": {
+          "x": 5,
+          "y": 5
+        }
+      }
+    },
+    {
+      "press": "ControlOrMeta+Home"
+    },
+    {
+      "eval": "window.__sel = { count: 0, head: 0 }; window.__mdeE2E.editor.onSelectionChange((s) => (window.__sel = { count: window.__sel.count + 1, head: s.head })); true"
+    },
+    {
+      "expect": {
+        "css": ".cm-md-table",
+        "read": "count",
+        "equals": 1,
+        "note": "カーソルが表の外（1 行目）なので、表が表の形で表示される"
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-md-table th",
+        "read": "count",
+        "equals": 3,
+        "note": "見出しのセルは 3 つ"
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-md-table td",
+        "read": "count",
+        "equals": 9,
+        "note": "本文のセルは 3 行 × 3 列（余る 4 つ目のセルは出ない。足りないセルは空）"
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-md-table td:nth-child(2)",
+        "read": "css:text-align",
+        "equals": "right",
+        "note": "区切りの行の ---: に従い、2 列目は右寄せ"
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-md-table td:nth-child(3)",
+        "read": "css:text-align",
+        "equals": "center",
+        "note": "3 列目は中央"
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-md-table",
+        "read": "text",
+        "contains": "a | b",
+        "note": "セルの中の \\| は | と表示される"
+      }
+    },
+    {
+      "expect": {
+        "eval": "document.querySelector(\".cm-content\").innerText.includes(\"---\")",
+        "equals": false,
+        "note": "区切りの行（---）は画面に出ない"
+      }
+    },
+    {
+      "screenshot": "table-display"
+    },
+    {
+      "click": {
+        "css": ".cm-md-table tbody tr:nth-child(1) td:nth-child(1)"
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-md-table",
+        "read": "count",
+        "equals": 0,
+        "note": "表をクリックすると、表は原文に戻る"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getSelection().head",
+        "equals": 62,
+        "note": "カーソルは、クリックしたセル（りんご）の中身の末尾"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().length",
+        "equals": 184,
+        "note": "文書の長さは変わらない"
+      }
+    },
+    {
+      "screenshot": "table-source"
+    },
+    {
+      "press": "Tab"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getSelection().head",
+        "equals": 65,
+        "note": "Tab で次のセル（3）の頭"
+      }
+    },
+    {
+      "press": "Tab"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getSelection().head",
+        "equals": 69,
+        "note": "Tab で次のセル（赤い）の頭"
+      }
+    },
+    {
+      "press": "Tab"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getSelection().head",
+        "equals": 89,
+        "note": "Tab で次の行の最初のセル（区切りの行は飛ばす）"
+      }
+    },
+    {
+      "press": "Tab"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getSelection().head",
+        "equals": 95,
+        "note": "Tab で空のセルの頭（左の | の後ろの空白の 1 つ後ろ）"
+      }
+    },
+    {
+      "press": "Shift+Tab"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getSelection().head",
+        "equals": 89,
+        "note": "Shift+Tab で前のセル"
+      }
+    },
+    {
+      "expect": {
+        "eval": "document.activeElement === document.querySelector(\".cm-content\")",
+        "equals": true,
+        "note": "フォーカスは本文のまま"
+      }
+    },
+    {
+      "screenshot": "table-after-tab"
+    },
+    {
+      "press": "ControlOrMeta+Home"
+    },
+    {
+      "expect": {
+        "css": ".cm-md-table",
+        "read": "count",
+        "equals": 1,
+        "note": "表の外へ出ると、表示に戻る"
+      }
+    },
+    {
+      "press": "ControlOrMeta+s"
+    },
+    {
+      "observe": "bytes-after",
+      "files": [
+        "/docs/table.md"
+      ]
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.physicalWrites",
+        "equals": 0,
+        "note": "何も書き込まれていない（本文は変わらない）"
+      }
+    }
+  ]
+}

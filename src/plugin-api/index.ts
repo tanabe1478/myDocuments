@@ -3,7 +3,16 @@
  * 設計の経緯と R1 で決めた細部は docs/decision-005-plugin-architecture.md。
  */
 export { PLUGIN_API_VERSION } from './version';
-export { AFTER_COMPOSITION_MS, ownsCaretScroll, skipCaretFollow } from './conventions';
+export {
+  AFTER_COMPOSITION_MS,
+  DIMMED_BLOCK_CLASS,
+  dimExemptLines,
+  isDimmedBlock,
+  ownsCaretScroll,
+  skipCaretFollow,
+  tabHandlers,
+  type LineSpan,
+} from './conventions';
 export { frontmatterEndLine } from './frontmatter';
 export {
   DECLARATION_ONLY_DESCRIPTIONS,

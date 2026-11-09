@@ -1,6 +1,7 @@
 import { Prec, type Extension } from '@codemirror/state';
 import { searchPanelOpen } from '@codemirror/search';
 import { EditorView, keymap } from '@codemirror/view';
+import { tabHandlers } from '../../plugin-api';
 import { planIndentLess, planIndentMore, type LineEdit } from '../indent';
 
 /** 選択している行（空でない範囲が次の行の頭で終わるときは、その行を含めない）。 */
@@ -48,11 +49,13 @@ const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'T
 export function indentKeymap(): Extension {
   // Esc を押した直後か。ほかのキーを押すか、フォーカスが外れると解除する。state ごとに 1 つ。
   let escaped = false;
-  const run = (plan: (text: string, multi: boolean) => LineEdit | null) => (view: EditorView) => {
+  const run = (plan: (text: string, multi: boolean) => LineEdit | null, backward: boolean) => (view: EditorView) => {
     if (escaped) {
       escaped = false;
       return false;
     }
+    // 部品（表のセルの移動など）が先に受けられる。受けたら字下げはしない。
+    if (view.state.facet(tabHandlers).some((handle) => handle(view, backward))) return true;
     return indent(view, plan);
   };
   return [
@@ -72,8 +75,8 @@ export function indentKeymap(): Extension {
     }),
     Prec.high(
       keymap.of([
-        { key: 'Tab', run: run(planIndentMore) },
-        { key: 'Shift-Tab', run: run((text) => planIndentLess(text)) },
+        { key: 'Tab', run: run(planIndentMore, false) },
+        { key: 'Shift-Tab', run: run((text) => planIndentLess(text), true) },
       ]),
     ),
   ];

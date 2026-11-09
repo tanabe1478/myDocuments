@@ -1,0 +1,73 @@
+{
+  "seed": {
+    "files": {
+      "/docs/table.md": {
+        "text": "# 表の見本\n\n前の段落です。\n\n| 果物 | 個数 | 備考 |\n|:-----|-----:|:----:|\n| りんご | 3 | **赤い** と `code` |\n| みかん |  | [リンク](https://example.com) |\n| a \\| b | 1 | ~~売り切れ~~ *残り少し* |\n\n後ろの段落です。\n\n- 箇条書き\n- もう一つ"
+      }
+    },
+    "openPath": "/docs/table.md",
+    "preferences": {
+      "theme": "dark",
+      "autoHideChrome": false
+    }
+  },
+  "steps": [
+    {
+      "press": "ControlOrMeta+o"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "table.md"
+      }
+    },
+    {
+      "click": {
+        "css": ".cm-content",
+        "position": {
+          "x": 5,
+          "y": 5
+        }
+      }
+    },
+    {
+      "press": "ControlOrMeta+Home"
+    },
+    {
+      "eval": "window.__sel = { count: 0, head: 0 }; window.__mdeE2E.editor.onSelectionChange((s) => (window.__sel = { count: window.__sel.count + 1, head: s.head })); true"
+    },
+    {
+      "expect": {
+        "css": ".cm-md-table",
+        "read": "count",
+        "equals": 1,
+        "note": "ダークテーマでも表の形で表示される"
+      }
+    },
+    {
+      "expect": {
+        "eval": "getComputedStyle(document.querySelector(\".cm-md-table td\")).borderTopColor",
+        "equals": "rgb(61, 65, 69)",
+        "note": "枠の色は --md-color-border（ダーク）"
+      }
+    },
+    {
+      "screenshot": "table-display-dark"
+    },
+    {
+      "click": {
+        "css": ".cm-md-table tbody tr:nth-child(2) td:nth-child(3)"
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-md-table",
+        "read": "count",
+        "equals": 0
+      }
+    },
+    {
+      "screenshot": "table-source-dark"
+    }
+  ]
+}

@@ -121,15 +121,30 @@ describe('src/features/: what a bundled plugin may import', () => {
         'features/markdown/taskToggle.ts',
         'features/markdown/linkOpen.ts',
         'features/markdown/theme.ts',
+        'features/markdown/tableModel.ts',
+        'features/markdown/tableDisplay.ts',
+        'features/markdown/tableKeys.ts',
         'features/markdown/liveMarkup.test.ts',
         'features/markdown/lineKinds.test.ts',
         'features/markdown/taskToggle.test.ts',
+        'features/markdown/tableModel.test.ts',
+        'features/markdown/tableDisplay.test.ts',
+        'features/markdown/tableKeys.test.ts',
         'features/markdown/plugin.test.ts',
       ]),
     );
     expect(specifiers(path.join(FEATURES, 'markdown', 'index.ts'))).toEqual(
-      expect.arrayContaining(['../../plugin-api', './linkOpen', './markdownDecorations', './markupDisplay', './taskToggle', './theme']),
+      expect.arrayContaining(['../../plugin-api', './linkOpen', './markdownDecorations', './markupDisplay', './tableDisplay', './tableKeys', './taskToggle', './theme']),
     );
+    // 表の部品は、弱く表示する部品（フォーカスモード）を知らない。plugin-api の共通の約束だけで協調する。
+    for (const f of ['tableModel.ts', 'tableDisplay.ts', 'tableKeys.ts']) {
+      const text = readFileSync(path.join(FEATURES, 'markdown', f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+      expect(text, f).not.toMatch(/focusMode|focusRange|cm-md-dim|typewriter/i);
+    }
+    // 表の DOM は、createElement と文字だけで組み立てる（文書の文字を HTML として解釈する API を使わない）。
+    const display = readFileSync(path.join(FEATURES, 'markdown', 'tableDisplay.ts'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    expect(display).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|DOMParser|createContextualFragment|document\.write/);
+    expect(display).toContain('createElement');
     // 本体の設定・OS の判定・ネイティブへの入口（bridge）を、部品は直接 import しない。本体が貸す機能（plugin-api の HostServices）だけを使う。
     for (const f of files.filter((f) => isInside(f, path.join(FEATURES, 'markdown')))) {
       const bad = specifiers(f).filter((spec) => /preferences|shortcuts|platform|bridge|\/ui\/|\/editor\//.test(spec));
