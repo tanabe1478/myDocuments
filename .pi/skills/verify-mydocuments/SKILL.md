@@ -1,6 +1,6 @@
 ---
 name: verify-mydocuments
-description: Immersive Markdown Editor（Tauri 2 + CodeMirror 6 の没入型 Markdown エディタ）の動作を、実ユーザー面で再現可能に起動・操作・証跡化する。primary は VITE_E2E ビルドの Web UI を Playwright（chromium）で操作する面、secondary は macOS の Tauri debug ビルドの窓の観測。文書の保存、設定画面（外観と編集の節）と外観、左サイドバーとエクスプローラー（フォルダツリー、作成・名前の変更・ゴミ箱への移動、外部の変更の自動反映、同梱の段 2 の部品「パスをコピー」と部品の権限の確認、部品のパネルと同梱の部品「アウトライン」）、同梱の部品「タイピング音」（設定画面の「執筆の補助」のチェックと「音」の節の音色と音量、音色の切り替え、鳴り始めの位置、鳴らす要求の数え方）、執筆モード、保存の信頼性、書き心地（Enter でのリストの継続、カーソルのない行で記法を隠す記号の表示、⌘/Ctrl+クリックでリンクを開く操作、隠した行のチェックボックスのクリックでの切り替え、表の表示と表の中の Tab でのセルの移動、表の入力の支援を含む）を変えたとき、または変更を検証して証跡を残したいときに使う。
+description: Immersive Markdown Editor（Tauri 2 + CodeMirror 6 の没入型 Markdown エディタ）の動作を、実ユーザー面で再現可能に起動・操作・証跡化する。primary は VITE_E2E ビルドの Web UI を Playwright（chromium）で操作する面、secondary は macOS の Tauri debug ビルドの窓の観測と、Linux の Tauri debug ビルドの窓の WebDriver（tauri-driver）での操作。文書の保存、設定画面（外観と編集の節）と外観、左サイドバーとエクスプローラー（フォルダツリー、作成・名前の変更・ゴミ箱への移動、外部の変更の自動反映、同梱の段 2 の部品「パスをコピー」と部品の権限の確認、部品のパネルと同梱の部品「アウトライン」）、同梱の部品「タイピング音」（設定画面の「執筆の補助」のチェックと「音」の節の音色と音量、音色の切り替え、鳴り始めの位置、鳴らす要求の数え方）、執筆モード、保存の信頼性、書き心地（Enter でのリストの継続、カーソルのない行で記法を隠す記号の表示、⌘/Ctrl+クリックでリンクを開く操作、隠した行のチェックボックスのクリックでの切り替え、表の表示と表の中の Tab でのセルの移動、表の入力の支援を含む）を変えたとき、または変更を検証して証跡を残したいときに使う。
 ---
 
 # verify-mydocuments
@@ -11,6 +11,7 @@ description: Immersive Markdown Editor（Tauri 2 + CodeMirror 6 の没入型 Mar
 
 - primary: Web UI の e2e ビルド。環境変数 VITE_E2E=1 でビルドすると、本番では Tauri 経由のファイル I/O を担う DocumentBridge（Web UI からネイティブ側への唯一の入口。interface は src/platform/DocumentBridge.ts）が、メモリ実装（src/platform/memory/memoryBridge.ts）に差し替わる。これを Playwright の chromium で操作する。本番のビルドにはメモリ実装は含まれない。
 - secondary: macOS の Tauri デスクトップアプリ（debug ビルド）。macOS には tauri-driver（Tauri 用の WebDriver）がなく、OS へのキー入力・マウス操作は送らない方針なので、観測だけを行う。窓を CGWindowList で特定し、screencapture で窓単体を撮る。
+- secondary（Linux）: Linux の Tauri デスクトップアプリ（debug ビルド）。tauri-driver と WebKitGTK の WebDriver（WebKitWebDriver）で、実際の窓へクリックとキー入力を送り、窓の中を撮る（WebDriver 経由で、OS への入力の注入ではない）。DocumentBridge の内側（Rust のファイル I/O、inotify による監視）まで通る。手順は「Linux の Tauri の窓」節。
 - 本番側の保証: DocumentBridge の外側（Rust のファイル I/O）は crates/docio と src-tauri の cargo test が担う。この Skill はそこを再実装しない。
 - not covered:
   - 本物のゴミ箱、本物のファイルシステムの監視、登録外・シンボリックリンクのパスの拒否（src-tauri の cargo test が正本）。
@@ -98,6 +99,8 @@ artifacts/verify-mydocuments/<run-id>/
   build.log, preview.log, tauri.log
   evidence/<name>/observations.json   シナリオ、全 step の結果、observe の値、最後の状態、console error
   evidence/<name>/*.png               screenshot の画像と final.png（失敗時は failure.png）
+  evidence/tauri-linux/<name>/        Linux の Tauri の窓の observations.json と *.png（失敗時は failure.png）
+  tauri-home/, files/<name>/          Linux の Tauri の run 専用 HOME と、文書・フォルダの実ファイル
   evidence/tauri/<name>.png, .json    窓の撮影と、窓情報・アプリのデータ領域のファイル一覧
 ```
 
@@ -149,6 +152,24 @@ npm run perf -- --only web --browsers chromium --typing-sound --out perf/out/<na
 - 測定中は、同じマシンで重い処理（cargo、npm run test:e2e など）を並行して走らせない。結果は環境（負荷、電源）に左右される。
 - Web UI の計測はメモリ bridge の上で動く。DocumentBridge の内側（Rust の I/O と IPC）は含まないので、ディスクの読み書きは docio の項目で別に見る。
 
+## Linux の Tauri の窓
+
+Linux では、実際の Tauri の窓を WebDriver で操作できる。Launch（Web UI の preview）は要らない。run ディレクトリと state.json がなければ drive が作る。
+
+```
+node .pi/skills/verify-mydocuments/scripts/tauri-linux.mjs setup     # tauri-driver と WebKitWebDriver を確かめ、なければ用意する（sudo は使わない）
+node .pi/skills/verify-mydocuments/scripts/tauri.mjs build           # build だけは Linux でも使える
+node .pi/skills/verify-mydocuments/scripts/tauri-linux.mjs drive --run-id <run-id> --scenario .pi/skills/verify-mydocuments/tauri-linux/smoke.json
+```
+
+- 前提: Tauri の Linux の依存（libwebkit2gtk-4.1-dev ほか。.github/workflows/ci.yml の Install Linux system dependencies と同じ）と cargo。setup は、tauri-driver がなければ `cargo install tauri-driver --locked` を実行し、WebKitWebDriver がシステムになければ、インストール済みの libwebkit2gtk-4.1-0 と同じ版の webkitgtk-webdriver を apt-get download で取得して artifacts/verify-mydocuments/.tools/ に展開する（システムには入れない）。窓を出せる画面（Wayland または X11 のセッション）が要る。
+- 隔離: HOME と XDG_CONFIG_HOME / XDG_DATA_HOME / XDG_CACHE_HOME を <run-dir>/tauri-home に向ける（アプリのデータ領域は tauri-home/.local/share/<identifier>/、設定は tauri-home/.config/<identifier>/）。drive の後に、(1) /proc/<pid>/environ の HOME が run 専用だったこと、(2) アプリが run 側のデータ領域に書いたエントリがあること、の少なくとも一方と、実ユーザーの ~/.local/share・~/.config・~/.cache の識別子とバイナリ名の場所の署名が前後で同じことを確かめる。外れたら exit 1。アプリはセッションの終了で閉じ、残っていれば、この実行ファイルを run の HOME で動かしているプロセス（/proc の exe と environ で照合）だけを止める。
+- 1 回の drive は、tauri-home と files/<name>/ を作り直してから始まる（シナリオ間で状態を引き継がない）。tauri-driver は空いている port とその次の port を使うので、同時に複数の run を動かしてもぶつからない（窓は同じ画面に出る）。
+- シナリオは { "seed", "steps" }。seed の files は「run の files/<name>/ からの相対パス → 文字列」で、実ファイルとして書く。doc と folder は前回の文書とフォルダ（session.json の lastPath と lastFolder）、preferences は保存済みの設定、emptyFolders は空のフォルダ。パスが files/<name>/ の外を指すと止める。
+- steps は上から順に実行し、外れたら止めて failure.png を残し exit 1 にする。操作は press（"Control+End"、"ControlOrMeta+s" のような名前。ControlOrMeta は Ctrl。times?）、click（testId か css）、type（文字列ならフォーカスのある要素へ。{ testId | css, text } ならその要素へ。WebDriver の send keys なので、\uE007 などのキーのコードも書ける）、wait（ms）、externalWrite（{ path, text }。実ファイルを書き換える。監視の通知は inotify から本物が届く）、screenshot（名前。窓の中の webview を撮る）。検査は expect: 対象は testId / css（read は text（既定）、count、exists、visible、attr:<name>）、eval（ページ内の式）、file（files/<name>/ のファイルの中身。read: exists で有無）。比較は equals、contains、notContains（どれもなければ真偽）。timeout（既定 8000ms）まで再試行する。note は報告用の説明。
+- tauri-linux/smoke.json は、起動時の前回の文書とフォルダの再オープン、入力と未保存の印、Mod+S での実ファイルへの保存、外部の変更の自動の読み直し、Mod+, の設定画面と Esc、ツリーからの新しいファイルの作成、Mod+B のサイドバーの開閉を通す。
+- not covered: ネイティブのファイル選択ダイアログ（WebDriver から操作できない。seed の doc と folder で代える）、本物のゴミ箱（tauri-home の外の場所を使いうる）、実 IME（Mozc）、音が実際に聞こえること。window.__mdeE2E は本番のビルドにはないので使えない。
+
 ## 隔離した操作（段 2）の検証
 
 部品の仕組み（ADR-005）の、隔離した操作の段（段 2）を変えたとき、またはその隔離を確かめ直したいときの手順。上の Launch から Cleanup とは別で、macOS の実際の Tauri の窓を使う。OS へのキー入力・マウス操作は送らない。R8 で、仲介の iframe は独自プロトコル plug: をやめ、sandbox の srcdoc の iframe になった（relay.js は本体と同じオリジンの /plugin-host/relay.js）。R6 で、権限（宣言、初回の確認、保存、取り消し）と、権限の要る API（クリップボードへの書き込み、パス、ツリーの右クリックの項目）、同梱の段 2 の部品「パスをコピー」が入った（features/explorer.md の EXP-14）。R7 で、部品がサイドバーにパネル（項目の木。描くのは本体）を足せるようになり、宣言だけで使える権限 document.read（本文とカーソルの位置を受け取る）と、同梱の部品「アウトライン」が入った（features/outline.md）。
@@ -177,6 +198,7 @@ node .pi/skills/verify-mydocuments/scripts/check-probe-absent.mjs           # �
 - doctor.mjs: read-only の健全性確認（ps や lsof が使えなくても落ちない）。
 - drive.mjs: シナリオの実行と証跡の保存。
 - tauri.mjs: Tauri の build、start、windows、shot、stop（macOS 専用。窓の一覧は cgwindows.swift を swift で実行して得る）。build と start は --probe で、隔離の検証用のビルドと起動（isolation-probe.mjs が使う）。
+- tauri-linux.mjs: Linux の Tauri の窓の setup と drive（Linux 専用。tauri-driver と WebKitWebDriver で操作と撮影）。シナリオは tauri-linux/。
 - cleanup.mjs: この run のプロセスの停止（pid がこの run のものと確認できたときだけ）と dist の削除。
 - isolation-probe.mjs: 隔離した操作（段 2）の隔離の検証（受け口の起動、検証用の Tauri の起動と停止、判定。macOS 専用）。
 - check-probe-absent.mjs: 本番の dist/ と通常の実行ファイルに、検証用のコードがないことの検査。
@@ -192,6 +214,7 @@ node .pi/skills/verify-mydocuments/scripts/doctor.mjs --run-id <id>
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <id> --scenario <features の Driving 節にあるシナリオ>
 node .pi/skills/verify-mydocuments/scripts/tauri.mjs build && node .pi/skills/verify-mydocuments/scripts/tauri.mjs start --run-id <id> && node .pi/skills/verify-mydocuments/scripts/tauri.mjs shot --run-id <id> --name startup
 node .pi/skills/verify-mydocuments/scripts/tauri.mjs stop --run-id <id>    # Tauri を起動した run だけ。隔離の確認が入る
+node .pi/skills/verify-mydocuments/scripts/tauri-linux.mjs drive --run-id <id> --scenario .pi/skills/verify-mydocuments/tauri-linux/smoke.json   # Linux では上の 2 行の代わり（tauri.mjs build の後）
 node .pi/skills/verify-mydocuments/scripts/cleanup.mjs --run-id <id>
 ```
 

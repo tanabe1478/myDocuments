@@ -1,0 +1,44 @@
+{
+  "seed": {
+    "files": {
+      "notes/sample.md": "# Ubuntu での確認\n\n- 項目1\n- 項目2\n\n本文です。\n",
+      "notes/other.md": "もう一つ\n"
+    },
+    "doc": "notes/sample.md",
+    "folder": "notes",
+    "preferences": { "theme": "light", "autoHideChrome": false, "sidebarOpen": true }
+  },
+  "steps": [
+    { "expect": { "testId": "doc-title", "equals": "sample.md", "note": "前回の文書（session.lastPath）が開く" } },
+    { "expect": { "eval": "navigator.platform", "contains": "Linux", "note": "OS の判定が Linux（Mod は Ctrl）" } },
+    { "expect": { "eval": "[...document.querySelectorAll('[data-testid=file-tree] [role=treeitem]')].map(e => e.getAttribute('aria-label')).join(',')", "equals": "other.md,sample.md", "note": "前回のフォルダ（session.lastFolder）が実際のファイルシステムから復元される" } },
+    { "screenshot": "01-startup" },
+    { "click": { "css": ".cm-content" } },
+    { "press": "Control+End" },
+    { "type": { "css": ".cm-content", "text": "\nUbuntu から追記しました。" } },
+    { "expect": { "testId": "unsaved-mark", "read": "exists", "equals": true, "note": "入力で未保存の印が出る" } },
+    { "screenshot": "02-edited" },
+    { "press": "ControlOrMeta+s" },
+    { "expect": { "file": "notes/sample.md", "contains": "Ubuntu から追記しました。", "note": "Mod+S で実ファイルに書かれる" } },
+    { "expect": { "testId": "unsaved-mark", "read": "exists", "equals": false, "note": "保存後は未保存の印が消える" } },
+    { "externalWrite": { "path": "notes/sample.md", "text": "# 外部で書き換え\n\nエディタの外から変更しました。\n" } },
+    { "expect": { "css": ".cm-content", "contains": "エディタの外から変更しました", "note": "外部の変更を inotify の通知で読み直す" } },
+    { "expect": { "testId": "toast", "contains": "読み直しました" } },
+    { "screenshot": "03-external-change" },
+    { "press": "ControlOrMeta+," },
+    { "expect": { "testId": "settings-dialog", "read": "exists", "equals": true, "note": "Mod+, で設定画面が開く" } },
+    { "screenshot": "04-settings" },
+    { "press": "Escape" },
+    { "expect": { "testId": "settings-dialog", "read": "exists", "equals": false, "note": "Esc で閉じる" } },
+    { "click": { "testId": "new-file" } },
+    { "expect": { "testId": "tree-name-input", "read": "exists", "equals": true } },
+    { "type": { "testId": "tree-name-input", "text": "idea" } },
+    { "expect": { "file": "notes/idea.md", "read": "exists", "equals": true, "note": "ツリーの新しいファイルが実ファイルとして作られる" } },
+    { "expect": { "testId": "doc-title", "equals": "idea.md", "note": "作ったファイルが開く" } },
+    { "screenshot": "05-new-file" },
+    { "click": { "css": ".cm-content" } },
+    { "press": "ControlOrMeta+b" },
+    { "expect": { "testId": "sidebar", "read": "visible", "equals": false, "note": "Mod+B でサイドバーが閉じる" } },
+    { "screenshot": "06-sidebar-closed" }
+  ]
+}
