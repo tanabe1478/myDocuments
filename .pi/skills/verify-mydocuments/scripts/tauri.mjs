@@ -17,10 +17,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PROBE_BIN, PROBE_TARGET_DIR, ROOT, TAURI_BIN, appCreatedUnder, fail, homeEnvOf, isAlive, parseArgs, readState, rel, resolveRun, sleep, treeSignature, verifyOwnership, writeState } from './lib.mjs';
 
-if (process.platform !== 'darwin') fail('tauri.mjs は macOS 専用です（窓の特定に CGWindowList、撮影に screencapture を使います）。');
 const here = path.dirname(fileURLToPath(import.meta.url));
 const args = parseArgs(process.argv.slice(2));
 const sub = args._[0];
+// build だけは Linux でも使う（Linux の窓の操作は tauri-linux.mjs）。
+if (process.platform !== 'darwin' && sub !== 'build') fail('tauri.mjs は macOS 専用です（窓の特定に CGWindowList、撮影に screencapture を使います）。Linux は tauri-linux.mjs を使います。');
 // stop、shot は、start が記録した実行ファイルを使う（通常のビルドか、隔離の検証用のビルドか）。
 const BIN = args.probe ? PROBE_BIN : TAURI_BIN;
 const binOf = (state) => (state.tauri?.bin ? path.join(ROOT, state.tauri.bin) : TAURI_BIN);
