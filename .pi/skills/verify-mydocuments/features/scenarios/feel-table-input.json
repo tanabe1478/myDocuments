@@ -1,0 +1,233 @@
+{
+  "seed": {
+    "files": {
+      "/docs/input.md": {
+        "text": "前の段落です。\n\n| 名前 | 数 |\n\n後ろの段落です。\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n末尾"
+      }
+    },
+    "openPath": "/docs/input.md",
+    "preferences": {
+      "theme": "light",
+      "autoHideChrome": false
+    }
+  },
+  "steps": [
+    {
+      "press": "ControlOrMeta+o"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "input.md"
+      }
+    },
+    {
+      "click": {
+        "css": ".cm-content",
+        "position": {
+          "x": 5,
+          "y": 5
+        }
+      }
+    },
+    {
+      "press": "ControlOrMeta+Home"
+    },
+    {
+      "expect": {
+        "css": ".cm-md-table",
+        "read": "count",
+        "equals": 1,
+        "note": "カーソルが表の外なので、既存の表は表の形"
+      }
+    },
+    {
+      "screenshot": "table-before-input"
+    },
+    {
+      "press": "ArrowDown",
+      "times": 8
+    },
+    {
+      "press": "End"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getSelection().head",
+        "equals": 60,
+        "note": "表の本文の行（| 1 | 2 |）の末尾"
+      }
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText() === \"前の段落です。\\n\\n| 名前 | 数 |\\n\\n後ろの段落です。\\n\\n| a | b |\\n|---|---|\\n| 1 | 2 |\\n|  |  |\\n\\n末尾\"",
+        "equals": true,
+        "note": "本文の行の下に、見出しの列の数の空の行 `|  |  |` が足された"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getSelection().head",
+        "equals": 63,
+        "note": "カーソルは足した行の最初のセルの中（左の | の後ろの空白の 1 つ後ろ）"
+      }
+    },
+    {
+      "screenshot": "table-row-added"
+    },
+    {
+      "press": "ControlOrMeta+z"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText() === \"前の段落です。\\n\\n| 名前 | 数 |\\n\\n後ろの段落です。\\n\\n| a | b |\\n|---|---|\\n| 1 | 2 |\\n\\n末尾\"",
+        "equals": true,
+        "note": "1 回の Undo で、押す前の文書に戻る"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getSelection().head",
+        "equals": 60,
+        "note": "選択も押す前に戻る"
+      }
+    },
+    {
+      "press": "ArrowUp",
+      "times": 6
+    },
+    {
+      "press": "End"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getSelection().head",
+        "equals": 19,
+        "note": "まだ表でない見出しの行（| 名前 | 数 |）の末尾"
+      }
+    },
+    {
+      "screenshot": "header-line"
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText() === \"前の段落です。\\n\\n| 名前 | 数 |\\n| --- | --- |\\n|  |  |\\n\\n後ろの段落です。\\n\\n| a | b |\\n|---|---|\\n| 1 | 2 |\\n\\n末尾\"",
+        "equals": true,
+        "note": "区切りの行と空の行が足されて、表になった（見出しの行の文字は変わらない）"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getSelection().head",
+        "equals": 36,
+        "note": "カーソルは空の行の最初のセルの中"
+      }
+    },
+    {
+      "screenshot": "table-made"
+    },
+    {
+      "type": "りんご"
+    },
+    {
+      "press": "Tab"
+    },
+    {
+      "type": "3"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText() === \"前の段落です。\\n\\n| 名前 | 数 |\\n| --- | --- |\\n| りんご | 3 |\\n\\n後ろの段落です。\\n\\n| a | b |\\n|---|---|\\n| 1 | 2 |\\n\\n末尾\"",
+        "equals": true,
+        "note": "セルに入力できる（Tab で次のセル）"
+      }
+    },
+    {
+      "press": "Tab"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText() === \"前の段落です。\\n\\n| 名前 | 数 |\\n| --- | --- |\\n| りんご | 3 |\\n|  |  |\\n\\n後ろの段落です。\\n\\n| a | b |\\n|---|---|\\n| 1 | 2 |\\n\\n末尾\"",
+        "equals": true,
+        "note": "最後のセルで Tab を押すと、表の最後に空の行が足された"
+      }
+    },
+    {
+      "expect": {
+        "eval": "document.activeElement === document.querySelector(\".cm-content\")",
+        "equals": true,
+        "note": "フォーカスは本文のまま"
+      }
+    },
+    {
+      "screenshot": "table-tab-added"
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText() === \"前の段落です。\\n\\n| 名前 | 数 |\\n| --- | --- |\\n| りんご | 3 |\\n\\n\\n後ろの段落です。\\n\\n| a | b |\\n|---|---|\\n| 1 | 2 |\\n\\n末尾\"",
+        "equals": true,
+        "note": "最後の空の行で Enter を押すと、その行が空の行になり、表から出る"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__mdeE2E.editor.getSelection().head).endsWith(\"| りんご | 3 |\\n\")",
+        "equals": true,
+        "note": "カーソルは、表の下の空の行"
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-md-table",
+        "read": "count",
+        "equals": 2,
+        "note": "表から出たので、2 つの表がどちらも表の形"
+      }
+    },
+    {
+      "screenshot": "table-exited"
+    },
+    {
+      "press": "ControlOrMeta+s"
+    },
+    {
+      "observe": "bytes-after",
+      "files": [
+        "/docs/input.md"
+      ]
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.physicalWrites",
+        "equals": 1,
+        "note": "保存で 1 回だけ書いた（キーを押したときだけ本文が変わる）"
+      }
+    },
+    {
+      "expect": {
+        "eval": "new TextDecoder().decode(new Uint8Array(window.__mdeE2E.readFile(\"/docs/input.md\"))) === \"前の段落です。\\n\\n| 名前 | 数 |\\n| --- | --- |\\n| りんご | 3 |\\n\\n\\n後ろの段落です。\\n\\n| a | b |\\n|---|---|\\n| 1 | 2 |\\n\\n末尾\"",
+        "equals": true,
+        "note": "保存したバイト列（UTF-8、LF）が画面の文書と同じ"
+      }
+    },
+    {
+      "press": "ControlOrMeta+z"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText() === \"前の段落です。\\n\\n| 名前 | 数 |\\n| --- | --- |\\n| りんご | 3 |\\n|  |  |\\n\\n後ろの段落です。\\n\\n| a | b |\\n|---|---|\\n| 1 | 2 |\\n\\n末尾\"",
+        "equals": true,
+        "note": "Undo 1 回で、表から出る前（空の最後の行がある状態）に戻る"
+      }
+    }
+  ]
+}

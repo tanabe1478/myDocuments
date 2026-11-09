@@ -69,14 +69,20 @@ describe('Tab / Shift+Tab in the original text of a table', () => {
     }
   });
 
-  it('accepts the key without moving at the first cell (Shift+Tab) and the last cell (Tab), changing nothing', () => {
+  it('accepts the key without moving at the first cell (Shift+Tab), changing nothing', () => {
     const v = mount(DOC, 'always', T + 2);
     expect(tableTab(v, true)).toBe(true);
     expect(v.state.selection.main.head).toBe(T + 2);
+    expect(v.state.doc.toString()).toBe(DOC);
+  });
+
+  it('at the last cell (Tab) adds an empty row at the end of the table and moves to its first cell (R12; see tableEdit.test.ts)', () => {
+    const v = mount(DOC, 'always', T + 2);
     v.dispatch({ selection: { anchor: T + 35 } });
     expect(tableTab(v, false)).toBe(true);
-    expect(v.state.selection.main.head).toBe(T + 35);
-    expect(v.state.doc.toString()).toBe(DOC);
+    const added = `${TABLE}\n|  |  |`;
+    expect(v.state.doc.toString()).toBe(DOC.replace(TABLE, added));
+    expect(v.state.selection.main.head).toBe(T + TABLE.length + 1 + 2);
   });
 
   it('does nothing for a range selection, outside a table, and in a table inside a blockquote or a list item', () => {

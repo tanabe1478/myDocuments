@@ -14,7 +14,8 @@
 - FEEL-10: リンクを開く。⌘+クリック（macOS）、Ctrl+クリック（Windows と Linux）で、リンクの文字・URL・自動リンク・裸の URL を既定のブラウザで開く。開けるのは http と https だけで、それ以外は開かず、トースト「このリンクは開けません」。普通のクリックはカーソルを置くだけ。修飾キーを押している間、リンクの上でポインタの形が変わる。カーソルは動かない。
 - FEEL-11: タスクの切り替え。記号を隠した行のチェックボックスを、修飾キーなしの左クリックすると、文書の `[ ]` と `[x]`（`[X]` を含む）の 1 文字だけが切り替わる。カーソル・選択・スクロール位置は動かず、その行は隠したまま。Undo 1 回で戻り、Redo でやり直せる。入れ子、引用の中、`*` と `+` のタスクも同じ。ポインタは pointer、role は checkbox で aria-checked が状態に合う。本文のクリック、カーソル行の `[ ]`、設定「常に表示」、修飾キー付き、右・中クリック、IME の変換中は切り替えない。すばやく 2 回クリックすると元に戻り、語は選択されない。キーボードでの切り替えはない。
 - FEEL-12: 表の表示（ADR-006）。既定（「記号の表示」が「カーソルのある行だけ」）では、カーソルが表の外にあるとき、トップレベルの Markdown の表が表の形で表示される（見出しは th、本文は td。区切りの行は出ない。配置は区切りの行の `:` に従い、列の数は見出しのセルの数。空のセルは列に数え、足りないセルは空、余るセルは出ない。セルの中の `\|` は `|` と表示。強調・取り消し線・コード・リンク・自動リンク・裸の URL は、隠した行と同じ見た目で、画像・参照リンク・HTML は原文の文字のまま）。選択が表に触れる（端の一致を含む）と、その表だけが原文に戻る。表をクリックすると、クリックしたセルの中身の末尾にカーソルが入る（セルの外は一番近いセル。Shift+クリックは選択を伸ばす。右・中クリックは何もしない。⌘/Ctrl+クリックと Alt+クリックも同じで、リンクは開かない）。上下キー（mac は Ctrl-n / Ctrl-p も）で、表の上下の行から表に入れる（表を飛ばさない）。検索で表の中の一致に移ると原文になる。表示の切り替え、出入り、Tab の移動で、文書のバイト列は変わらず、Undo の履歴に何も積まない。「常に表示」、.txt、引用やリストの中の表は、原文のまま。表の幅は本文の幅を超えず、セルの中で折り返す。色は明暗のテーマに追従する。
-- FEEL-13: 表の中の Tab。原文の表の中で、選択が空のとき、Tab は次のセルの中身の頭、Shift+Tab は前のセルの中身の頭へカーソルを移す（区切りの行を飛ばし、行をまたぎ、空のセルにも止まる。外側の `|` のない行の最初のセルは行頭から数える）。最初のセルで Shift+Tab、最後のセルで Tab は、動かずにキーを受ける。設定「常に表示」でも効く。Esc の直後の Tab は本文の外へフォーカスを移す。範囲を選んでいるとき、表の外、引用の中の表は、これまでの字下げのまま。
+- FEEL-13: 表の中の Tab。原文の表の中で、選択が空のとき、Tab は次のセルの中身の頭、Shift+Tab は前のセルの中身の頭へカーソルを移す（区切りの行を飛ばし、行をまたぎ、空のセルにも止まる。外側の `|` のない行の最初のセルは行頭から数える）。最初のセルで Shift+Tab は、動かずにキーを受ける（最後のセルでの Tab は FEEL-14）。設定「常に表示」でも効く。Esc の直後の Tab は本文の外へフォーカスを移す。範囲を選んでいるとき、表の外、引用の中の表は、これまでの字下げのまま。
+- FEEL-14: 表の入力の支援（ADR-006 の R12）。キーを押したときだけ本文を変え、1 回の Undo で押す前の文書と選択に戻る。設定「記号の表示」によらず、.txt では働かない。(a) 原文の表の行（見出し、区切り、本文）での Enter は、本文の行の下（見出しと区切りの行では、区切りの行の下）に、見出しの列の数の空の行 `|  |  |` を足し、カーソルをその最初のセルの中身の位置（行頭から 2 文字目）に置く。セルの途中でも文字を分けない。表の最後の行が、セルがすべて空の本文の行のときの Enter は、その行を空の行にして表から出る（最後の行でない空の行は、普通に行を足す）。(b) まだ表でない `| 名前 | 数 |` の行（前後の空白を除いて `|` で始まり `|` で終わる、親が Document の段落の最後の行）の末尾での Enter は、区切りの行 `| --- | --- |` と空の行を足して表にし、カーソルを空の行の最初のセルに置く。行の途中、次の行が区切りの行、コードブロック、HTML ブロック、frontmatter、引用、リストの中は、普通の改行。(c) 原文の表の最後の行（本文がなければ見出しの行）の最後のセルでの Tab は、表の最後に空の行を足して最初のセルへ移る。最初のセルの Shift+Tab、Esc の直後の Tab、表の外、範囲選択は今のまま。IME の変換中の Enter と Tab では何もしない。表の外の Enter、リストの継続、Shift+Enter、Mod+Enter は今のまま。
 
 ## How to get to it (user POV)
 
@@ -26,6 +27,7 @@
 - リンクを開く操作は、本文のリンクの上での Mod+クリック（macOS は ⌘、Windows と Linux は Ctrl）。drive の click の modifiers: ["ControlOrMeta"] がその OS の Mod キーになる。
 - チェックボックスの切り替えは、記号を隠した行のチェックボックス（.cm-md-task）のクリック。drive の click に css で `.cm-line:nth-child(n) .cm-md-task` を指定する。切り替えの Undo は ControlOrMeta+z。
 - 表は、表の外にカーソルがあるだけで表の形になる（専用の操作はない）。表のクリック、上下キー（Mac は Ctrl-n / Ctrl-p も）、検索（Mod+f）で表に入る。原文の表の中で Tab と Shift+Tab。drive の click に css で `.cm-md-table tbody tr:nth-child(n) td:nth-child(m)` を指定する。
+- 表の入力は、本文の中で、表の行や見出しの行（`| 名前 | 数 |`）の末尾へカーソルを置いて Enter、表の最後のセルで Tab。専用のボタンはない。カーソルは、ArrowDown と End で行の末尾へ動かす。
 - 折り返しは窓の幅と本文の最大幅で決まる。ぶら下げインデントはリスト等の行を書くだけで働く。
 
 ## Driving it with Playwright（メモリ bridge）
@@ -49,6 +51,7 @@ Preconditions: Launch 済みで Doctor が全 PASS。カーソルや選択は、
 | feel-selection-collapse.json | 5 行の文書で、選択して ArrowUp、ArrowDown、Shift+ArrowUp、Shift+ArrowDown | 選択の anchor と head の位置が、下向きの選択は ArrowDown で末尾、ArrowUp で先頭へ畳まれる。上向きの選択も ArrowUp で先頭へ畳まれる。Shift 付きは anchor が動かず head が 1 行ずつ。先頭行の ArrowUp は行頭、末尾行の ArrowDown は行末 |
 | feel-table-display.json | 見出し・表（配置、空のセル、`\|`、強調・コード・リンク・取り消し線）・リストを含む文書を、ライトで開く。表の外（1 行目）から、表の最初のセルをクリック、Tab を 4 回、Shift+Tab、Mod+Home、Mod+s | カーソルが表の外のとき、表が表の形になる（th 3、td 9、2 列目は右寄せ、3 列目は中央、`\|` は縦線 1 文字、区切りの行は出ない）。クリックで表が原文になり、カーソルはりんごの末尾。Tab で、次のセル、赤いの頭、次の行の最初のセル（区切りの行を飛ばす）、空のセルの頭（左の `\|` の後ろの空白の 1 つ後ろ）。Shift+Tab で戻る。フォーカスは本文のまま。表の外へ出ると表示に戻る。physicalWrites は 0（本文は変わらない）。画像は table-display.png、table-source.png、table-after-tab.png |
 | feel-table-display-dark.json | 同じ文書をダークで開き、表のセルをクリック | 表が表の形で出る。枠の色は --md-color-border（ダーク）。クリックで原文になる。画像は table-display-dark.png、table-source-dark.png |
+| feel-table-input.json | 表（| a | b |）と、まだ表でない見出しの行（| 名前 | 数 |）のある文書を開く。表の本文の行の末尾で Enter、Undo。見出しの行の末尾で Enter、「りんご」、Tab、「3」、最後のセルで Tab、空の最後の行で Enter、Mod+s、Undo | 本文の行の下に `\|  \|  \|` の空の行が足され、カーソルはその最初のセル（行頭から 2 文字目）。Undo 1 回で文書と選択が戻る。見出しの行の下に `\| --- \| --- \|` と空の行が足されて表になり、カーソルは空の行の最初のセル。セルに入力でき、最後のセルの Tab で空の行が足される。空の最後の行の Enter で、その行が空の行になって表から出て、2 つの表が表の形で出る。保存したバイト列が画面の文書と同じで、physicalWrites は 1。Undo 1 回で空の最後の行のある状態に戻る。画像は table-before-input.png、table-row-added.png、header-line.png、table-made.png、table-tab-added.png、table-exited.png |
 | feel-table-always.json | 設定「常に表示」で同じ文書を開き、表の 1 行目へ移って Tab | 表は原文のまま（`.cm-md-table` は 0）。区切りの行が見える。Tab で、最初のセル、次のセル、区切りの行を飛ばして次の行の最初のセルへ。画像は table-always.png |
 
 ```
@@ -72,6 +75,7 @@ node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenari
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/feel-table-display.json
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/feel-table-display-dark.json
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/feel-table-always.json
+node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/feel-table-input.json
 ```
 
 ## Gotchas
@@ -101,3 +105,6 @@ node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenari
 - Tab のシナリオは、クリックした位置がセルの中身の末尾であることに依存する。クリックの直後の Tab は、そのセルの次のセルへ移る（同じセルの頭ではない）。Esc の直後の Tab は本文の外へフォーカスを移す（tests/e2e/table-display.spec.ts が確かめる）。
 - 表の見た目（列の幅、折り返し）は、フォントの実測に依存する。数値は、シナリオでは配置と色と数だけを見る。幅と折り返しの検査は tests/e2e/table-display.spec.ts（520px の窓で、横スクロールが出ないこと）。
 - 実 IME と実機（WKWebView）での表の出入りは、この Skill のシナリオに含めない。IME の変換中に表の DOM を作り直さないことは、tests/e2e/table-display.spec.ts が CDP の模擬で確かめる。
+- 表の入力（FEEL-14）のシナリオは、最初に Mod+Home で文書の先頭（表の外）へ行き、ArrowDown の回数と End で行の末尾へ動かす。表の上の行からの ArrowDown は表に入って原文になり、その後は 1 行ずつ動くので、回数は原文の行数と一致する。足した行の位置は、文書全体の文字列（getText）の一致と、getSelection().head の値で確かめる。
+- 最後のセルでの Tab は、カーソルがそのセルの中にあるときだけ行を足す。最後の行の末尾の `|` の後ろ（行末）は、セルの外なので、動かない。空の最後の行の Enter は、表から出て、カーソルが空の行に置かれる（次の Enter は表の外の普通の改行）。
+- 実 IME と、WebKit で変換の確定の直後に届く Enter の keydown は、この Skill のシナリオに含めない（chromium では再現できない）。tests/e2e/table-input.spec.ts が、CDP の模擬の変換中の Enter（keyCode 229）で、行が増えないことを確かめる。

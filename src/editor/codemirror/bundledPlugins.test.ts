@@ -256,18 +256,22 @@ describe('list continuation through the adapter (was setListContinuation)', () =
       .map((b) => ({ name: b.run?.name ?? '', hasShift: b.shift !== undefined }));
   }
 
-  it('Enter priority is unchanged: tight comes first (highest), then the two bindings that were behind it; preserve leaves only those two', () => {
+  it('Enter priority: the table keys (R12, highest) come first, then tight, then the two bindings that were behind it; preserve leaves the table keys and those two', () => {
     // 変更前のコミット（リストの継続を本体が持っていたとき）で、同じ組み立ての state から調べた並び:
     //   tight    = [insertNewlineContinueTight, (lang-markdown の Enter), (defaultKeymap の Enter。shift つき)]
     //   preserve = [(lang-markdown の Enter), (defaultKeymap の Enter。shift つき)]
+    // R12 で、表の入力の支援（tableEnter。Markdown の見た目の部品）が、最優先で先頭に足された。表の行と、最上位の段落の
+    // 見出しの行だけを受け、リストの中では false を返して次に回すので、リストの継続の並びと働きは変わらない。
     adapter.mount(host);
     expect(enterBindings()).toEqual([
+      { name: 'tableEnter', hasShift: false },
       { name: 'insertNewlineContinueTight', hasShift: false },
       { name: '', hasShift: false },
       { name: '', hasShift: true },
     ]);
     adapter.setPluginSetting('listContinuation', 'preserve');
     expect(enterBindings()).toEqual([
+      { name: 'tableEnter', hasShift: false },
       { name: '', hasShift: false },
       { name: '', hasShift: true },
     ]);
@@ -372,11 +376,12 @@ describe('tables through the adapter (ADR-006)', () => {
       }
       // b、次の行の 1、空のセル（左の | の後ろの空白の 1 つ後ろ）。
       expect(heads).toEqual([T + 6, T + 22, T + 26]);
-      expect(press(view, 'Tab').defaultPrevented).toBe(true); // 最後のセル: 動かないが、キーは受ける
-      expect(head(view)).toBe(T + 26);
+      // 最後のセル: 表の最後に空の行を足して、その最初のセルへ移る（R12）。
+      expect(press(view, 'Tab').defaultPrevented).toBe(true);
+      expect(adapter.getText()).toBe(DOC.replace(TABLE, `${TABLE}\n|  |  |`));
+      expect(head(view)).toBe(T + TABLE.length + 1 + 2);
       expect(press(view, 'Tab', { shiftKey: true }).defaultPrevented).toBe(true);
-      expect(head(view)).toBe(T + 22);
-      expect(adapter.getText()).toBe(DOC);
+      expect(head(view)).toBe(T + 26);
       adapter.destroy();
       host.replaceChildren();
       adapter = createCodeMirrorAdapter(registry.editorExtensions);
@@ -411,6 +416,49 @@ describe('tables through the adapter (ADR-006)', () => {
     view.dispatch({ selection: { anchor: q + 3 } });
     press(view, 'Tab');
     expect(adapter.getText()).toContain('> > | 1 |');
+  });
+
+  it('Enter: table rows, a header line and the list continuation (tight and preserve) work side by side; .txt and Shift+Enter keep the plain newline (R12)', () => {
+    const enterAt = (view: EditorView, anchor: number, init: KeyboardEventInit = {}) => {
+      view.dispatch({ selection: { anchor } });
+      ensureSyntaxTree(view.state, view.state.doc.length, 10_000);
+      view.dispatch({});
+      return press(view, 'Enter', { keyCode: 13, ...init });
+    };
+    const text = `${DOC}\n\n| H1 | H2 |\n\n- a`;
+    for (const mode of ['tight', 'preserve']) {
+      adapter.destroy();
+      host.replaceChildren();
+      adapter = createCodeMirrorAdapter(registry.editorExtensions);
+      const view = load(text);
+      adapter.setPluginSetting('listContinuation', mode);
+      // リストの項目: 次の項目を続ける。
+      expect(enterAt(view, text.length).defaultPrevented).toBe(true);
+      expect(adapter.getText()).toBe(`${text}\n- `);
+      // 表の本文の行: 空の行を足す。
+      const rowEnd = DOC.indexOf('| 1 |  |') + '| 1 |  |'.length;
+      adapter.setText(text);
+      ensureSyntaxTree(view.state, view.state.doc.length, 10_000);
+      expect(enterAt(view, rowEnd).defaultPrevented).toBe(true);
+      expect(adapter.getText()).toBe(text.replace('| 1 |  |', '| 1 |  |\n|  |  |'));
+      // 見出しの行の末尾: 表にする。
+      adapter.setText(text);
+      ensureSyntaxTree(view.state, view.state.doc.length, 10_000);
+      const headEnd = text.indexOf('| H1 | H2 |') + '| H1 | H2 |'.length;
+      expect(enterAt(view, headEnd).defaultPrevented).toBe(true);
+      expect(adapter.getText()).toBe(text.replace('| H1 | H2 |', '| H1 | H2 |\n| --- | --- |\n|  |  |'));
+      // Shift+Enter は、表の行でも行を足さない（本体の標準の改行のまま）。
+      adapter.setText(text);
+      ensureSyntaxTree(view.state, view.state.doc.length, 10_000);
+      enterAt(view, rowEnd, { shiftKey: true });
+      expect(adapter.getText()).toBe(text.replace('| 1 |  |', '| 1 |  |\n'));
+    }
+    // 素のテキスト（.txt）では、表の支援は働かない。
+    adapter.setTextKind('plain');
+    const view = viewOf();
+    adapter.setText(text);
+    enterAt(view, text.indexOf('| H1 | H2 |') + '| H1 | H2 |'.length);
+    expect(adapter.getText()).toBe(text.replace('| H1 | H2 |', '| H1 | H2 |\n'));
   });
 
   it('focus mode dims a displayed table that is not in the cursor paragraph, and stops dimming when it is turned off', () => {

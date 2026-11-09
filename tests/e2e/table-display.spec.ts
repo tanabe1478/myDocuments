@@ -451,10 +451,15 @@ test.describe('Tab / Shift+Tab でセルを移る (Q4)', () => {
       trace.push((await selection(page)).head);
     }
     expect(trace).toEqual(STARTS.slice(1));
-    // 最後のセルで Tab: 動かない。キーは受ける（フォーカスは本文のまま、文字は入らない）。
+    // 最後のセルで Tab（R12）: 表の最後に空の行を足し、その最初のセルへ移る（フォーカスは本文のまま）。Undo 1 回で戻る。
+    // 最後の行は、見出しの列の数（3）より多いセルを持つ（余り）。足す行のセルの数は、見出しの列の数。
     await page.keyboard.press('Tab');
-    expect((await selection(page)).head).toBe(STARTS[12]);
+    expect(await docText(page)).toBe(DOC.replace(TABLE, `${TABLE}\n|  |  |  |`));
+    expect((await selection(page)).head).toBe(T + TABLE.length + 1 + 2);
     expect(await focusedInEditor(page)).toBe(true);
+    await page.keyboard.press('ControlOrMeta+z');
+    expect(await docText(page)).toBe(DOC);
+    expect((await selection(page)).head).toBe(STARTS[12]);
     // 戻る。
     const back: number[] = [];
     for (let i = 0; i < 12; i++) {
@@ -496,8 +501,11 @@ test.describe('Tab / Shift+Tab でセルを移る (Q4)', () => {
       await page.keyboard.press('Tab');
       heads.push((await selection(page)).head);
     }
-    // 行頭（最初のセルの中）から Tab: 2 つ目のセル、次の行の最初のセル、その行の 2 つ目。最後のセルでは動かない。
-    expect(heads).toEqual([t + 4, text.indexOf('1 | 2'), text.indexOf('1 | 2') + 4, text.indexOf('1 | 2') + 4]);
+    // 行頭（最初のセルの中）から Tab: 2 つ目のセル、次の行の最初のセル、その行の 2 つ目。最後のセルでの Tab（R12）は、
+    // 外側の `|` のある空の行を足して、その最初のセルへ移る（4 回目）。
+    const added = text.indexOf('1 | 2') + '1 | 2'.length + 1;
+    expect(heads).toEqual([t + 4, text.indexOf('1 | 2'), text.indexOf('1 | 2') + 4, added + 2]);
+    expect(await docText(page)).toBe(text.replace('1 | 2', '1 | 2\n|  |  |'));
   });
 
   test('Esc の直後の Tab は、表の中でも本文の外へフォーカスを移す。Esc の後に別のキーを押せば、また Tab はセルを移る', async ({ page }) => {
