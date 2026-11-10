@@ -1,0 +1,248 @@
+{
+  "seed": {
+    "files": {
+      "/work/notes/a.md": {
+        "text": "# 見出しA\n"
+      },
+      "/work/notes/b.txt": {
+        "text": "素のテキスト\n"
+      },
+      "/work/notes/c.md": {
+        "text": "C\n"
+      },
+      "/work/notes/docs/guide.md": {
+        "text": "# ガイド\n"
+      },
+      "/work/notes/docs/memo.md": {
+        "text": "メモ\n"
+      }
+    },
+    "folderPath": "/work/notes",
+    "emptyFolders": [
+      "/work/notes/empty"
+    ],
+    "preferences": {
+      "theme": "light",
+      "autoHideChrome": false,
+      "sidebarOpen": true
+    },
+    "isolated": {
+      "plugins": [],
+      "bundled": true,
+      "activateTimeoutMs": 8000,
+      "runTimeoutMs": 8000
+    }
+  },
+  "steps": [
+    {
+      "click": {
+        "testId": "open-folder"
+      }
+    },
+    {
+      "click": {
+        "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/docs'] > .tree-row"
+      }
+    },
+    {
+      "focus": {
+        "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/b.txt']"
+      }
+    },
+    {
+      "press": "ControlOrMeta+x"
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/b.txt']",
+        "read": "attr:data-cut",
+        "equals": "true",
+        "note": "⌘X / Ctrl+X で切り取りの印が付く"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/b.txt']",
+        "read": "attr:aria-label",
+        "equals": "b.txt（切り取り済み）",
+        "note": "支援技術にも分かる名前"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.moveCalls.length",
+        "equals": 0,
+        "note": "切り取っただけでは、移らない"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.clipboard.length",
+        "equals": 0,
+        "note": "OS のクリップボードの記録にも書かれない"
+      }
+    },
+    {
+      "screenshot": "01-cut-mark"
+    },
+    {
+      "focus": {
+        "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/docs']"
+      }
+    },
+    {
+      "press": "ControlOrMeta+v"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.moves.at(-1).to",
+        "equals": "/work/notes/docs/b.txt",
+        "note": "⌘V / Ctrl+V で、フォーカスのあるフォルダの中へ移る"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-cut=true]",
+        "read": "count",
+        "equals": 0,
+        "note": "移したら印は外れる"
+      }
+    },
+    {
+      "focus": {
+        "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/a.md']"
+      }
+    },
+    {
+      "press": "ControlOrMeta+x"
+    },
+    {
+      "expect": {
+        "css": "[data-cut=true]",
+        "read": "count",
+        "equals": 1
+      }
+    },
+    {
+      "press": "Escape"
+    },
+    {
+      "expect": {
+        "css": "[data-cut=true]",
+        "read": "count",
+        "equals": 0,
+        "note": "Esc で印が外れる"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2EIsolatedTrace.some((e) => e.type === 'menu' && e.plugin === 'copy-path')",
+        "equals": true,
+        "note": "同梱の部品が動き出した（メニューに「パスをコピー」が並ぶ）"
+      }
+    },
+    {
+      "click": {
+        "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/c.md'] > .tree-row",
+        "button": "right"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=tree-context-menu] [role=menuitem]",
+        "read": "count",
+        "equals": 7,
+        "note": "本体の 6 項目（切り取り、貼り付けを含む）と、同梱の部品の「パスをコピー」"
+      }
+    },
+    {
+      "expect": {
+        "testId": "menu-paste",
+        "read": "attr:aria-disabled",
+        "equals": "true",
+        "note": "印がないあいだ「貼り付け」は選べない"
+      }
+    },
+    {
+      "press": "Escape"
+    },
+    {
+      "click": {
+        "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/docs/guide.md'] > .tree-row",
+        "button": "right"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=tree-context-menu] [role=menuitem]",
+        "read": "count",
+        "equals": 6,
+        "note": "入れ子の行（ツリーの最上位でない行）のメニューには、部品の項目は出ない（既存の挙動。ADR-005 の R6 の限界として、報告に記録）"
+      }
+    },
+    {
+      "click": {
+        "role": "menuitem",
+        "name": "切り取り",
+        "exact": true
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/docs/guide.md']",
+        "read": "attr:data-cut",
+        "equals": "true",
+        "note": "メニューの「切り取り」でも印が付く"
+      }
+    },
+    {
+      "click": {
+        "testId": "explorer-tree-area",
+        "button": "right",
+        "position": {
+          "x": 120,
+          "y": 560
+        }
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=tree-context-menu] [role=menuitem]",
+        "read": "count",
+        "equals": 3,
+        "note": "空き領域のメニューは、作成 2 つと「貼り付け」"
+      }
+    },
+    {
+      "expect": {
+        "testId": "menu-paste",
+        "read": "attr:aria-disabled",
+        "equals": null,
+        "note": "印があるので「貼り付け」は選べる"
+      }
+    },
+    {
+      "screenshot": "02-context-menu-paste"
+    },
+    {
+      "click": {
+        "role": "menuitem",
+        "name": "貼り付け",
+        "exact": true
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.moves.at(-1).to",
+        "equals": "/work/notes/guide.md",
+        "note": "空き領域の「貼り付け」は、ルートへ"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.clipboard.length",
+        "equals": 0
+      }
+    }
+  ]
+}

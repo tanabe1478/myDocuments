@@ -1,8 +1,10 @@
 import { useEffect, useRef } from 'react';
 
 export interface MenuItem {
-  readonly id: 'new-file' | 'new-folder' | 'rename' | 'trash';
+  readonly id: 'new-file' | 'new-folder' | 'rename' | 'cut' | 'paste' | 'trash';
   readonly label: string;
+  /** 選べない項目（aria-disabled。フォーカスは受けるが、押しても何も起きない）。 */
+  readonly disabled?: boolean;
 }
 
 /** 部品（段 2）が登録した項目。本体の項目のあとに、区切りを入れて並べる。 */
@@ -103,7 +105,10 @@ export function TreeContextMenu({ x, y, items, pluginItems = [], onChoose, onCho
           className="tree-context-item"
           data-testid={`menu-${item.id}`}
           tabIndex={-1}
-          onClick={() => onChoose(item.id)}
+          aria-disabled={item.disabled ? true : undefined}
+          onClick={() => {
+            if (!item.disabled) onChoose(item.id);
+          }}
         >
           {item.label}
         </button>

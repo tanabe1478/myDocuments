@@ -10,6 +10,7 @@ export type {
   FolderEntry,
   FolderEntryKind,
   FolderListing,
+  MoveConflict,
   OpenedDocument,
   SaveOptions,
   SaveOutcome,

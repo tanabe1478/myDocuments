@@ -28,6 +28,7 @@
     "allow-create-folder",
     "allow-rename-entry",
     "allow-trash-entry",
+    "allow-move-entry",
     "allow-watch-folders",
     "allow-open-external-url",
     "allow-close-app",

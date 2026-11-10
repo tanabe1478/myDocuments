@@ -268,6 +268,36 @@ try {
       else if ('select' in step) await locate(page, step.select).selectOption(step.select.option);
       else if ('waitFor' in step) await locate(page, step.waitFor).first().waitFor({ state: step.waitFor.state ?? 'visible' });
       else if ('wait' in step) await page.waitForTimeout(step.wait);
+      else if ('drag' in step) {
+        // マウスの down / move / up で実際にドラッグする（HTML5 のドラッグアンドドロップ）。from の行を押し、to の上まで動かし、
+        // hold（ミリ秒）の間そこで止まり、screenshot があれば撮り、cancel なら Esc を押してから、離す（cancel でなければ落とす）。
+        // toPosition は、to の左上からの座標（ツリーの空いている所など）。
+        const d = step.drag;
+        const pointOf = async (target, position) => {
+          const box = await locate(page, target).first().boundingBox();
+          if (!box) throw new Error(`ドラッグの対象が見えません: ${JSON.stringify(target)}`);
+          return position ? { x: box.x + position.x, y: box.y + position.y } : { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+        };
+        const from = await pointOf(d.from);
+        await page.mouse.move(from.x, from.y);
+        await page.mouse.down();
+        await page.mouse.move(from.x + 6, from.y + 6, { steps: 4 });
+        const to = await pointOf(d.to, d.toPosition);
+        await page.mouse.move(to.x, to.y, { steps: 8 });
+        await page.mouse.move(to.x + 1, to.y, { steps: 2 });
+        // 止まっている間も、dragover は続く（わずかに動かして、確実に届ける）。
+        for (let waited = 0; waited < (d.hold ?? 0); waited += 100) {
+          await page.mouse.move(to.x + ((waited / 100) % 2), to.y);
+          await page.waitForTimeout(100);
+        }
+        if (d.screenshot) {
+          const file = path.join(outDir, `${d.screenshot}.png`);
+          await page.screenshot({ path: file });
+          record.file = rel(file);
+        }
+        if (d.cancel) await page.keyboard.press('Escape');
+        await page.mouse.up();
+      }
       else if ('mouseMove' in step) await page.mouse.move(step.mouseMove.x, step.mouseMove.y);
       else if ('mouseClick' in step) await page.mouse.click(step.mouseClick.x, step.mouseClick.y);
       else if ('viewport' in step) await page.setViewportSize(step.viewport);

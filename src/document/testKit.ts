@@ -6,6 +6,7 @@ import {
   type DocumentBridge,
   type Draft,
   type FolderListing,
+  type MoveConflict,
   type SaveOptions,
   type SaveResult as BridgeSaveResult,
   type SessionInfo,
@@ -104,6 +105,7 @@ export function setup(options: SetupOptions = {}) {
     createFolder: vi.fn(async (parent: string, name: string) => `${parent}/${name}`),
     renameEntry: vi.fn(async (path: string, newName: string) => `${path.slice(0, path.lastIndexOf('/'))}/${newName}`),
     trashEntry: vi.fn(async (_path: string) => {}),
+    moveEntry: vi.fn(async (path: string, destDir: string, _conflict: MoveConflict) => `${destDir}/${path.slice(path.lastIndexOf('/') + 1)}`),
     watchFolders: vi.fn(async (_paths: readonly string[]) => {}),
     onFolderChanged: vi.fn(async (_cb: (path: string) => void) => () => {}),
     saveSession: vi.fn(async (patch: Partial<SessionInfo>) => {

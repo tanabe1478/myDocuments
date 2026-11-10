@@ -1,0 +1,257 @@
+{
+  "seed": {
+    "files": {
+      "/work/notes/a.md": {
+        "text": "# 見出しA\n"
+      },
+      "/work/notes/c.md": {
+        "text": "C\n"
+      },
+      "/work/notes/keep.md": {
+        "text": "root keep\n"
+      },
+      "/work/notes/docs/memo.md": {
+        "text": "メモ\n"
+      },
+      "/work/notes/other/a.md": {
+        "text": "other の a\n"
+      },
+      "/work/notes/other/c.md": {
+        "text": "other の c\n"
+      },
+      "/work/notes/other/keep.md": {
+        "text": "other の keep\n"
+      }
+    },
+    "folderPath": "/work/notes",
+    "emptyFolders": [
+      "/work/notes/empty"
+    ],
+    "preferences": {
+      "theme": "light",
+      "autoHideChrome": false,
+      "sidebarOpen": true
+    }
+  },
+  "steps": [
+    {
+      "click": {
+        "testId": "open-folder"
+      }
+    },
+    {
+      "click": {
+        "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/other'] > .tree-row"
+      }
+    },
+    {
+      "drag": {
+        "from": {
+          "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/a.md'] > .tree-row"
+        },
+        "to": {
+          "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/other'] > .tree-row"
+        }
+      }
+    },
+    {
+      "expect": {
+        "testId": "confirm-move-conflict",
+        "read": "visible",
+        "equals": true,
+        "note": "同じ名前があると確認が出る"
+      }
+    },
+    {
+      "expect": {
+        "testId": "move-conflict-message",
+        "equals": "“a.md” という名前の項目が “other” にすでにあります。"
+      }
+    },
+    {
+      "expect": {
+        "testId": "move-keep-both",
+        "read": "focused",
+        "equals": true,
+        "note": "既定のフォーカスは「両方とも残す」"
+      }
+    },
+    {
+      "expect": {
+        "eval": "JSON.stringify(window.__mdeE2E.moveCalls.map((c) => c.conflict))",
+        "equals": "[\"fail\"]",
+        "note": "最初は fail で試している"
+      }
+    },
+    {
+      "screenshot": "01-conflict-dialog"
+    },
+    {
+      "press": "Escape"
+    },
+    {
+      "expect": {
+        "testId": "confirm-move-conflict",
+        "read": "count",
+        "equals": 0,
+        "note": "Esc は中止"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.moves.length",
+        "equals": 0,
+        "note": "中止では何も移らない"
+      }
+    },
+    {
+      "drag": {
+        "from": {
+          "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/a.md'] > .tree-row"
+        },
+        "to": {
+          "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/other'] > .tree-row"
+        }
+      }
+    },
+    {
+      "click": {
+        "testId": "move-keep-both"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.moves.at(-1).to",
+        "equals": "/work/notes/other/a 2.md",
+        "note": "両方とも残す: 拡張子の前に番号が付く"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.trashed.length",
+        "equals": 0,
+        "note": "既存はゴミ箱へ移っていない"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/other/a 2.md']",
+        "read": "attr:data-selected",
+        "equals": "true",
+        "note": "移した項目が選ばれる"
+      }
+    },
+    {
+      "drag": {
+        "from": {
+          "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/c.md'] > .tree-row"
+        },
+        "to": {
+          "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/other'] > .tree-row"
+        }
+      }
+    },
+    {
+      "click": {
+        "testId": "move-replace"
+      }
+    },
+    {
+      "expect": {
+        "eval": "JSON.stringify(window.__mdeE2E.trashed)",
+        "equals": "[\"/work/notes/other/c.md\"]",
+        "note": "置き換える: 既存の項目はゴミ箱へ移る"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.moves.at(-1).conflict",
+        "equals": "replace"
+      }
+    },
+    {
+      "expect": {
+        "eval": "new TextDecoder().decode(Uint8Array.from(window.__mdeE2E.readFile('/work/notes/other/c.md')))",
+        "equals": "C\n",
+        "note": "移した項目がその名前になる"
+      }
+    },
+    {
+      "click": {
+        "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/other/keep.md'] > .tree-row"
+      }
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "keep.md"
+      }
+    },
+    {
+      "drag": {
+        "from": {
+          "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/keep.md'] > .tree-row"
+        },
+        "to": {
+          "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/other'] > .tree-row"
+        }
+      }
+    },
+    {
+      "expect": {
+        "testId": "move-replace",
+        "read": "attr:aria-disabled",
+        "equals": "true",
+        "note": "開いている文書を置き換えることになる置き換えは選べない"
+      }
+    },
+    {
+      "expect": {
+        "testId": "move-replace-reason",
+        "equals": "開いている文書を置き換えることになるため、選べません。"
+      }
+    },
+    {
+      "screenshot": "02-replace-blocked"
+    },
+    {
+      "click": {
+        "testId": "move-replace",
+        "force": true
+      }
+    },
+    {
+      "expect": {
+        "testId": "confirm-move-conflict",
+        "read": "visible",
+        "equals": true,
+        "note": "押しても何も起きない"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.trashed.length",
+        "equals": 1
+      }
+    },
+    {
+      "click": {
+        "testId": "move-cancel"
+      }
+    },
+    {
+      "expect": {
+        "testId": "confirm-move-conflict",
+        "read": "count",
+        "equals": 0
+      }
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "keep.md",
+        "note": "開いている文書はそのまま"
+      }
+    }
+  ]
+}

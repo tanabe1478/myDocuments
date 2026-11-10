@@ -153,8 +153,8 @@ test.describe('作成 (a)', () => {
     await row(page, 'docs').click({ button: 'right' });
     await expect(menu(page)).toBeVisible();
     await expect(menu(page)).toHaveAttribute('role', 'menu');
-    // 末尾の「パスをコピー」は、同梱の段 2 の部品（本番と同じ構成で入る）の項目。
-    await expect(menu(page).getByRole('menuitem')).toHaveText(['新しいファイル', '新しいフォルダ', '名前を変更', 'ゴミ箱に移動', 'パスをコピー']);
+    // 末尾の「パスをコピー」は、同梱の段 2 の部品（本番と同じ構成で入る）の項目。「切り取り」「貼り付け」は R15（移動）で足した。
+    await expect(menu(page).getByRole('menuitem')).toHaveText(['新しいファイル', '新しいフォルダ', '名前を変更', '切り取り', '貼り付け', 'ゴミ箱に移動', 'パスをコピー']);
     await menu(page).getByRole('menuitem', { name: '新しいフォルダ' }).click();
     await expect(menu(page)).toHaveCount(0);
     await typeName(page, 'viaMenu');
@@ -164,7 +164,8 @@ test.describe('作成 (a)', () => {
     const area = page.getByTestId('explorer-tree-area');
     const box = (await area.boundingBox())!;
     await area.click({ button: 'right', position: { x: box.width / 2, y: box.height - 8 } });
-    await expect(menu(page).getByRole('menuitem')).toHaveText(['新しいファイル', '新しいフォルダ']);
+    // 空き領域の「貼り付け」（R15）は、貼り付けの先がルートで、切り取りの印があるときだけ選べる。
+    await expect(menu(page).getByRole('menuitem')).toHaveText(['新しいファイル', '新しいフォルダ', '貼り付け']);
     await menu(page).getByRole('menuitem', { name: '新しいファイル' }).click();
     await typeName(page, 'rootfile');
     expect(await exists(page, at('rootfile.md'))).toBe(true);
@@ -198,7 +199,8 @@ test.describe('作成 (a)', () => {
     await page.keyboard.press('ArrowUp');
     await expect(menu(page).getByRole('menuitem', { name: 'ゴミ箱に移動' })).toBeFocused();
     await page.keyboard.press('ArrowUp');
-    await expect(menu(page).getByRole('menuitem', { name: '名前を変更' })).toBeFocused();
+    // 「ゴミ箱に移動」の前は、R15 で足した「貼り付け」。
+    await expect(menu(page).getByRole('menuitem', { name: '貼り付け' })).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(menu(page)).toHaveCount(0);
     await expect(item(page, 'a.md')).toBeFocused();

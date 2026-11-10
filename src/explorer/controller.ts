@@ -1,7 +1,7 @@
 import type { Notice } from '../document/controller';
 import { describeError } from '../document/controller';
-import { BridgeError, type DocumentBridge, type FolderListing } from '../platform';
-import { createTargetDir, checkName, isSameOrInside, parentOf, relocatePath, renameSelection, withDefaultExtension } from './names';
+import { BridgeError, type DocumentBridge, type FolderEntry, type FolderListing, type MoveConflict } from '../platform';
+import { createTargetDir, checkName, isSameOrInside, joinPath, nameOf, parentOf, relocatePath, renameSelection, withDefaultExtension } from './names';
 import { buildTree, flattenRows, neighborAfterRemoval, sortEntries, type DirState, type TreeRow } from './tree';
 
 /** ツリーの中の入力欄（作成する名前、または変える名前）。 */
@@ -39,6 +39,8 @@ export interface ExplorerState {
   readonly edit: InlineEdit | null;
   /** 前回のフォルダを開けなかったとき。 */
   readonly restoreFailure: RestoreFailure | null;
+  /** 切り取りの印が付いている項目のパス。なければ null。アプリの中の状態だけで、OS のクリップボードには触れない。 */
+  readonly cut: string | null;
 }
 
 /** ゴミ箱への移動の確認に出す、対象の情報。 */
@@ -47,11 +49,26 @@ export interface TrashTarget {
   readonly kind: 'file' | 'folder';
 }
 
+/** 移し先に同じ名前の項目があったときの、確認に出す情報。 */
+export interface MoveConflictInfo {
+  /** 移す項目の名前。 */
+  readonly name: string;
+  /** 移し先のフォルダの名前（ルートならルートのフォルダの名前）。 */
+  readonly destName: string;
+  readonly movingKind: 'file' | 'folder';
+  /** 移し先にある、同じ名前の項目の種類。 */
+  readonly existingKind: 'file' | 'folder';
+  /** 「置き換える」を選べない理由。選べるなら null。 */
+  readonly replaceBlockedReason: string | null;
+}
+
+export type MoveConflictChoice = 'replace' | 'keep-both' | 'cancel';
+
 /** 開いている文書（DocumentController）との接点。ツリーの操作が文書に及ぶときに使う。 */
 export interface ExplorerDocuments {
   /** 開いている文書が、path そのもの、または path のフォルダの中にあるか。 */
   isDocumentInside(path: string): boolean;
-  /** 名前の変更。perform が実際に名前を変えて新しいパスを返す。文書に及ぶなら、文書を新しいパスへ移す。実行できなければ null。 */
+  /** 名前の変更と移動で共通。perform が実際に名前を変える（項目を移す）操作で、新しいパスを返す。文書に及ぶなら、文書を新しいパスへ追従させる。実行できなければ null。 */
   rename(oldPath: string, perform: () => Promise<string>): Promise<string | null>;
   /** 開いている文書のディスクの状態を確かめる（ゴミ箱へ移した直後に、外部で消えた扱いにするため）。 */
   checkExternal(): Promise<void>;
@@ -71,13 +88,21 @@ export interface ExplorerDeps {
     | 'createFolder'
     | 'renameEntry'
     | 'trashEntry'
+    | 'moveEntry'
     | 'watchFolders'
     | 'onFolderChanged'
   >;
   notify(notice: Notice): void;
   /** ゴミ箱へ移す前の確認。true なら移す。未指定なら移さない。 */
   confirmTrash?(target: TrashTarget): Promise<boolean>;
+  /** 移し先に同じ名前の項目があるときの確認。未指定なら中止する。 */
+  confirmMove?(info: MoveConflictInfo): Promise<MoveConflictChoice>;
   documents?: ExplorerDocuments;
+  /**
+   * 移動の失敗の知らせ（アプリのログへ記録するための口。ADR-007）。受け取る側が、エラーの種類と conflict の値だけを記録する
+   * （パスと名前は書かない）。ここ（controller）はログ基盤を直接は使わない。
+   */
+  onMoveFailed?(conflict: MoveConflict, error: unknown): void;
 }
 
 const EMPTY: ExplorerState = {
@@ -87,6 +112,7 @@ const EMPTY: ExplorerState = {
   selected: null,
   edit: null,
   restoreFailure: null,
+  cut: null,
 };
 
 const BUSY_MESSAGE = '文書の操作の実行中です。少し待ってから、もう一度お試しください。';
@@ -131,6 +157,19 @@ export function describeFolderError(e: unknown): string {
     }
   }
   return describeError(e);
+}
+
+/**
+ * 切り取りの印の付いた項目が、読み込み済みの一覧から消えていたら（ゴミ箱、外部の削除、名前の変更）、印を外す。
+ * 一覧が読み込み済みでない、件数の上限で一部しか出していないときは、確かめられないので残す。
+ */
+function withValidCut(state: ExplorerState): ExplorerState {
+  const cut = state.cut;
+  if (cut === null) return state;
+  const parent = parentOf(cut);
+  const dir = parent === null ? undefined : state.dirs.get(parent);
+  if (dir?.status === 'loaded' && dir.more === 0 && !dir.entries.some((e) => e.path === cut)) return { ...state, cut: null };
+  return state;
 }
 
 function loadedState(listing: FolderListing): DirState {
@@ -232,7 +271,7 @@ export class ExplorerController {
   };
 
   private setDir(path: string, dir: DirState, expanded: ReadonlySet<string> = this.state.expanded): void {
-    this.setState({ ...this.state, dirs: new Map(this.state.dirs).set(path, dir), expanded });
+    this.setState(withValidCut({ ...this.state, dirs: new Map(this.state.dirs).set(path, dir), expanded }));
   }
 
   /** 起動時に一度だけ。前回のフォルダがあれば開く。開けなければ未選択のまま、エラーを短く知らせる。 */
@@ -271,6 +310,7 @@ export class ExplorerController {
         selected: null,
         edit: null,
         restoreFailure: null,
+        cut: null,
       });
       // 別のフォルダを開けたときは、その記録で上書きする（前回のフォルダの記録は、開けなかったときも消さない）。
       void this.deps.bridge.saveSession({ lastFolder: path }).catch(() => {});
@@ -369,7 +409,7 @@ export class ExplorerController {
         dirs.set(result.path, { status: 'error', message });
       }
     }
-    this.setState({ ...this.state, root, dirs, expanded });
+    this.setState(withValidCut({ ...this.state, root, dirs, expanded }));
     if (firstError !== null) this.deps.notify({ kind: 'error', message: `再読み込みできませんでした。${firstError}` });
   };
 
@@ -541,6 +581,7 @@ export class ExplorerController {
       dirs,
       expanded,
       selected: this.state.selected === null ? newPath : moved(this.state.selected),
+      cut: this.state.cut === null ? null : moved(this.state.cut),
       edit: null,
     });
     await this.reloadDirs(reload);
@@ -579,8 +620,167 @@ export class ExplorerController {
     const dirs = new Map<string, DirState>();
     for (const [p, dir] of this.state.dirs) if (!isSameOrInside(p, target)) dirs.set(p, dir);
     const expanded = new Set([...this.state.expanded].filter((p) => !isSameOrInside(p, target)));
-    this.setState({ ...this.state, dirs, expanded, selected: next });
+    const cut = this.state.cut !== null && isSameOrInside(this.state.cut, target) ? null : this.state.cut;
+    this.setState({ ...this.state, dirs, expanded, selected: next, cut });
     await this.reloadDirs([parent]);
+  };
+
+  // ---- 移動（ドラッグ、切り取りと貼り付け） ----
+
+  /**
+   * 落とす・貼り付ける先のフォルダ。フォルダの行ならその中、ファイル（とリンク、補足の行）の行ならその親、行がなければ（空いている所）ルート。
+   * フォルダへのリンクは展開しない（中身を持たない）ので、リンクの親へ移す。フォルダを開いていなければ null。
+   */
+  dropDirFor = (rowId: string | null): string | null => {
+    const { root } = this.state;
+    if (root === null) return null;
+    const row = rowId === null ? undefined : this.rows().find((r) => r.id === rowId);
+    if (!row) return root;
+    return row.kind === 'dir' ? row.id : (row.parentId ?? root);
+  };
+
+  /** path の項目を destDir へ移せるか。ok 以外は、移さない理由（自分自身の中、すでにそのフォルダの中）。 */
+  moveVerdict = (path: string, destDir: string): 'ok' | 'same-folder' | 'into-itself' | 'unknown' => {
+    const { root } = this.state;
+    const row = this.rowFor(path);
+    if (root === null || !row?.entry) return 'unknown';
+    if ((row.parentId ?? root) === destDir) return 'same-folder';
+    if (row.kind === 'dir' && isSameOrInside(destDir, path)) return 'into-itself';
+    return 'ok';
+  };
+
+  /** ドラッグ中の項目を、rowId の行（null は空いている所）に落とせるか。 */
+  canDrop = (path: string, rowId: string | null): boolean => {
+    const dest = this.dropDirFor(rowId);
+    return dest !== null && this.moveVerdict(path, dest) === 'ok';
+  };
+
+  /**
+   * path の項目を destDir（省略はルート）へ移す。まず同じ名前があれば失敗する形（fail）で試し、AlreadyExists なら確認を出して、
+   * 選ばれた扱い（置き換える、両方とも残す）でやり直す。中止なら何もしない。
+   * 開いている文書（またはそれを含むフォルダ）を移したら、文書は新しいパスへ追従する（名前の変更と同じ経路）。
+   * 移せたら、展開状態と選択を新しいパスへ引き継ぎ、移し先を開いて、移した項目を選ぶ。移せたら true。
+   */
+  move = async (path: string, destDir?: string): Promise<boolean> => {
+    const { root, edit } = this.state;
+    if (root === null || edit?.busy) return false;
+    const row = this.rowFor(path);
+    if (!row?.entry) return false;
+    const dest = destDir ?? root;
+    const verdict = this.moveVerdict(path, dest);
+    if (verdict === 'into-itself') {
+      this.deps.notify({ kind: 'info', message: 'フォルダは、自分自身の中には移せません。' });
+      return false;
+    }
+    if (verdict !== 'ok') return false;
+    this.cancelEdit();
+
+    const generation = this.generation;
+    const movingKind = row.kind === 'dir' ? 'folder' : 'file';
+    const perform = (conflict: MoveConflict) => () => this.deps.bridge.moveEntry(path, dest, conflict);
+    const run = (conflict: MoveConflict) =>
+      this.deps.documents ? this.deps.documents.rename(path, perform(conflict)) : perform(conflict)();
+
+    let conflict: MoveConflict = 'fail';
+    let replaced: string | null = null;
+    let newPath: string | null;
+    for (;;) {
+      try {
+        newPath = await run(conflict);
+        break;
+      } catch (e) {
+        if (conflict === 'fail' && e instanceof BridgeError && e.kind === 'already-exists') {
+          const existing = await this.findExisting(dest, row.label);
+          const existingPath = existing?.path ?? joinPath(dest, row.label);
+          const info: MoveConflictInfo = {
+            name: row.label,
+            destName: nameOf(dest),
+            movingKind,
+            existingKind: existing ? (existing.kind === 'dir' || existing.kind === 'symlinkDir' ? 'folder' : 'file') : movingKind,
+            replaceBlockedReason: this.replaceBlockedReason(path, existingPath),
+          };
+          const choice = (await this.deps.confirmMove?.(info)) ?? 'cancel';
+          if (choice === 'cancel' || generation !== this.generation) return false;
+          conflict = choice;
+          replaced = choice === 'replace' ? existingPath : null;
+          continue;
+        }
+        this.deps.notify({ kind: 'error', message: `移動できませんでした。${describeEntryError(e)}` });
+        try {
+          this.deps.onMoveFailed?.(conflict, e);
+        } catch {
+          // 記録の失敗で、移動の後始末を止めない。
+        }
+        return false;
+      }
+    }
+    if (newPath === null) {
+      this.deps.notify({ kind: 'error', message: `移動できませんでした。${BUSY_MESSAGE}` });
+      return false;
+    }
+    if (generation !== this.generation) return true;
+
+    // 展開状態、選択、切り取りの印を、新しいパスへ引き継ぐ。移した項目の中の読み込み済みの中身は、パスが古いので捨てて読み直す。
+    // 置き換えた項目（ゴミ箱へ移った）の中の状態は捨てる。
+    const oldPath = path;
+    const movedTo = newPath;
+    const moved = (p: string) => relocatePath(p, oldPath, movedTo) ?? p;
+    const gone = (p: string) => replaced !== null && isSameOrInside(p, replaced);
+    const dirs = new Map<string, DirState>();
+    for (const [p, dir] of this.state.dirs) if (!isSameOrInside(p, oldPath) && !gone(p)) dirs.set(p, dir);
+    const expanded = new Set([...this.state.expanded].filter((p) => !gone(p)).map(moved));
+    if (dest !== root) expanded.add(dest);
+    const cut = this.state.cut === null || gone(this.state.cut) || this.state.cut === oldPath ? null : moved(this.state.cut);
+    const reload = [...new Set([parentOf(oldPath) ?? root, dest, ...[...expanded].filter((p) => isSameOrInside(p, movedTo))])];
+    this.setState({ ...this.state, dirs, expanded, selected: movedTo, cut, edit: null });
+    await this.reloadDirs(reload);
+    return true;
+  };
+
+  /** 移し先で、同じ名前の項目（FS が大文字小文字を区別しなければ、違う大文字小文字のものを含む）を探す。見つからない（件数の上限の外を含む）ときは null。 */
+  private async findExisting(dir: string, name: string): Promise<FolderEntry | null> {
+    try {
+      const { entries } = await this.deps.bridge.listFolder(dir);
+      const lower = name.toLowerCase();
+      return entries.find((e) => e.name === name) ?? entries.find((e) => e.name.toLowerCase() === lower) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** 「置き換える」を選べない理由。選べるなら null。 */
+  private replaceBlockedReason(movingPath: string, existingPath: string): string | null {
+    if (this.deps.documents?.isDocumentInside(existingPath)) {
+      return '開いている文書を置き換えることになるため、選べません。';
+    }
+    if (isSameOrInside(movingPath, existingPath)) {
+      return '移す項目が、置き換える項目の中にあるため、選べません。';
+    }
+    return null;
+  }
+
+  /** 切り取りの印を付ける（path は省略すると選択中の項目）。補足の行には付けない。 */
+  cut = (path?: string): void => {
+    if (this.state.root === null) return;
+    const row = this.rowFor(path ?? this.state.selected ?? '');
+    if (!row?.entry || this.state.cut === row.id) return;
+    this.setState({ ...this.state, cut: row.id });
+  };
+
+  cancelCut = (): void => {
+    if (this.state.cut !== null) this.setState({ ...this.state, cut: null });
+  };
+
+  /**
+   * 切り取りの印の付いた項目を、rowId の行（省略は選択中。フォルダの行ならその中、ファイルの行ならその親、行がなければルート）へ移す。
+   * 移せたら印を外す。移さなかった（同じフォルダ、中止、失敗）ときは、印を残す。
+   */
+  paste = async (rowId?: string | null): Promise<boolean> => {
+    const cut = this.state.cut;
+    if (cut === null) return false;
+    const dest = this.dropDirFor(rowId === undefined ? this.state.selected : rowId);
+    if (dest === null) return false;
+    return this.move(cut, dest);
   };
 
   // ---- 読み直し ----
@@ -626,7 +826,7 @@ export class ExplorerController {
       if (result.error instanceof BridgeError && result.error.kind === 'not-found') collapse(result.path);
       else dirs.set(result.path, { status: 'error', message });
     }
-    this.setState({ ...this.state, dirs, expanded });
+    this.setState(withValidCut({ ...this.state, dirs, expanded }));
     if (!quiet && firstError !== null) {
       this.deps.notify({ kind: 'error', message: `フォルダを読み直せませんでした。${firstError}` });
     }

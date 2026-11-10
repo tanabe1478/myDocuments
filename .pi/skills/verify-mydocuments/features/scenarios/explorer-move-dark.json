@@ -1,0 +1,205 @@
+{
+  "seed": {
+    "files": {
+      "/work/notes/a.md": {
+        "text": "# 見出しA\n\n本文A\n"
+      },
+      "/work/notes/b.txt": {
+        "text": "素のテキスト\n"
+      },
+      "/work/notes/c.md": {
+        "text": "C\n"
+      },
+      "/work/notes/docs/guide.md": {
+        "text": "# ガイド\n"
+      },
+      "/work/notes/docs/memo.md": {
+        "text": "メモ\n"
+      },
+      "/work/notes/docs/deep/inner.md": {
+        "text": "内側\n"
+      },
+      "/work/notes/other/a.md": {
+        "text": "other の a\n"
+      },
+      "/work/notes/other/keep.md": {
+        "text": "残す\n"
+      }
+    },
+    "folderPath": "/work/notes",
+    "emptyFolders": [
+      "/work/notes/empty"
+    ],
+    "preferences": {
+      "theme": "dark",
+      "autoHideChrome": false,
+      "sidebarOpen": true
+    }
+  },
+  "steps": [
+    {
+      "click": {
+        "testId": "open-folder"
+      }
+    },
+    {
+      "click": {
+        "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/docs'] > .tree-row"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/docs']",
+        "read": "attr:aria-expanded",
+        "equals": "true",
+        "note": "docs を展開しておく"
+      }
+    },
+    {
+      "drag": {
+        "from": {
+          "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/b.txt'] > .tree-row"
+        },
+        "to": {
+          "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/empty'] > .tree-row"
+        },
+        "hold": 300,
+        "screenshot": "01-drag-over-folder",
+        "cancel": true
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.moveCalls.length",
+        "equals": 0,
+        "note": "Esc で取り消すと、移らない（bridge も呼ばれない）"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem]",
+        "read": "count",
+        "gte": 8,
+        "note": "項目は残っている"
+      }
+    },
+    {
+      "drag": {
+        "from": {
+          "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/b.txt'] > .tree-row"
+        },
+        "to": {
+          "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/other'] > .tree-row"
+        },
+        "hold": 900,
+        "screenshot": "02-hover-opens-folder"
+      }
+    },
+    {
+      "expect": {
+        "eval": "JSON.stringify(window.__mdeE2E.moves.map((m) => [m.from, m.to, m.conflict]))",
+        "equals": "[[\"/work/notes/b.txt\",\"/work/notes/other/b.txt\",\"fail\"]]",
+        "note": "フォルダの行に落とすと、その中へ移る（閉じたフォルダは 700ms で開いている）"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/other']",
+        "read": "attr:aria-expanded",
+        "equals": "true",
+        "note": "移し先のフォルダが開く"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/other/b.txt']",
+        "read": "attr:data-selected",
+        "equals": "true",
+        "note": "移した項目が選ばれる"
+      }
+    },
+    {
+      "drag": {
+        "from": {
+          "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/c.md'] > .tree-row"
+        },
+        "to": {
+          "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/docs/guide.md'] > .tree-row"
+        }
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.moves.at(-1).to",
+        "equals": "/work/notes/docs/c.md",
+        "note": "ファイルの行に落とすと、その親フォルダへ移る"
+      }
+    },
+    {
+      "drag": {
+        "from": {
+          "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/docs/memo.md'] > .tree-row"
+        },
+        "to": {
+          "testId": "file-tree"
+        },
+        "toPosition": {
+          "x": 60,
+          "y": 560
+        },
+        "hold": 200,
+        "screenshot": "03-drag-over-root"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.moves.at(-1).to",
+        "equals": "/work/notes/memo.md",
+        "note": "空いている所に落とすと、ルートへ移る"
+      }
+    },
+    {
+      "drag": {
+        "from": {
+          "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/docs'] > .tree-row"
+        },
+        "to": {
+          "css": "[data-testid=file-tree] [role=treeitem][data-path='/work/notes/docs/deep'] > .tree-row"
+        },
+        "hold": 200,
+        "screenshot": "04-drag-into-itself"
+      }
+    },
+    {
+      "expect": {
+        "css": "[data-drop-target=true]",
+        "read": "count",
+        "equals": 0,
+        "note": "自分の中のフォルダの上は、落とせない（強調しない）"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.moves.length",
+        "equals": 3,
+        "note": "自分自身・自分の中には移らない（移動は 3 回だけ）"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.moveCalls.length",
+        "equals": 3,
+        "note": "bridge も呼ばれていない"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.clipboard.length",
+        "equals": 0
+      }
+    },
+    {
+      "screenshot": "05-final"
+    }
+  ]
+}

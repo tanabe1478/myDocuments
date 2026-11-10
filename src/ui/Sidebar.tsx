@@ -36,11 +36,16 @@ const CREATE_ITEMS: readonly MenuItem[] = [
   { id: 'new-file', label: '新しいファイル' },
   { id: 'new-folder', label: '新しいフォルダ' },
 ];
-const ITEM_ITEMS: readonly MenuItem[] = [
+/** 項目のメニュー。「貼り付け」は、切り取りの印があるときだけ選べる。ゴミ箱への移動は、本体の項目の末尾（部品の項目の区切りの前）。 */
+const itemItems = (canPaste: boolean): readonly MenuItem[] => [
   ...CREATE_ITEMS,
   { id: 'rename', label: '名前を変更' },
+  { id: 'cut', label: '切り取り' },
+  { id: 'paste', label: '貼り付け', disabled: !canPaste },
   { id: 'trash', label: 'ゴミ箱に移動' },
 ];
+/** 空き領域のメニュー。貼り付けの先はルート。 */
+const areaItems = (canPaste: boolean): readonly MenuItem[] => [...CREATE_ITEMS, { id: 'paste', label: '貼り付け', disabled: !canPaste }];
 
 /**
  * 左サイドバー。中身はエクスプローラー（フォルダのツリー）だけ（部品のパネルは、R13 から右ペイン。src/ui/RightPane.tsx）。フォルダを選ぶまでは「フォルダを開く」ボタンだけ
@@ -50,7 +55,7 @@ const ITEM_ITEMS: readonly MenuItem[] = [
  * 見出しの「新しいファイル」「新しいフォルダ」と、ツリーの右クリックメニューから、作成・名前の変更・ゴミ箱への移動ができる。
  */
 export function Sidebar({ open, mode, explorer, explorerState, currentPath, onOpenFile, onClose, pluginMenuItems = [] }: Props) {
-  const { root, dirs, expanded, selected, edit, restoreFailure } = explorerState;
+  const { root, dirs, expanded, selected, edit, restoreFailure, cut } = explorerState;
   const nodes = useMemo(() => (root === null ? [] : buildTree(root, dirs, expanded)), [root, dirs, expanded]);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const treeAreaRef = useRef<HTMLDivElement>(null);
@@ -99,12 +104,42 @@ export function Sidebar({ open, mode, explorer, explorerState, currentPath, onOp
     if (item && menuTarget) void item.run(menuTarget);
   };
 
+  /** 移したあと、移した項目（選択になっている）の行へフォーカスを移す。移さなかったときは、フォーカスが残っていなければツリーへ戻す。 */
+  const afterMove = (moved: boolean) => {
+    if (!moved) {
+      refocusTree();
+      return;
+    }
+    const focusSelected = () => {
+      const id = explorer.getState().selected;
+      const rows = Array.from(treeAreaRef.current?.querySelectorAll<HTMLElement>('[role=treeitem]') ?? []);
+      rows.find((el) => el.dataset.rowId === id)?.focus();
+    };
+    focusSelected();
+    // 移し先の読み直しの描画が、まだ済んでいないことがある。
+    requestAnimationFrame(focusSelected);
+  };
+
+  const move = (path: string, rowId: string | null) => {
+    const dest = explorer.dropDirFor(rowId);
+    if (dest !== null) void explorer.move(path, dest).then(afterMove);
+  };
+
+  /** 切り取りの印のある項目を、行の場所（行がなければルート）へ貼り付ける。 */
+  const paste = (rowId: string | null) => void explorer.paste(rowId).then(afterMove);
+
   const choose = (id: MenuItem['id']) => {
     const path = menu?.path ?? null;
     setMenu(null);
     if (id === 'new-file') explorer.beginCreate('file');
     else if (id === 'new-folder') explorer.beginCreate('folder');
     else if (id === 'rename' && path !== null) explorer.beginRename(path);
+    else if (id === 'cut' && path !== null) {
+      explorer.cut(path);
+      // メニューを閉じたあと、フォーカスを行へ戻す（印の付いた行から、続けて操作できるように）。
+      const origin = menu?.origin;
+      if (origin?.isConnected) origin.focus();
+    } else if (id === 'paste') paste(path);
     else if (id === 'trash' && path !== null) void explorer.requestTrash(path).then(refocusTree);
   };
 
@@ -228,6 +263,13 @@ export function Sidebar({ open, mode, explorer, explorerState, currentPath, onOp
                 // フォーカスが外れたとき: 空なら取り消し、そうでなければ確定を試みる（拒否されたら入力欄を残して理由を出す）。
                 onEditBlur={(value) => (value.trim() === '' ? explorer.cancelEdit() : void explorer.commitEdit(value))}
                 onEditChange={explorer.clearEditError}
+                cutId={cut}
+                dropDirFor={explorer.dropDirFor}
+                canDrop={explorer.canDrop}
+                onMove={move}
+                onCut={explorer.cut}
+                onPaste={paste}
+                onCancelCut={explorer.cancelCut}
               />
             </div>
           </>
@@ -237,7 +279,7 @@ export function Sidebar({ open, mode, explorer, explorerState, currentPath, onOp
         <TreeContextMenu
           x={menu.x}
           y={menu.y}
-          items={menu.path === null ? CREATE_ITEMS : ITEM_ITEMS}
+          items={menu.path === null ? areaItems(cut !== null) : itemItems(cut !== null)}
           pluginItems={visiblePluginItems.map((i) => ({ id: i.id, label: i.title }))}
           onChoose={choose}
           onChoosePlugin={choosePlugin}

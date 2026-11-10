@@ -5,6 +5,7 @@
 //! 操作はリンク先ではなく、「canonicalize した親フォルダ + 名前」の項目そのものに効かせる
 //! （シンボリックリンクは、リンク自体を名前変更・ゴミ箱へ移す）。登録したフォルダ（ルート）自身は、名前の変更もゴミ箱への移動もしない。
 //! 確認してから操作するまでの間に、別のプロセスが親フォルダを差し替える競合は防げない（docs/decision-003 の限界）。
+//! 移動（`move_entry`）は、移す項目と移し先のフォルダを同じ規則で確かめ、移し先の同じ名前は `Conflict` に従って扱う。
 
 use crate::documents::{validate_path, KnownPaths};
 use crate::error::{CommandError, ErrorKind};
@@ -219,6 +220,133 @@ pub fn system_trash(path: &Path) -> Result<(), String> {
 #[cfg(not(target_os = "macos"))]
 pub fn system_trash(path: &Path) -> Result<(), String> {
     trash::delete(path).map_err(|e| e.to_string())
+}
+
+/// 移し先に同じ名前の項目があるときの扱い。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Conflict {
+    /// 何もせず AlreadyExists を返す。
+    Fail,
+    /// 既存の項目をゴミ箱へ移してから移す。
+    Replace,
+    /// 拡張子の前に「 2」「 3」…を付けた、空いている名前で移す。
+    KeepBoth,
+}
+
+impl Conflict {
+    /// フロントエンドからの値（"fail" | "replace" | "keep-both"）。それ以外は InvalidInput。
+    pub fn parse(value: &str) -> Result<Conflict, CommandError> {
+        match value {
+            "fail" => Ok(Conflict::Fail),
+            "replace" => Ok(Conflict::Replace),
+            "keep-both" => Ok(Conflict::KeepBoth),
+            _ => Err(invalid("the conflict must be fail, replace or keep-both")),
+        }
+    }
+}
+
+/// 番号を付ける名前の上限（「名前 2」から「名前 999」まで）。
+const MAX_KEEP_BOTH_NUMBER: u32 = 999;
+
+/// `name` に番号を付けた名前。拡張子のあるファイルは拡張子の前（`a.md` は `a 2.md`）、
+/// フォルダ・拡張子のない名前は末尾（`a` は `a 2`）。ドットで始まる名前の先頭のドットは拡張子の区切りとして扱わない。
+fn numbered_name(name: &str, number: u32, is_folder: bool) -> String {
+    if !is_folder {
+        if let Some(dot) = name.rfind('.') {
+            if dot > 0 {
+                return format!("{} {}{}", &name[..dot], number, &name[dot..]);
+            }
+        }
+    }
+    format!("{name} {number}")
+}
+
+/// 項目 `item` を `dest_dir`（登録済みのフォルダの配下）へ移す。戻り値は移した後のパス（渡された `dest_dir` の形 + 最終の名前）。
+/// 同じフォルダへの移動は何もせず、元のパスを返す。フォルダを自分自身の中へは移せない（NotAllowed）。登録したフォルダ（ルート）自身は移さない。
+/// 移し先の同じ名前は、`dest_dir` + 名前の項目の有無（リンクは辿らない。FS が大文字小文字を区別しなければ、違う大文字小文字も見つかる）で判定し、
+/// `conflict` に従う。ゴミ箱へ移せなければ移さない。`rename` の失敗（別のディスクなど）は、コピーと削除で代用せず、そのまま返す。
+/// 成功したら、開いている文書の記録（`known`）を新しいパスへ引き継ぐ。
+pub fn move_entry(
+    path: &str,
+    dest_dir: &str,
+    conflict: Conflict,
+    folders: &OpenFolders,
+    known: &KnownPaths,
+    trasher: Trasher<'_>,
+) -> Result<String, CommandError> {
+    let given = validate_path(path)?;
+    let Item { name, item, .. } = resolve_item(path, folders)?;
+    if folders.is_root(&item) {
+        return Err(not_allowed("an opened folder itself cannot be moved"));
+    }
+    let given_dest = validate_path(dest_dir)?;
+    let dest = resolve_dir(&given_dest, folders)?;
+
+    // 同じフォルダへの移動は、何もしない（FS が大文字小文字を区別しないときの表記の違いも、同じフォルダとして扱う）。
+    if let Some(parent) = item.parent() {
+        if parent == dest || same_entry(parent, &dest) {
+            return Ok(path_string(given));
+        }
+    }
+    // フォルダを自分自身の中へは移せない。リンクはリンク自体として扱う（リンク先の中かどうかでは判定しない）。
+    let is_real_folder = fs::symlink_metadata(&item)?.file_type().is_dir();
+    if is_real_folder && dest.ancestors().any(|a| a == item || same_entry(a, &item)) {
+        return Err(not_allowed("a folder cannot be moved into itself"));
+    }
+
+    let mut final_name = name.to_string_lossy().into_owned();
+    let mut target = dest.join(&name);
+    match fs::symlink_metadata(&target) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.into()),
+        Ok(_) => match conflict {
+            Conflict::Fail => {
+                return Err(CommandError::new(
+                    ErrorKind::AlreadyExists,
+                    "an item with that name already exists",
+                ));
+            }
+            Conflict::Replace => {
+                if folders.is_root(&target) {
+                    return Err(not_allowed("an opened folder itself cannot be replaced"));
+                }
+                // 移す項目が、置き換える項目の中にある（置き換えると、移す項目も一緒にゴミ箱へ入る）。
+                if item.ancestors().skip(1).any(|a| a == target || same_entry(a, &target)) {
+                    return Err(not_allowed("an item cannot replace the folder that contains it"));
+                }
+                // ゴミ箱へ移せなければ、移さない。
+                trasher(&target).map_err(|message| CommandError::new(ErrorKind::Io, message))?;
+            }
+            Conflict::KeepBoth => {
+                let mut found = None;
+                for number in 2..=MAX_KEEP_BOTH_NUMBER {
+                    let candidate = numbered_name(&final_name, number, is_real_folder);
+                    validate_name(&candidate)?;
+                    match fs::symlink_metadata(dest.join(&candidate)) {
+                        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                            found = Some(candidate);
+                            break;
+                        }
+                        Err(e) => return Err(e.into()),
+                        Ok(_) => {}
+                    }
+                }
+                let Some(candidate) = found else {
+                    return Err(CommandError::new(
+                        ErrorKind::AlreadyExists,
+                        "no free name is left for the item",
+                    ));
+                };
+                target = dest.join(&candidate);
+                final_name = candidate;
+            }
+        },
+    }
+    fs::rename(&item, &target)?;
+
+    let new_path = given_dest.join(&final_name);
+    known.register_renamed(&given, &new_path);
+    Ok(path_string(new_path))
 }
 
 /// 監視するフォルダの検査。登録済みのフォルダの配下だけを受け付け（それ以外は NotAllowed）、
@@ -712,6 +840,451 @@ mod tests {
         }
     }
 
+    // ---- 移動 ----
+
+    /// ゴミ箱の代わり。渡された対象を記録し、実際に取り除く（置き換えで、移し先が空くことを確かめるため）。
+    fn removing_recorder() -> (Rc<RefCell<Vec<PathBuf>>>, impl Fn(&Path) -> Result<(), String>) {
+        let calls = Rc::new(RefCell::new(Vec::new()));
+        let calls_ref = calls.clone();
+        (calls, move |p: &Path| {
+            calls_ref.borrow_mut().push(p.to_path_buf());
+            let meta = fs::symlink_metadata(p).map_err(|e| e.to_string())?;
+            if meta.file_type().is_dir() {
+                fs::remove_dir_all(p).map_err(|e| e.to_string())
+            } else {
+                fs::remove_file(p).map_err(|e| e.to_string())
+            }
+        })
+    }
+
+    fn mv(dir: &TempDir, folders: &OpenFolders, from: &str, to: &str, conflict: Conflict) -> Result<String, CommandError> {
+        let known = KnownPaths::default();
+        let (_, trasher) = recorder();
+        move_entry(&dir.str(from), &dir.str(to), conflict, folders, &known, &trasher)
+    }
+
+    /// FS が大文字小文字を区別しないか（一時ディレクトリで確かめる）。
+    fn ignores_case(dir: &TempDir) -> bool {
+        dir.file("case-probe.txt", "x");
+        fs::symlink_metadata(dir.path("CASE-PROBE.TXT")).is_ok()
+    }
+
+    #[test]
+    fn move_puts_a_file_and_a_folder_into_another_folder_and_returns_the_new_path() {
+        let dir = TempDir::new();
+        let folders = opened(&dir, "root");
+        dir.file("root/a.md", "A");
+        dir.file("root/folder/inner/b.md", "B");
+        dir.dir("root/dest");
+        let moved = mv(&dir, &folders, "root/a.md", "root/dest", Conflict::Fail).unwrap();
+        assert_eq!(moved, dir.str("root/dest/a.md"));
+        assert_eq!(dir.read("root/dest/a.md"), "A");
+        assert!(!dir.exists("root/a.md"));
+
+        let moved = mv(&dir, &folders, "root/folder", "root/dest", Conflict::Fail).unwrap();
+        assert_eq!(moved, dir.str("root/dest/folder"));
+        assert_eq!(dir.read("root/dest/folder/inner/b.md"), "B");
+        assert!(!dir.exists("root/folder"));
+
+        // 深いところから、ルート直下へも移せる。
+        let moved = mv(&dir, &folders, "root/dest/folder/inner/b.md", "root", Conflict::Fail).unwrap();
+        assert_eq!(moved, dir.str("root/b.md"));
+        assert_eq!(dir.read("root/b.md"), "B");
+    }
+
+    #[test]
+    fn move_into_the_folder_it_is_already_in_changes_nothing_and_returns_the_original_path() {
+        let dir = TempDir::new();
+        let folders = opened(&dir, "root");
+        dir.file("root/sub/a.md", "A");
+        dir.file("root/top.md", "T");
+        let path = mv(&dir, &folders, "root/sub/a.md", "root/sub", Conflict::Fail).unwrap();
+        assert_eq!(path, dir.str("root/sub/a.md"));
+        assert_eq!(dir.read("root/sub/a.md"), "A");
+        // 衝突の扱いによらない（keep-both でも、番号付きの複製を作らない）。
+        for conflict in [Conflict::Replace, Conflict::KeepBoth] {
+            let path = mv(&dir, &folders, "root/top.md", "root", conflict).unwrap();
+            assert_eq!(path, dir.str("root/top.md"));
+        }
+        assert_eq!(fs::read_dir(dir.path("root")).unwrap().count(), 2);
+        assert_eq!(fs::read_dir(dir.path("root/sub")).unwrap().count(), 1);
+        // `..` を挟んだ同じフォルダの指定も、同じフォルダとして扱う。
+        let around = dir.parent_of("root/sub", 1, "sub");
+        let known = KnownPaths::default();
+        let (calls, trasher) = recorder();
+        let path = move_entry(&dir.str("root/sub/a.md"), &around, Conflict::Replace, &folders, &known, &trasher).unwrap();
+        assert_eq!(path, dir.str("root/sub/a.md"));
+        assert!(calls.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_folder_cannot_be_moved_into_itself_or_into_its_own_descendant() {
+        let dir = TempDir::new();
+        let folders = opened(&dir, "root");
+        dir.file("root/a/b/c/x.md", "x");
+        dir.dir("root/sibling");
+        for to in ["root/a", "root/a/b", "root/a/b/c"] {
+            assert_eq!(kind(mv(&dir, &folders, "root/a", to, Conflict::Fail)), ErrorKind::NotAllowed, "{to}");
+            assert_eq!(kind(mv(&dir, &folders, "root/a", to, Conflict::KeepBoth)), ErrorKind::NotAllowed, "{to}");
+        }
+        assert_eq!(dir.read("root/a/b/c/x.md"), "x");
+        // 兄弟のフォルダには移せる。名前の前方一致（a と ab）は、自分の中とは見ない。
+        dir.dir("root/ab");
+        assert!(mv(&dir, &folders, "root/a", "root/ab", Conflict::Fail).is_ok());
+        assert!(mv(&dir, &folders, "root/ab/a", "root/sibling", Conflict::Fail).is_ok());
+    }
+
+    #[test]
+    fn the_opened_folder_itself_and_paths_outside_the_opened_folders_cannot_be_moved() {
+        let dir = TempDir::new();
+        let folders = opened(&dir, "root");
+        dir.file("other/o.md", "o");
+        dir.file("root/sub/a.md", "a");
+        dir.dir("root/inner");
+        folders::open(&dir.str("root/inner"), &folders).unwrap();
+        dir.dir("elsewhere");
+        for conflict in [Conflict::Fail, Conflict::Replace, Conflict::KeepBoth] {
+            // ルート自身。
+            assert_eq!(kind(mv(&dir, &folders, "root", "root/sub", conflict)), ErrorKind::NotAllowed);
+            assert_eq!(kind(mv(&dir, &folders, "root/inner", "root/sub", conflict)), ErrorKind::NotAllowed);
+            // 外の項目、外の移し先。
+            assert_eq!(kind(mv(&dir, &folders, "other/o.md", "root/sub", conflict)), ErrorKind::NotAllowed);
+            assert_eq!(kind(mv(&dir, &folders, "root/sub/a.md", "other", conflict)), ErrorKind::NotAllowed);
+            assert_eq!(kind(mv(&dir, &folders, "root/sub/a.md", "elsewhere", conflict)), ErrorKind::NotAllowed);
+        }
+        // `..` で外へ出る移し先、`..` で外の項目を指す。
+        let escape = dir.parent_of("root/sub", 2, "other");
+        let known = KnownPaths::default();
+        let (_, trasher) = recorder();
+        assert_eq!(
+            kind(move_entry(&dir.str("root/sub/a.md"), &escape, Conflict::Fail, &folders, &known, &trasher)),
+            ErrorKind::NotAllowed
+        );
+        let escaped_item = dir.parent_of("root/sub", 2, "other/o.md");
+        assert_eq!(
+            kind(move_entry(&escaped_item, &dir.str("root/sub"), Conflict::Fail, &folders, &known, &trasher)),
+            ErrorKind::NotAllowed
+        );
+        // 何も開いていない。
+        assert_eq!(
+            kind(move_entry(&dir.str("root/sub/a.md"), &dir.str("root"), Conflict::Fail, &OpenFolders::default(), &known, &trasher)),
+            ErrorKind::NotAllowed
+        );
+        assert!(dir.exists("other/o.md") && dir.exists("root/sub/a.md") && !dir.exists("other/a.md"));
+    }
+
+    #[test]
+    fn move_reports_missing_items_missing_destinations_file_destinations_and_relative_paths() {
+        let dir = TempDir::new();
+        let folders = opened(&dir, "root");
+        dir.file("root/a.md", "a");
+        dir.file("root/f.md", "f");
+        dir.dir("root/dest");
+        assert_eq!(kind(mv(&dir, &folders, "root/missing.md", "root/dest", Conflict::Fail)), ErrorKind::NotFound);
+        assert_eq!(kind(mv(&dir, &folders, "root/a.md", "root/nowhere", Conflict::Fail)), ErrorKind::NotFound);
+        assert_eq!(kind(mv(&dir, &folders, "root/a.md", "root/f.md", Conflict::Fail)), ErrorKind::InvalidInput);
+        let known = KnownPaths::default();
+        let (_, trasher) = recorder();
+        assert_eq!(
+            kind(move_entry("relative.md", &dir.str("root/dest"), Conflict::Fail, &folders, &known, &trasher)),
+            ErrorKind::InvalidInput
+        );
+        assert_eq!(
+            kind(move_entry(&dir.str("root/a.md"), "relative", Conflict::Fail, &folders, &known, &trasher)),
+            ErrorKind::InvalidInput
+        );
+        assert_eq!(dir.read("root/a.md"), "a");
+    }
+
+    #[test]
+    fn the_conflict_value_is_one_of_three_names() {
+        assert_eq!(Conflict::parse("fail").unwrap(), Conflict::Fail);
+        assert_eq!(Conflict::parse("replace").unwrap(), Conflict::Replace);
+        assert_eq!(Conflict::parse("keep-both").unwrap(), Conflict::KeepBoth);
+        for bad in ["", "Fail", "overwrite", "keep_both", "keepboth"] {
+            assert_eq!(kind(Conflict::parse(bad)), ErrorKind::InvalidInput, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn fail_returns_already_exists_and_changes_nothing_for_a_file_and_a_folder() {
+        let dir = TempDir::new();
+        let folders = opened(&dir, "root");
+        dir.file("root/a.md", "new A");
+        dir.file("root/dest/a.md", "old A");
+        dir.file("root/sub/dup/inner.md", "new dup");
+        dir.file("root/dest/dup/old.md", "old dup");
+        dir.file("root/sub/mixed", "a file");
+        dir.dir("root/dest/mixed");
+        for from in ["root/a.md", "root/sub/dup", "root/sub/mixed"] {
+            assert_eq!(kind(mv(&dir, &folders, from, "root/dest", Conflict::Fail)), ErrorKind::AlreadyExists, "{from}");
+        }
+        assert_eq!(dir.read("root/a.md"), "new A");
+        assert_eq!(dir.read("root/dest/a.md"), "old A");
+        assert!(dir.exists("root/sub/dup/inner.md") && !dir.exists("root/dest/dup/inner.md"));
+        assert_eq!(dir.read("root/dest/dup/old.md"), "old dup");
+        assert!(dir.exists("root/sub/mixed") && dir.path("root/dest/mixed").is_dir());
+    }
+
+    #[test]
+    fn replace_hands_the_existing_item_to_the_trash_and_then_moves_the_item_there() {
+        let dir = TempDir::new();
+        let folders = opened(&dir, "root");
+        dir.file("root/a.md", "new A");
+        dir.file("root/dest/a.md", "old A");
+        dir.file("root/sub/dup/inner.md", "new dup");
+        dir.file("root/dest/dup/old.md", "old dup");
+        let known = KnownPaths::default();
+        let (calls, trasher) = removing_recorder();
+
+        let moved = move_entry(&dir.str("root/a.md"), &dir.str("root/dest"), Conflict::Replace, &folders, &known, &trasher).unwrap();
+        assert_eq!(moved, dir.str("root/dest/a.md"));
+        assert_eq!(dir.read("root/dest/a.md"), "new A");
+        assert!(!dir.exists("root/a.md"));
+        let canonical_dest = fs::canonicalize(dir.path("root/dest")).unwrap();
+        assert_eq!(*calls.borrow(), vec![canonical_dest.join("a.md")]);
+
+        // フォルダを、同じ名前のフォルダへ。既存のフォルダは中身ごと、1 つの項目としてゴミ箱へ渡る。
+        let moved = move_entry(&dir.str("root/sub/dup"), &dir.str("root/dest"), Conflict::Replace, &folders, &known, &trasher).unwrap();
+        assert_eq!(moved, dir.str("root/dest/dup"));
+        assert_eq!(calls.borrow().len(), 2);
+        assert_eq!(calls.borrow()[1], canonical_dest.join("dup"));
+        assert_eq!(dir.read("root/dest/dup/inner.md"), "new dup");
+        assert!(!dir.exists("root/dest/dup/old.md"));
+    }
+
+    #[test]
+    fn replace_without_a_same_named_item_does_not_touch_the_trash() {
+        let dir = TempDir::new();
+        let folders = opened(&dir, "root");
+        dir.file("root/a.md", "A");
+        dir.dir("root/dest");
+        let known = KnownPaths::default();
+        let (calls, trasher) = recorder();
+        move_entry(&dir.str("root/a.md"), &dir.str("root/dest"), Conflict::Replace, &folders, &known, &trasher).unwrap();
+        assert!(calls.borrow().is_empty());
+        assert_eq!(dir.read("root/dest/a.md"), "A");
+    }
+
+    #[test]
+    fn replace_refuses_when_the_item_is_inside_the_item_it_would_replace() {
+        let dir = TempDir::new();
+        let folders = opened(&dir, "root");
+        // root/docs/inner/docs を root へ移すと、同じ名前の root/docs（祖先）を置き換えることになる。
+        dir.file("root/docs/inner/docs/x.md", "x");
+        dir.file("root/docs/y.md", "y");
+        dir.file("root/pack/pack", "a file named like its folder");
+        let known = KnownPaths::default();
+        let (calls, trasher) = removing_recorder();
+        for from in ["root/docs/inner/docs", "root/pack/pack"] {
+            let err = move_entry(&dir.str(from), &dir.str("root"), Conflict::Replace, &folders, &known, &trasher).unwrap_err();
+            assert_eq!(err.kind, ErrorKind::NotAllowed, "{from}");
+        }
+        assert!(calls.borrow().is_empty());
+        assert_eq!(dir.read("root/docs/inner/docs/x.md"), "x");
+        assert_eq!(dir.read("root/docs/y.md"), "y");
+        assert!(dir.exists("root/pack/pack"));
+        // fail と keep-both は、それぞれの決めたとおり（AlreadyExists と、番号付きで移す）。
+        assert_eq!(kind(mv(&dir, &folders, "root/docs/inner/docs", "root", Conflict::Fail)), ErrorKind::AlreadyExists);
+        let moved = mv(&dir, &folders, "root/docs/inner/docs", "root", Conflict::KeepBoth).unwrap();
+        assert_eq!(moved, dir.str("root/docs 2"));
+        assert_eq!(dir.read("root/docs 2/x.md"), "x");
+    }
+
+    #[test]
+    fn replace_does_not_replace_a_registered_opened_folder() {
+        let dir = TempDir::new();
+        let folders = opened(&dir, "root");
+        dir.dir("root/inner");
+        folders::open(&dir.str("root/inner"), &folders).unwrap();
+        dir.file("root/sub/inner/x.md", "x");
+        let known = KnownPaths::default();
+        let (calls, trasher) = removing_recorder();
+        let err = move_entry(&dir.str("root/sub/inner"), &dir.str("root"), Conflict::Replace, &folders, &known, &trasher).unwrap_err();
+        assert_eq!(err.kind, ErrorKind::NotAllowed);
+        assert!(calls.borrow().is_empty());
+        assert!(dir.path("root/inner").is_dir() && dir.exists("root/sub/inner/x.md"));
+    }
+
+    #[test]
+    fn replace_does_not_move_when_the_trash_fails() {
+        let dir = TempDir::new();
+        let folders = opened(&dir, "root");
+        dir.file("root/a.md", "new");
+        dir.file("root/dest/a.md", "old");
+        let known = KnownPaths::default();
+        let failing = |_: &Path| Err::<(), String>("the trash is not available".to_string());
+        let err = move_entry(&dir.str("root/a.md"), &dir.str("root/dest"), Conflict::Replace, &folders, &known, &failing).unwrap_err();
+        assert_eq!(err.kind, ErrorKind::Io);
+        assert!(err.message.contains("the trash is not available"));
+        assert_eq!(dir.read("root/a.md"), "new");
+        assert_eq!(dir.read("root/dest/a.md"), "old");
+        assert!(!known.contains(&dir.path("root/dest/a.md")));
+    }
+
+    #[test]
+    fn keep_both_numbers_the_name_before_the_extension() {
+        let dir = TempDir::new();
+        let folders = opened(&dir, "root");
+        dir.file("root/a.md", "A");
+        dir.file("root/dest/a.md", "old A");
+        let moved = mv(&dir, &folders, "root/a.md", "root/dest", Conflict::KeepBoth).unwrap();
+        assert_eq!(moved, dir.str("root/dest/a 2.md"));
+        assert_eq!(dir.read("root/dest/a 2.md"), "A");
+        assert_eq!(dir.read("root/dest/a.md"), "old A");
+        // もう 1 つ同じ名前を移すと、次の番号。
+        dir.file("root/sub/a.md", "A3");
+        let moved = mv(&dir, &folders, "root/sub/a.md", "root/dest", Conflict::KeepBoth).unwrap();
+        assert_eq!(moved, dir.str("root/dest/a 3.md"));
+        assert_eq!(dir.read("root/dest/a 3.md"), "A3");
+    }
+
+    #[test]
+    fn keep_both_without_an_extension_and_for_folders_appends_the_number() {
+        let dir = TempDir::new();
+        let folders = opened(&dir, "root");
+        dir.file("root/README", "r");
+        dir.file("root/dest/README", "old r");
+        dir.file("root/notes.v1/x.md", "x");
+        dir.dir("root/dest/notes.v1");
+        dir.file("root/arch.tar.gz", "z");
+        dir.file("root/dest/arch.tar.gz", "old z");
+        assert_eq!(mv(&dir, &folders, "root/README", "root/dest", Conflict::KeepBoth).unwrap(), dir.str("root/dest/README 2"));
+        // フォルダは、名前にドットがあっても末尾に付ける。
+        assert_eq!(mv(&dir, &folders, "root/notes.v1", "root/dest", Conflict::KeepBoth).unwrap(), dir.str("root/dest/notes.v1 2"));
+        assert_eq!(dir.read("root/dest/notes.v1 2/x.md"), "x");
+        // 拡張子は最後のドットから。
+        assert_eq!(mv(&dir, &folders, "root/arch.tar.gz", "root/dest", Conflict::KeepBoth).unwrap(), dir.str("root/dest/arch.tar 2.gz"));
+    }
+
+    #[test]
+    fn keep_both_skips_numbers_that_are_taken_by_files_folders_and_links() {
+        let dir = TempDir::new();
+        let folders = opened(&dir, "root");
+        dir.file("root/a.md", "A");
+        dir.file("root/dest/a.md", "old");
+        dir.file("root/dest/a 2.md", "two");
+        dir.dir("root/dest/a 3.md");
+        dir.file("root/dest/a 5.md", "five");
+        let moved = mv(&dir, &folders, "root/a.md", "root/dest", Conflict::KeepBoth).unwrap();
+        assert_eq!(moved, dir.str("root/dest/a 4.md"));
+        assert_eq!(dir.read("root/dest/a 2.md"), "two");
+        assert_eq!(dir.read("root/dest/a 4.md"), "A");
+    }
+
+    #[test]
+    fn keep_both_gives_up_when_every_number_up_to_the_limit_is_taken() {
+        let dir = TempDir::new();
+        let folders = opened(&dir, "root");
+        dir.file("root/a.md", "A");
+        dir.file("root/dest/a.md", "old");
+        for n in 2..=MAX_KEEP_BOTH_NUMBER {
+            fs::write(dir.path(&format!("root/dest/a {n}.md")), "x").unwrap();
+        }
+        assert_eq!(kind(mv(&dir, &folders, "root/a.md", "root/dest", Conflict::KeepBoth)), ErrorKind::AlreadyExists);
+        assert_eq!(dir.read("root/a.md"), "A");
+        // 上限の 1 つ手前までなら、最後の番号が付く。
+        fs::remove_file(dir.path(&format!("root/dest/a {MAX_KEEP_BOTH_NUMBER}.md"))).unwrap();
+        let moved = mv(&dir, &folders, "root/a.md", "root/dest", Conflict::KeepBoth).unwrap();
+        assert_eq!(moved, dir.str(&format!("root/dest/a {MAX_KEEP_BOTH_NUMBER}.md")));
+    }
+
+    #[test]
+    fn numbered_names_follow_the_extension_rule_and_stay_valid_names() {
+        assert_eq!(numbered_name("a.md", 2, false), "a 2.md");
+        assert_eq!(numbered_name("a.md", 2, true), "a.md 2");
+        assert_eq!(numbered_name("README", 3, false), "README 3");
+        assert_eq!(numbered_name("メモ.txt", 10, false), "メモ 10.txt");
+        assert_eq!(numbered_name("a.tar.gz", 2, false), "a.tar 2.gz");
+        // ドットで始まる名前（ツリーには出ない）は、先頭のドットを拡張子の区切りにしない。
+        assert_eq!(numbered_name(".env", 2, false), ".env 2");
+        for name in ["a.md", "README", "メモ.txt", "a.tar.gz", "my notes.md"] {
+            for n in [2, 9, 10, MAX_KEEP_BOTH_NUMBER] {
+                assert!(validate_name(&numbered_name(name, n, false)).is_ok(), "{name} {n}");
+                assert!(validate_name(&numbered_name(name, n, true)).is_ok(), "{name} {n}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_name_that_differs_only_in_letter_case_is_the_same_name_when_the_filesystem_ignores_case() {
+        let dir = TempDir::new();
+        let folders = opened(&dir, "root");
+        if !ignores_case(&dir) {
+            eprintln!("skipped: this filesystem tells names apart by letter case");
+            return;
+        }
+        dir.file("root/sub/note.md", "new");
+        dir.file("root/NOTE.md", "old");
+        assert_eq!(kind(mv(&dir, &folders, "root/sub/note.md", "root", Conflict::Fail)), ErrorKind::AlreadyExists);
+        assert_eq!(dir.read("root/sub/note.md"), "new");
+        // keep-both は、番号を付けて別の名前にする。
+        let moved = mv(&dir, &folders, "root/sub/note.md", "root", Conflict::KeepBoth).unwrap();
+        assert_eq!(moved, dir.str("root/note 2.md"));
+        assert_eq!(dir.read("root/note 2.md"), "new");
+        assert_eq!(dir.read("root/NOTE.md"), "old");
+        // replace は、違う大文字小文字の既存の項目をゴミ箱へ渡す。
+        dir.file("root/sub/note.md", "newer");
+        let (calls, trasher) = removing_recorder();
+        let known = KnownPaths::default();
+        move_entry(&dir.str("root/sub/note.md"), &dir.str("root"), Conflict::Replace, &folders, &known, &trasher).unwrap();
+        assert_eq!(calls.borrow().len(), 1);
+        assert_eq!(dir.read("root/note.md"), "newer");
+    }
+
+    #[test]
+    fn a_name_that_differs_only_in_letter_case_is_a_different_name_when_the_filesystem_tells_them_apart() {
+        let dir = TempDir::new();
+        let folders = opened(&dir, "root");
+        if ignores_case(&dir) {
+            eprintln!("skipped: this filesystem ignores letter case");
+            return;
+        }
+        dir.file("root/sub/note.md", "lower");
+        dir.file("root/NOTE.md", "upper");
+        let moved = mv(&dir, &folders, "root/sub/note.md", "root", Conflict::Fail).unwrap();
+        assert_eq!(moved, dir.str("root/note.md"));
+        assert_eq!((dir.read("root/note.md"), dir.read("root/NOTE.md")), ("lower".into(), "upper".into()));
+    }
+
+    #[test]
+    fn move_registers_the_new_path_of_a_known_document_and_of_documents_inside_a_moved_folder() {
+        let dir = TempDir::new();
+        let folders = opened(&dir, "root");
+        dir.file("root/a.md", "x");
+        dir.file("root/sub/deep/b.md", "y");
+        dir.file("root/other.md", "z");
+        dir.dir("root/dest");
+        let known = KnownPaths::default();
+        for p in ["root/a.md", "root/sub/deep/b.md", "root/other.md"] {
+            known.register(&dir.path(p));
+        }
+        let (_, trasher) = recorder();
+        move_entry(&dir.str("root/a.md"), &dir.str("root/dest"), Conflict::Fail, &folders, &known, &trasher).unwrap();
+        assert!(known.contains(&dir.path("root/dest/a.md")));
+        move_entry(&dir.str("root/sub"), &dir.str("root/dest"), Conflict::Fail, &folders, &known, &trasher).unwrap();
+        assert!(known.contains(&dir.path("root/dest/sub/deep/b.md")));
+        // 番号を付けて移したときは、付けた名前のパスが登録される。
+        dir.file("root/dest/other.md", "old");
+        move_entry(&dir.str("root/other.md"), &dir.str("root/dest"), Conflict::KeepBoth, &folders, &known, &trasher).unwrap();
+        assert!(known.contains(&dir.path("root/dest/other 2.md")));
+        // 無関係なパスは増えない。
+        assert!(!known.contains(&dir.path("root/dest/unrelated.md")));
+    }
+
+    #[test]
+    fn a_failed_move_registers_nothing() {
+        let dir = TempDir::new();
+        let folders = opened(&dir, "root");
+        dir.file("root/a.md", "x");
+        dir.file("root/dest/a.md", "old");
+        let known = KnownPaths::default();
+        known.register(&dir.path("root/a.md"));
+        let (_, trasher) = recorder();
+        assert!(move_entry(&dir.str("root/a.md"), &dir.str("root/dest"), Conflict::Fail, &folders, &known, &trasher).is_err());
+        assert!(!known.contains(&dir.path("root/dest/a.md")));
+    }
+
     // ---- 監視するフォルダの検査 ----
 
     #[test]
@@ -849,6 +1422,71 @@ mod tests {
             for p in calls.borrow().iter() {
                 assert!(fs::symlink_metadata(p).unwrap().file_type().is_symlink());
             }
+        }
+
+        #[test]
+        fn a_path_through_an_escaping_symlink_cannot_be_moved_or_be_a_destination() {
+            let dir = TempDir::new();
+            dir.file("outside/secret.md", "s");
+            dir.file("root/a.md", "a");
+            dir.dir("root/dest");
+            let folders = opened(&dir, "root");
+            symlink(dir.path("outside"), dir.path("root/escape")).unwrap();
+            assert_eq!(
+                kind(mv(&dir, &folders, "root/escape/secret.md", "root/dest", Conflict::Fail)),
+                ErrorKind::NotAllowed
+            );
+            assert_eq!(kind(mv(&dir, &folders, "root/a.md", "root/escape", Conflict::Fail)), ErrorKind::NotAllowed);
+            assert_eq!(dir.read("outside/secret.md"), "s");
+            assert!(!dir.exists("outside/a.md"));
+        }
+
+        #[test]
+        fn move_acts_on_the_link_itself_not_on_its_target() {
+            let dir = TempDir::new();
+            dir.file("outside/target.md", "t");
+            dir.dir("root/dest");
+            let folders = opened(&dir, "root");
+            symlink(dir.path("outside/target.md"), dir.path("root/link.md")).unwrap();
+            symlink(dir.path("outside"), dir.path("root/linkdir")).unwrap();
+            symlink(dir.path("nowhere"), dir.path("root/broken")).unwrap();
+            for name in ["link.md", "linkdir", "broken"] {
+                let moved = mv(&dir, &folders, &format!("root/{name}"), "root/dest", Conflict::Fail).unwrap();
+                assert_eq!(moved, dir.str(&format!("root/dest/{name}")));
+                assert!(fs::symlink_metadata(dir.path(&format!("root/dest/{name}"))).unwrap().file_type().is_symlink());
+                assert!(!dir.exists(&format!("root/{name}")));
+            }
+            assert_eq!(dir.read("outside/target.md"), "t");
+        }
+
+        #[test]
+        fn a_link_to_a_folder_can_be_moved_into_the_folder_it_points_to() {
+            let dir = TempDir::new();
+            dir.file("root/real/x.md", "x");
+            let folders = opened(&dir, "root");
+            symlink(dir.path("root/real"), dir.path("root/alias")).unwrap();
+            // リンク先の中かどうかではなく、リンク自体として扱う（リンクは自分自身ではない）。
+            let moved = mv(&dir, &folders, "root/alias", "root/real", Conflict::Fail).unwrap();
+            assert_eq!(moved, dir.str("root/real/alias"));
+            assert!(fs::symlink_metadata(dir.path("root/real/alias")).unwrap().file_type().is_symlink());
+            assert_eq!(dir.read("root/real/x.md"), "x");
+        }
+
+        #[test]
+        fn replace_hands_over_an_existing_link_itself_not_its_target() {
+            let dir = TempDir::new();
+            dir.file("outside/target.md", "t");
+            dir.file("root/sub/link.md", "plain file");
+            dir.dir("root/dest");
+            let folders = opened(&dir, "root");
+            symlink(dir.path("outside/target.md"), dir.path("root/dest/link.md")).unwrap();
+            let known = KnownPaths::default();
+            let (calls, trasher) = removing_recorder();
+            move_entry(&dir.str("root/sub/link.md"), &dir.str("root/dest"), Conflict::Replace, &folders, &known, &trasher).unwrap();
+            let canonical_dest = fs::canonicalize(dir.path("root/dest")).unwrap();
+            assert_eq!(*calls.borrow(), vec![canonical_dest.join("link.md")]);
+            assert_eq!(dir.read("outside/target.md"), "t");
+            assert_eq!(dir.read("root/dest/link.md"), "plain file");
         }
 
         #[test]

@@ -19,6 +19,7 @@ fn main() {
         "create_folder",
         "rename_entry",
         "trash_entry",
+        "move_entry",
         "watch_folders",
         "open_external_url",
         "close_app",

@@ -13,6 +13,7 @@ import {
   type FolderEntry,
   type FolderEntryKind,
   type FolderListing,
+  type MoveConflict,
   type OpenedDocument,
   type SaveOptions,
   type SaveOutcome,
@@ -112,6 +113,10 @@ export interface E2EState {
   trashed: string[];
   /** 名前を変えた項目（変えた順）。 */
   renames: Array<{ from: string; to: string }>;
+  /** 別のフォルダへ移した項目（移した順）。conflict は moveEntry に渡された値。同じフォルダへの移動と、失敗した移動は含まない。 */
+  moves: Array<{ from: string; to: string; conflict: MoveConflict }>;
+  /** moveEntry の呼び出しの記録（失敗、同じフォルダへの移動を含む）。 */
+  moveCalls: Array<{ path: string; destDir: string; conflict: MoveConflict }>;
   /** closeApp が呼ばれたか（アプリが終了したことの代わり）。 */
   closed: boolean;
   /** openExternalUrl に渡された URL（渡された順）。実際にはブラウザを開かない。 */
@@ -140,7 +145,7 @@ export interface E2EState {
    * 次の 1 回だけ失敗させる操作（テスト用。アプリのログの、文書の失敗の記録を確かめるため）。値は、投げる BridgeError の kind。
    * 投げるメッセージには、あえてパスを含める（ログにメッセージもパスも出ないことを確かめるため）。
    */
-  failNext: Partial<Record<'openDocument' | 'saveDocument' | 'saveDocumentAs' | 'writeDraft', BridgeErrorKind>>;
+  failNext: Partial<Record<'openDocument' | 'saveDocument' | 'saveDocumentAs' | 'writeDraft' | 'moveEntry', BridgeErrorKind>>;
   /** 取り込み済みの背景画像（imageId → 画像）。 */
   images: Map<string, BackgroundImageData>;
   imagePath: string | null;
@@ -249,6 +254,8 @@ export function createMemoryBridge(): DocumentBridge {
     watchedFolders: [],
     trashed: [],
     renames: [],
+    moves: [],
+    moveCalls: [],
     closed: false,
     openedUrls: [],
     fullscreen: false,
@@ -386,6 +393,33 @@ export function createMemoryBridge(): DocumentBridge {
     if (!exists(item)) throw new BridgeError('not-found', 'no such item');
     if (item === state.openedFolder) throw new BridgeError('not-allowed', 'an opened folder itself cannot be changed');
     return { parent, item };
+  }
+
+  /** 項目（ファイル、またはフォルダを中身ごと）を target へ付け替える。移した文書（またはフォルダの中の文書）も、保存・監視できる。 */
+  function moveTree(item: string, target: string): void {
+    for (const key of Array.from(state.files.keys())) {
+      if (key === item || key.startsWith(`${item}/`)) {
+        state.files.set(`${target}${key.slice(item.length)}`, state.files.get(key)!);
+        state.files.delete(key);
+      }
+    }
+    for (let i = 0; i < emptyFolders.length; i++) {
+      if (isUnder(emptyFolders[i]!, item)) emptyFolders[i] = `${target}${emptyFolders[i]!.slice(item.length)}`;
+    }
+    for (let i = 0; i < symlinkFolders.length; i++) {
+      if (isUnder(symlinkFolders[i]!, item)) symlinkFolders[i] = `${target}${symlinkFolders[i]!.slice(item.length)}`;
+    }
+    for (const k of Array.from(known)) if (isUnder(k, item)) known.add(`${target}${k.slice(item.length)}`);
+  }
+
+  /** 番号を付ける名前の上限（Rust 側の MAX_KEEP_BOTH_NUMBER と同じ）。 */
+  const MAX_KEEP_BOTH_NUMBER = 999;
+
+  /** name に番号を付けた名前。ファイルは拡張子の前、フォルダと拡張子のない名前は末尾（Rust 側の numbered_name と同じ）。 */
+  function numberedName(name: string, number: number, isFolder: boolean): string {
+    const dot = name.lastIndexOf('.');
+    if (!isFolder && dot > 0) return `${name.slice(0, dot)} ${number}${name.slice(dot)}`;
+    return `${name} ${number}`;
   }
 
   /** 自分の操作の後にも、監視しているフォルダの通知は届く（本物の監視と同じ）。 */
@@ -564,19 +598,51 @@ export function createMemoryBridge(): DocumentBridge {
       if (nameTaken(parent, newName) && !caseOnly) {
         throw new BridgeError('already-exists', 'an item with that name already exists');
       }
-      for (const key of Array.from(state.files.keys())) {
-        if (key === item || key.startsWith(`${item}/`)) {
-          state.files.set(`${target}${key.slice(item.length)}`, state.files.get(key)!);
-          state.files.delete(key);
-        }
-      }
-      for (let i = 0; i < emptyFolders.length; i++) {
-        if (isUnder(emptyFolders[i]!, item)) emptyFolders[i] = `${target}${emptyFolders[i]!.slice(item.length)}`;
-      }
-      // 名前を変えた文書（またはフォルダの中の文書）も、保存・監視できる。
-      for (const k of Array.from(known)) if (isUnder(k, item)) known.add(`${target}${k.slice(item.length)}`);
+      moveTree(item, target);
       state.renames.push({ from: item, to: target });
       notifyFolderSoon(parent);
+      return target;
+    },
+    async moveEntry(path, destDir, conflict) {
+      state.moveCalls.push({ path, destDir, conflict });
+      failIfRequested('moveEntry');
+      // crates の外の src-tauri/src/entries.rs の move_entry と同じ規則（正本は Rust 側）。
+      const { parent, item } = requireItem(path);
+      const dest = requireFolder(destDir);
+      // 同じフォルダへの移動は、何もしない。
+      if (parent === dest) return item;
+      const isRealFolder = isFolder(item) && !state.files.has(item) && !symlinkFolders.includes(item);
+      if (isRealFolder && isUnder(dest, item)) throw new BridgeError('not-allowed', 'a folder cannot be moved into itself');
+      const name = basename(item);
+      const existing = childrenOf(dest).find((e) => e.name.toLowerCase() === name.toLowerCase());
+      let target = childPath(dest, name);
+      if (existing) {
+        if (conflict === 'fail') throw new BridgeError('already-exists', 'an item with that name already exists');
+        if (conflict === 'replace') {
+          if (existing.path === state.openedFolder) throw new BridgeError('not-allowed', 'an opened folder itself cannot be replaced');
+          if (isUnder(item.toLowerCase(), existing.path.toLowerCase())) {
+            throw new BridgeError('not-allowed', 'an item cannot replace the folder that contains it');
+          }
+          // 本物のゴミ箱の代わり（記録するだけで、戻せない）。
+          removeTree(existing.path);
+          state.trashed.push(existing.path);
+        } else {
+          let free: string | null = null;
+          for (let number = 2; number <= MAX_KEEP_BOTH_NUMBER && free === null; number++) {
+            const candidate = numberedName(name, number, isRealFolder);
+            requireName(candidate);
+            if (!nameTaken(dest, candidate)) free = candidate;
+          }
+          if (free === null) throw new BridgeError('already-exists', 'no free name is left for the item');
+          target = childPath(dest, free);
+        }
+      }
+      moveTree(item, target);
+      // 実際のファイルシステムでは、中身がなくなってもフォルダは残る。
+      keepFolder(parent);
+      state.moves.push({ from: item, to: target, conflict });
+      notifyFolderSoon(parent);
+      notifyFolderSoon(dest);
       return target;
     },
     async trashEntry(path) {

@@ -375,6 +375,70 @@ body {
   outline-offset: 2px;
 }
 
+/* 同じ名前の項目があるときの確認。選択肢は縦に並べ、それぞれに結果の説明を添える。 */
+.move-conflict-dialog {
+  width: min(90vw, 440px);
+}
+
+.move-conflict-dialog p {
+  margin: 0 0 10px;
+}
+
+.move-conflict-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.move-conflict-actions .move-conflict-reason {
+  margin: -2px 0 0;
+  color: var(--md-color-danger);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.move-conflict-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 14px;
+  border: 1px solid var(--md-color-border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.move-conflict-choice.primary {
+  border: 2px solid var(--md-color-accent);
+  padding: 7px 13px;
+}
+
+.move-conflict-choice.primary .move-conflict-label {
+  font-weight: 600;
+}
+
+.move-conflict-note {
+  color: var(--md-color-chrome-text);
+  font-size: 12px;
+}
+
+/* 選べない選択肢。灰色と破線の枠で示し、押しても何も起きない（aria-disabled。フォーカスは受ける）。 */
+.move-conflict-choice[aria-disabled='true'] {
+  border-style: dashed;
+  color: var(--md-color-disabled);
+  cursor: not-allowed;
+}
+
+.move-conflict-choice:focus-visible {
+  outline: 2px solid var(--md-color-link);
+  outline-offset: 2px;
+}
+
 /* 設定画面（モーダルの dialog）。窓の中央に出し、幕は薄くして、後ろの本文の変化が見えるようにする。
    高さが窓に収まらないときは、見出し（設定・閉じるボタン）を残して、本文の部分だけスクロールする。 */
 .settings-backdrop {
@@ -779,6 +843,43 @@ body {
 .tree-badge {
   flex: none;
   font-size: 12px;
+}
+
+/* 空いている所にも落とせるよう、ツリーは領域の高さいっぱいに広げる（落とした先はルート）。 */
+.file-tree {
+  min-height: 100%;
+}
+
+/* ドラッグアンドドロップ。落とせる先は、色だけに頼らず、輪郭の形でも示す（フォルダの行は実線の枠、ルートはツリー全体の破線の枠）。
+   引いている行は、薄い色と斜体にする。落とせない先は何も強調しない（ポインタは禁止の形になる）。 */
+.tree-item[data-dragging='true'] > .tree-row {
+  color: var(--md-color-disabled);
+  font-style: italic;
+}
+
+.tree-item[data-drop-target='true'] > .tree-row {
+  background: var(--md-color-tree-current);
+  outline: 2px solid var(--md-color-link);
+  outline-offset: -2px;
+}
+
+.file-tree[data-drop-root='true'] {
+  outline: 2px dashed var(--md-color-link);
+  outline-offset: -2px;
+}
+
+/* 切り取りの印。薄い色（開けないファイルと同じ灰色。パネル上で 4.6:1）、斜体、行の下の破線。名前は aria-label にも「（切り取り済み）」が付く。 */
+.tree-item[data-cut='true'] > .tree-row {
+  color: var(--md-color-disabled);
+  font-style: italic;
+  background-image: repeating-linear-gradient(90deg, var(--md-color-disabled) 0 4px, transparent 4px 8px);
+  background-position: left bottom;
+  background-repeat: no-repeat;
+  background-size: 100% 1px;
+}
+
+.tree-item[data-cut='true'] > .tree-row .tree-icon {
+  opacity: 0.6;
 }
 
 /* 右ペイン（ADR-005 の R13）。本文の領域の右に、幅 260px で置く（push）。閉じているときは幅 0 で、見えず、フォーカスも受けない（inert）。

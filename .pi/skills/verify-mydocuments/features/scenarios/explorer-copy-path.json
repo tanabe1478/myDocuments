@@ -22,7 +22,7 @@
     { "expect": { "testId": "toast", "equals": "クリップボードにコピーしました" } },
     { "screenshot": "02-copied-toast" },
     { "click": { "css": "[data-testid=file-tree] [role=treeitem][aria-label='docs'] > .tree-row", "button": "right" } },
-    { "expect": { "css": "[data-testid=tree-context-menu] [role=menuitem]", "read": "count", "equals": 5, "note": "本体の 4 項目と、部品の「パスをコピー」" } },
+    { "expect": { "css": "[data-testid=tree-context-menu] [role=menuitem]", "read": "count", "equals": 7, "note": "本体の 6 項目（切り取り、貼り付けを含む）と、部品の「パスをコピー」" } },
     { "expect": { "css": "[data-testid=tree-context-menu] [role=separator]", "read": "count", "equals": 1 } },
     { "screenshot": "03-context-menu" },
     { "click": { "testId": "menu-plugin-copy-path.copy-path" } },

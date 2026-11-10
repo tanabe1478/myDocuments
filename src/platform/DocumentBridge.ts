@@ -107,6 +107,9 @@ export class BridgeError extends Error {
   }
 }
 
+/** 移し先に同じ名前の項目があるときの扱い（moveEntry）。 */
+export type MoveConflict = 'fail' | 'replace' | 'keep-both';
+
 /** 取り込み済みの背景画像。 */
 export interface BackgroundImageData {
   /** image/png・image/jpeg・image/webp のいずれか。 */
@@ -172,6 +175,15 @@ export interface DocumentBridge {
   renameEntry(path: string, newName: string): Promise<string>;
   /** 項目（リンクはリンク自体）をゴミ箱へ移す。開いたフォルダ自身は 'not-allowed'。 */
   trashEntry(path: string): Promise<void>;
+  /**
+   * 項目（ファイル・フォルダ。リンクはリンク自体）を、開いたフォルダの配下の別のフォルダ（destDir）へ移す。戻り値は移した後のパス
+   * （destDir の形 + 最終の名前）。同じフォルダへの移動は何もせず、元のパスを返す。
+   * conflict は、移し先に同じ名前の項目があるときの扱い。'fail' は 'already-exists'、'replace' は既存の項目をゴミ箱へ移してから移す
+   * （移す項目が既存の項目の中にあるときは 'not-allowed'。ゴミ箱へ移せなければ移さない）、'keep-both' は拡張子の前に「 2」「 3」…を付けた名前で移す。
+   * フォルダを自分自身の中へ、開いたフォルダ自身を、登録外のフォルダへは移せない（'not-allowed'）。コピーと削除での代用はしない（別のディスクなどは 'io'）。
+   * 移した項目が開いた文書（またはそれを含むフォルダ）なら、新しいパスも保存・監視できるようになる。
+   */
+  moveEntry(path: string, destDir: string, conflict: MoveConflict): Promise<string>;
   /**
    * 見せているフォルダ（ルートと展開中のフォルダ。開いたフォルダの配下）の監視を、渡したものに切り替える（空なら止める）。
    * それぞれの直下の項目の増減・名前の変更を、onFolderChanged で知らせる（深いフォルダは、渡したときだけ）。

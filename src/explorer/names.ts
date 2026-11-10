@@ -62,6 +62,12 @@ export function parentOf(path: string): string | null {
   return path.slice(0, cut);
 }
 
+/** パスの最後の成分（項目の名前）。 */
+export function nameOf(path: string): string {
+  const trimmed = path.replace(/[/\\]+$/, '');
+  return trimmed.slice(Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\')) + 1);
+}
+
 /** path が ancestor そのもの、または ancestor の配下か。 */
 export function isSameOrInside(path: string, ancestor: string): boolean {
   if (path === ancestor) return true;

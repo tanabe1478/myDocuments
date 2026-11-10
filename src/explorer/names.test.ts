@@ -5,6 +5,7 @@ import {
   createTargetDir,
   isSameOrInside,
   joinPath,
+  nameOf,
   parentOf,
   relocatePath,
   renameSelection,
@@ -72,6 +73,14 @@ describe('paths', () => {
     expect(parentOf('/a/b/c.md')).toBe('/a/b');
     expect(parentOf('C:\\work\\c.md')).toBe('C:\\work');
     expect(parentOf('/a')).toBeNull();
+  });
+
+  it('names the last component, for the path of a file or a folder (and of a Windows path)', () => {
+    expect(nameOf('/a/b/c.md')).toBe('c.md');
+    expect(nameOf('/a/b/')).toBe('b');
+    expect(nameOf('C:\\work\\notes')).toBe('notes');
+    expect(nameOf('/notes')).toBe('notes');
+    expect(nameOf('plain')).toBe('plain');
   });
 
   it('compares by whole components', () => {

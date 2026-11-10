@@ -240,6 +240,20 @@ async fn trash_entry(path: String, folders: State<'_, OpenFolders>) -> Result<()
     entries::trash_entry(&path, &folders, &entries::system_trash)
 }
 
+/// 項目を、開いたフォルダの配下の別のフォルダへ移す。`conflict`（"fail" | "replace" | "keep-both"）は、移し先に同じ名前の項目があるときの扱い。
+/// 戻り値は移した後のパス。開いた文書（または、それを含むフォルダ）なら、新しいパスも保存・監視できるように登録する。
+#[tauri::command]
+async fn move_entry(
+    path: String,
+    dest_dir: String,
+    conflict: String,
+    folders: State<'_, OpenFolders>,
+    known: State<'_, KnownPaths>,
+) -> Result<String, CommandError> {
+    let conflict = entries::Conflict::parse(&conflict)?;
+    entries::move_entry(&path, &dest_dir, conflict, &folders, &known, &entries::system_trash)
+}
+
 /// エクスプローラーが見せているフォルダ（ルートと展開中のフォルダ）の監視を、渡したフォルダに切り替える。
 /// 項目の増減・名前の変更があったフォルダを、`folder-changed`（payload は { path }）で知らせる。
 #[tauri::command]
@@ -370,6 +384,7 @@ macro_rules! app_commands {
             create_folder,
             rename_entry,
             trash_entry,
+            move_entry,
             watch_folders,
             open_external_url,
             close_app,

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Notice } from '../document/controller';
-import { BridgeError, type FolderEntry, type FolderListing, type SessionInfo } from '../platform';
+import { BridgeError, type FolderEntry, type FolderListing, type MoveConflict, type SessionInfo } from '../platform';
 import { ExplorerController, describeFolderError } from './controller';
 import { buildTree, flattenRows } from './tree';
 
@@ -33,6 +33,8 @@ function setup(tree: Tree, session: SessionInfo = { lastPath: null, lastFolder: 
     createFolder: vi.fn(async (parent: string, name: string) => `${parent}/${name}`),
     renameEntry: vi.fn(async (path: string, name: string) => `${path.slice(0, path.lastIndexOf('/'))}/${name}`),
     trashEntry: vi.fn(async (_path: string) => {}),
+    // 移動は controller.move.test.ts が確かめる。ここでは使わない。
+    moveEntry: vi.fn(async (_path: string, destDir: string, _conflict: MoveConflict) => destDir),
     watchFolders: vi.fn(async (_paths: readonly string[]) => {}),
     onFolderChanged: vi.fn(async (_cb: (path: string) => void) => () => {}),
   };

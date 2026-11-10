@@ -13,10 +13,10 @@ import {
 import { draftTitle } from './document/recovery';
 import { textKindOf } from './document/fileKinds';
 import { UNTITLED, documentTitle, isDirty } from './document/state';
-import { ExplorerController, type TrashTarget } from './explorer/controller';
+import { ExplorerController, type MoveConflictChoice, type MoveConflictInfo, type TrashTarget } from './explorer/controller';
 import type { EditorAdapter } from './editor/EditorAdapter';
 import { createCodeMirrorAdapter } from './editor/codemirror/CodeMirrorAdapter';
-import { applyLogSetting, logger } from './logging';
+import { applyLogSetting, errorKind, logger } from './logging';
 import { BridgeError, type DocumentBridge, type DraftSummary } from './platform';
 import { createHostServices, createIsolatedServices } from './platform/hostServices';
 import type { PermissionController } from './permissions/controller';
@@ -30,6 +30,7 @@ import { charsPerLine, columnWidth } from './editor/layout';
 import { ConflictBar, isConflictBarVisible } from './ui/ConflictBar';
 import { ConfirmDiscardDialog } from './ui/ConfirmDiscardDialog';
 import { ConfirmRecreateDialog } from './ui/ConfirmRecreateDialog';
+import { ConfirmMoveConflictDialog } from './ui/ConfirmMoveConflictDialog';
 import { ConfirmTrashDialog } from './ui/ConfirmTrashDialog';
 import { DiffDialog } from './ui/DiffDialog';
 import { PermissionDialog } from './ui/PermissionDialog';
@@ -59,6 +60,11 @@ interface PendingRecreate {
 interface PendingTrash {
   target: TrashTarget;
   resolve(confirmed: boolean): void;
+}
+
+interface PendingMoveConflict {
+  info: MoveConflictInfo;
+  resolve(choice: MoveConflictChoice): void;
 }
 
 interface PendingRecovery {
@@ -92,6 +98,7 @@ export function App({
   const [recreate, setRecreate] = useState<PendingRecreate | null>(null);
   const [recovery, setRecovery] = useState<PendingRecovery | null>(null);
   const [trash, setTrash] = useState<PendingTrash | null>(null);
+  const [moveConflict, setMoveConflict] = useState<PendingMoveConflict | null>(null);
   const [diffOpen, setDiffOpen] = useState(false);
   const [notice, setNotice] = useState<ToastNotice | null>(null);
   const [prefs, setPrefs] = useState<StoredPreferences>(initialPreferences);
@@ -152,6 +159,9 @@ export function App({
         bridge,
         notify,
         confirmTrash: (target) => new Promise<boolean>((resolve) => setTrash({ target, resolve })),
+        confirmMove: (info) => new Promise<MoveConflictChoice>((resolve) => setMoveConflict({ info, resolve })),
+        // アプリのログ（ADR-007）。移動の失敗の、操作の名前・conflict の値・エラーの種類だけ（パスと名前は書かない）。ログが無効の間は何もしない。
+        onMoveFailed: (conflict, error) => logger.log('error', 'explorer', 'move-failed', { op: 'move', conflict, ...errorKind(error) }),
         documents: {
           isDocumentInside: controller.isDocumentInside,
           rename: controller.renameEntry,
@@ -559,6 +569,11 @@ export function App({
     setTrash(null);
   };
 
+  const chooseMoveConflict = (choice: MoveConflictChoice) => {
+    moveConflict?.resolve(choice);
+    setMoveConflict(null);
+  };
+
   const chooseRecreate = (ok: boolean) => {
     recreate?.resolve(ok);
     setRecreate(null);
@@ -697,6 +712,7 @@ export function App({
       {confirm && <ConfirmDiscardDialog documentName={confirm.documentName} onChoose={choose} />}
       {recreate && <ConfirmRecreateDialog documentName={recreate.documentName} onChoose={chooseRecreate} />}
       {trash && <ConfirmTrashDialog target={trash.target} onChoose={chooseTrash} />}
+      {moveConflict && <ConfirmMoveConflictDialog info={moveConflict.info} onChoose={chooseMoveConflict} />}
       {permissionState.prompt && <PermissionDialog prompt={permissionState.prompt} onChoose={permissions.answer} />}
       {recovery && (
         <RecoveryDialog

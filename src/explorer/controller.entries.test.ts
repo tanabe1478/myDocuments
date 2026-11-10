@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Notice } from '../document/controller';
-import { BridgeError, type FolderEntry, type FolderListing, type SessionInfo } from '../platform';
+import { BridgeError, type FolderEntry, type FolderListing, type MoveConflict, type SessionInfo } from '../platform';
 import { ExplorerController, type ExplorerDocuments, type TrashTarget } from './controller';
 import { buildTree, flattenRows } from './tree';
 
@@ -64,6 +64,8 @@ function setup(initial: Tree, options: { confirm?: boolean; documentInside?: (pa
       tree[parent] = tree[parent]!.filter((e) => e.path !== path);
       for (const key of Object.keys(tree)) if (key === path || key.startsWith(`${path}/`)) delete tree[key];
     }),
+    // 移動は controller.move.test.ts が確かめる。ここでは使わない。
+    moveEntry: vi.fn(async (_path: string, destDir: string, _conflict: MoveConflict) => destDir),
     watchFolders: vi.fn(async (_paths: readonly string[]) => {}),
     onFolderChanged: vi.fn(async (_cb: (path: string) => void) => () => {}),
   };

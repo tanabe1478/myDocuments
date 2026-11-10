@@ -131,11 +131,12 @@ test.describe('ツリーの右クリック: パスをコピー (b)', () => {
   test('ファイルの行とフォルダの行に「パスをコピー」が、本体の項目のあと、区切りを入れて並ぶ。選ぶとその行のパスが入る', async ({ page }) => {
     await start(page, { pluginPermissions: GRANTED });
     await row(page, 'a.md').click({ button: 'right' });
-    await expect(menu(page).getByRole('menuitem')).toHaveText(['新しいファイル', '新しいフォルダ', '名前を変更', 'ゴミ箱に移動', copyLabel]);
+    // 本体の項目は、R15（移動）で「切り取り」「貼り付け」が増えて 6 つ。
+    await expect(menu(page).getByRole('menuitem')).toHaveText(['新しいファイル', '新しいフォルダ', '名前を変更', '切り取り', '貼り付け', 'ゴミ箱に移動', copyLabel]);
     await expect(menu(page).getByRole('separator')).toHaveCount(1);
     // 区切りは、本体の項目と部品の項目の間。
     const order = await menu(page).locator('> *').evaluateAll((els) => els.map((el) => el.getAttribute('role')));
-    expect(order).toEqual(['menuitem', 'menuitem', 'menuitem', 'menuitem', 'separator', 'menuitem']);
+    expect(order).toEqual(['menuitem', 'menuitem', 'menuitem', 'menuitem', 'menuitem', 'menuitem', 'separator', 'menuitem']);
     await menu(page).getByRole('menuitem', { name: copyLabel }).click();
     await expect(menu(page)).toHaveCount(0);
     await expect.poll(() => clipboard(page)).toEqual([DOC]);
@@ -196,7 +197,7 @@ test.describe('ツリーの右クリック: パスをコピー (b)', () => {
     const area = page.getByTestId('explorer-tree-area');
     const box = (await area.boundingBox())!;
     await area.click({ button: 'right', position: { x: box.width / 2, y: box.height - 8 } });
-    await expect(menu(page).getByRole('menuitem')).toHaveText(['新しいファイル', '新しいフォルダ']);
+    await expect(menu(page).getByRole('menuitem')).toHaveText(['新しいファイル', '新しいフォルダ', '貼り付け']);
     await expect(menu(page).getByRole('separator')).toHaveCount(0);
   });
 });
@@ -411,12 +412,12 @@ test.describe('部品が止まったとき (f)', () => {
     await stopFromRelay(page, 'copy-path');
     await expect(menu(page).getByRole('menuitem', { name: copyLabel })).toHaveCount(0);
     await expect(menu(page).getByRole('separator')).toHaveCount(0);
-    await expect(menu(page).getByRole('menuitem')).toHaveText(['新しいファイル', '新しいフォルダ', '名前を変更', 'ゴミ箱に移動']);
+    await expect(menu(page).getByRole('menuitem')).toHaveText(['新しいファイル', '新しいフォルダ', '名前を変更', '切り取り', '貼り付け', 'ゴミ箱に移動']);
     await page.keyboard.press('Escape');
     await expect.poll(() => stoppedReasons(page, 'copy-path')).toEqual(['テストのための停止']);
 
     await row(page, 'docs').click({ button: 'right' });
-    await expect(menu(page).getByRole('menuitem')).toHaveText(['新しいファイル', '新しいフォルダ', '名前を変更', 'ゴミ箱に移動']);
+    await expect(menu(page).getByRole('menuitem')).toHaveText(['新しいファイル', '新しいフォルダ', '名前を変更', '切り取り', '貼り付け', 'ゴミ箱に移動']);
     await page.keyboard.press('Escape');
 
     await page.locator('.cm-content').click();
