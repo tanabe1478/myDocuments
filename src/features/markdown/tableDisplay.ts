@@ -8,6 +8,7 @@
  * - 行をまたぐ置き換えは、ViewPlugin からは出せない（CodeMirror の制約）ので、StateField から出す。
  * - 組み立ては createElement と textContent だけ。文書の文字を HTML として解釈しない。
  * - 表示中の表のクリックで、クリックしたセルの中身の末尾にカーソルを置く（その結果、表は原文に戻る）。
+ *   本文の幅に入らない表は、表の囲みだけが横にスクロールする。横スクロールバーの上の押下は、カーソルを動かさない。
  * - IME の変換中は、表示と原文の切り替えを（ほかの表も含めて）保留し、変換の終了後（ADR-004 と同じ待ち）に反映する。
  *   保留中は、表示中の表の位置だけを本文の変化に追従させ、DOM は作り直さない。
  * - フォーカスモードなど、行を弱く表示する部品があれば、カーソルの段落でない表を弱く表示する（plugin-api の dimExemptLines）。
@@ -184,12 +185,26 @@ function nearestCellEnd(wrap: HTMLElement, x: number, y: number): number | null 
 }
 
 /**
+ * 押した位置が、表の囲み（.cm-md-table）の横スクロールバーの上か。囲み自身が押された（target が囲み）うえで、位置が囲みの下端から
+ * スクロールバーの太さ（offsetHeight と clientHeight の差。縦スクロールバーは出さない）の中なら、スクロールバー。
+ * スクロールバーは theme で非オーバーレイの太さに決めてある（オーバーレイだと、囲みの大きさを取らず、この判定が当たらない）。
+ * スクロールバーのないとき（差が 0）は、常に false。
+ */
+function isOnScrollbar(wrap: HTMLElement, event: MouseEvent): boolean {
+  if (event.target !== wrap) return false;
+  const thickness = wrap.offsetHeight - wrap.clientHeight;
+  return thickness > 1 && event.clientY >= wrap.getBoundingClientRect().bottom - thickness;
+}
+
+/**
  * 表示中の表の mousedown。左クリックだけを受ける（修飾キーは、Shift 以外は区別しない。右・中クリックは何もしない）。
  * カーソルを、クリックしたセルの中身の末尾（セルの外は一番近いセル、決められなければ表の頭）に置く。
  * Shift なら、選択の anchor を保ったまま head をその位置まで伸ばす。文書は変えない。
  */
 function onTableMouseDown(view: EditorView, wrap: HTMLElement, event: MouseEvent): void {
   if (event.button !== 0) return;
+  // 横スクロールバーの上の押下は、スクロールバーに任せる（preventDefault もカーソルの移動もしない）。
+  if (isOnScrollbar(wrap, event)) return;
   const cell = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-end]') : null;
   const relative = cell && wrap.contains(cell) ? Number(cell.dataset.end) : nearestCellEnd(wrap, event.clientX, event.clientY);
   // 表示の今の位置（本文が変わっても、使い回された DOM の位置は、表示の木から引くので古くならない）。
@@ -421,21 +436,33 @@ const dimSync = ViewPlugin.fromClass(
 
 // ---- 見た目 ----
 
-/** 表の見た目。色は CSS 変数で、明暗テーマに追従する。幅は本文の幅を超えず、セルの中で折り返す。 */
+/**
+ * 表の見た目。色は CSS 変数で、明暗テーマに追従する。幅の規則（ADR-006「列幅」）:
+ * セルに最小幅（6em）を付け、word-break: normal と overflow-wrap: break-word で折り返す。本文の幅に入る表は内容に合わせた幅のまま、
+ * 最小幅を並べても入らない表（列が多いなど）は、表の囲み（.cm-md-table）だけが横にスクロールする（エディタ全体は横に動かない）。
+ * 最小幅が無いと、列の最小の幅が 1 文字になり、日本語の短い列が縦書きのように潰れた。em だけで決めるので、文字の大きさの設定に追従する。
+ */
 export const tableTheme = EditorView.theme({
   // 上下の余白は margin ではなく padding（CodeMirror はブロックの高さに margin を数えない）。
-  [`.${TABLE_CLASS}`]: { padding: '0.45em 0', textIndent: '0', cursor: 'text' },
+  // 横スクロールバーは囲みの下端に付く。その分も囲みの高さ（getBoundingClientRect）に入るので、CodeMirror の高さの計測は狂わない。
+  [`.${TABLE_CLASS}`]: { padding: '0.45em 0', textIndent: '0', cursor: 'text', overflowX: 'auto', overflowY: 'hidden' },
+  // 非オーバーレイの細いスクロールバー（押した位置が、スクロールバーの上かを、囲みの領域との差で判定するため。onTableMouseDown）。
+  [`.${TABLE_CLASS}::-webkit-scrollbar`]: { height: '10px' },
+  [`.${TABLE_CLASS}::-webkit-scrollbar-track`]: { backgroundColor: 'transparent' },
+  [`.${TABLE_CLASS}::-webkit-scrollbar-thumb`]: { backgroundColor: 'var(--md-color-border)', borderRadius: '5px' },
   '.cm-md-table-grid': {
     borderCollapse: 'collapse',
-    maxWidth: '100%',
-    // 長い語や URL は、セルの中で折り返す（横スクロールは出さない）。
-    overflowWrap: 'anywhere',
+    // 継承された word-break: break-word（CodeMirror の .cm-lineWrapping が付ける）は、列の最小の幅を 1 文字ほどにする。normal に戻して、
+    // 長い語や URL を折らずに最小の幅とする（入らなければ囲みが横スクロール）。日本語の文は、これまでどおり文字の間で折り返す。
+    wordBreak: 'normal',
+    overflowWrap: 'break-word',
     lineHeight: '1.6',
   },
   '.cm-md-table-grid th, .cm-md-table-grid td': {
     border: '1px solid var(--md-color-border)',
     padding: '0.3em 0.7em',
     verticalAlign: 'top',
+    minWidth: '6em',
   },
   '.cm-md-table-grid th': { fontWeight: '700', backgroundColor: 'var(--md-color-code-bg)' },
   // セルの中の強調など: ほかの行で記号を隠したときと同じ見た目（markdownHighlightStyle と同じ CSS 変数）。

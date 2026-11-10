@@ -156,7 +156,9 @@ test.describe('表の形での表示 (Q1)', () => {
     expect(errors).toEqual([]);
   });
 
-  test('表の幅は本文の幅を超えない。長い語はセルの中で折り返し、横スクロールは出ない（狭い窓でも）', async ({ page }) => {
+  test('表の囲みは本文の幅を超えない。長い語で表が本文の幅に入らないときは、囲みだけが横にスクロールし、ページは横に動かない（狭い窓でも）', async ({ page }) => {
+    // Issue #3: 以前は、長い語もセルの中で折り返し、表が本文の幅に収まっていた（overflow-wrap: anywhere）。
+    // 列の最小の幅が 1 文字になり、日本語の短い列が潰れたので、語は折らず、入らない表は囲みが横にスクロールする（ADR-006「列幅（Issue #3）」）。
     await page.setViewportSize({ width: 520, height: 700 });
     const long = 'x'.repeat(120);
     await openDoc(page, `先頭\n\n| 列 1 | 列 2 | 列 3 |\n|---|---|---|\n| ${long} | https://example.com/${'a'.repeat(80)} | 短い |\n| あ | い | う |\n\n終わり`);
@@ -164,19 +166,28 @@ test.describe('表の形での表示 (Q1)', () => {
       const content = document.querySelector('.cm-content')!;
       const cs = getComputedStyle(content);
       const contentRect = content.getBoundingClientRect();
+      const wrap = document.querySelector('.cm-md-table')!;
+      const wrapRect = wrap.getBoundingClientRect();
       const grid = document.querySelector('.cm-md-table-grid')!.getBoundingClientRect();
       const scroller = document.querySelector('.cm-scroller')!;
       return {
         columnLeft: contentRect.left + parseFloat(cs.paddingLeft),
         columnRight: contentRect.right - parseFloat(cs.paddingRight),
-        gridLeft: grid.left,
-        gridRight: grid.right,
+        wrapLeft: wrapRect.left,
+        wrapRight: wrapRect.right,
+        gridWidth: grid.width,
+        wrapClient: wrap.clientWidth,
+        wrapScroll: wrap.scrollWidth,
         scrollWidth: scroller.scrollWidth,
         clientWidth: scroller.clientWidth,
       };
     });
-    expect(m.gridRight).toBeLessThanOrEqual(m.columnRight + 0.5);
-    expect(m.gridLeft).toBeGreaterThanOrEqual(m.columnLeft - 0.5);
+    // 表の囲みは本文の列の中。表そのものは列より広く、囲みの中でスクロールする。
+    expect(m.wrapRight).toBeLessThanOrEqual(m.columnRight + 0.5);
+    expect(m.wrapLeft).toBeGreaterThanOrEqual(m.columnLeft - 0.5);
+    expect(m.gridWidth).toBeGreaterThan(m.columnRight - m.columnLeft);
+    expect(m.wrapScroll).toBeGreaterThan(m.wrapClient);
+    // ページ（エディタ全体）には、横スクロールが出ない。
     expect(m.scrollWidth).toBeLessThanOrEqual(m.clientWidth);
   });
 

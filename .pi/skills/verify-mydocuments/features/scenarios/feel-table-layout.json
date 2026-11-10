@@ -1,0 +1,235 @@
+{
+  "seed": {
+    "files": {
+      "/docs/layout.md": {
+        "text": "# 表の幅の見本\n\n前の段落です。\n\n| ブロックタイプ | 役割 | 内容 | 重要なルール |\n|---|---|---|---|\n| `text` | アシスタントの返答の文章を表す | 利用者へ見せる説明の文。複数の段落に分かれることがある | 並べ替えてはいけない。順序は返答の順のまま保つ |\n| `tool_use` | 道具を呼び出す要求を表す | 道具の名前と引数をまとめた入力 | 直後の結果と対にして扱う。対がないまま次へ進めてはいけない |\n| `tool_result` | 道具の実行結果を表す | 呼び出しに対する出力と成功か失敗かの印 | 呼び出しの識別子が一致するものだけを結び付ける |\n| `thinking` | 途中の考えを表す | 要約された思考の文 | 利用者へ見せる必要はなく、保存するときだけ残す |\n\n間の段落です。\n\n| 列1 | 列2 | 列3 | 列4 | 列5 | 列6 | 列7 | 列8 | 列9 | 列10 |\n|---|---|---|---|---|---|---|---|---|---|\n| データの内容1 | データの内容2 | データの内容3 | データの内容4 | データの内容5 | データの内容6 | データの内容7 | データの内容8 | データの内容9 | データの内容10 |\n\n| 名前 | リンク | 備考 |\n|---|---|---|\n| 例 | https://example.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx |\n\n後ろの段落です。"
+      }
+    },
+    "openPath": "/docs/layout.md",
+    "preferences": {
+      "theme": "light",
+      "autoHideChrome": false
+    }
+  },
+  "viewport": {
+    "width": 900,
+    "height": 1500
+  },
+  "showScrollbars": true,
+  "steps": [
+    {
+      "press": "ControlOrMeta+o"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "layout.md"
+      }
+    },
+    {
+      "click": {
+        "css": ".cm-content",
+        "position": {
+          "x": 5,
+          "y": 5
+        }
+      }
+    },
+    {
+      "press": "ControlOrMeta+Home"
+    },
+    {
+      "eval": "window.__sel = { count: 0, head: 0 }; window.__mdeE2E.editor.onSelectionChange((s) => (window.__sel = { count: window.__sel.count + 1, head: s.head })); true"
+    },
+    {
+      "expect": {
+        "css": ".cm-md-table",
+        "read": "count",
+        "equals": 3,
+        "note": "カーソルが表の外なので、3 つの表が表の形で表示される"
+      }
+    },
+    {
+      "eval": "(() => { const w = document.querySelectorAll('.cm-md-table')[0]; const fs = parseFloat(getComputedStyle(document.querySelector('.cm-content')).fontSize); const lines = (el) => { const r = document.createRange(); r.selectNodeContents(el); return new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size; }; const ths = [...w.querySelectorAll('th')]; const words = [...w.querySelectorAll('td')].filter((c) => /^[A-Za-z_]+$/.test(c.textContent)); return ({ viewport: innerWidth, columns: ths.map((t) => Math.round(t.getBoundingClientRect().width)), headLines: ths.map(lines), table: Math.round(w.querySelector('table').getBoundingClientRect().width), column: Math.round(w.clientWidth) }); })()"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const w = document.querySelectorAll('.cm-md-table')[0]; const fs = parseFloat(getComputedStyle(document.querySelector('.cm-content')).fontSize); const lines = (el) => { const r = document.createRange(); r.selectNodeContents(el); return new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size; }; const ths = [...w.querySelectorAll('th')]; const words = [...w.querySelectorAll('td')].filter((c) => /^[A-Za-z_]+$/.test(c.textContent)); return lines(ths[0]); })()",
+        "lte": 2,
+        "note": "幅 900: 見出し「ブロックタイプ」は 2 行以内（HEAD は 3 行）"
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const w = document.querySelectorAll('.cm-md-table')[0]; const fs = parseFloat(getComputedStyle(document.querySelector('.cm-content')).fontSize); const lines = (el) => { const r = document.createRange(); r.selectNodeContents(el); return new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size; }; const ths = [...w.querySelectorAll('th')]; const words = [...w.querySelectorAll('td')].filter((c) => /^[A-Za-z_]+$/.test(c.textContent)); return words.length; })()",
+        "equals": 4,
+        "note": "text / tool_use / tool_result / thinking の 4 つのセルを測る"
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const w = document.querySelectorAll('.cm-md-table')[0]; const fs = parseFloat(getComputedStyle(document.querySelector('.cm-content')).fontSize); const lines = (el) => { const r = document.createRange(); r.selectNodeContents(el); return new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size; }; const ths = [...w.querySelectorAll('th')]; const words = [...w.querySelectorAll('td')].filter((c) => /^[A-Za-z_]+$/.test(c.textContent)); return words.filter((c) => lines(c) > 1).length; })()",
+        "equals": 0,
+        "note": "幅 900: 4 つの語は、どれも語の途中で折れない（HEAD は 3 つが折れる）"
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const w = document.querySelectorAll('.cm-md-table')[0]; const fs = parseFloat(getComputedStyle(document.querySelector('.cm-content')).fontSize); const lines = (el) => { const r = document.createRange(); r.selectNodeContents(el); return new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size; }; const ths = [...w.querySelectorAll('th')]; const words = [...w.querySelectorAll('td')].filter((c) => /^[A-Za-z_]+$/.test(c.textContent)); return Math.round(Math.min(...ths.map((t) => t.getBoundingClientRect().width)) / fs * 100) / 100; })()",
+        "gte": 7.35,
+        "note": "幅 900: どの列も、中身 7em と左右の padding（約 7.4em）以上"
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = document.querySelector('.cm-scroller'); return Math.max(s.scrollWidth - s.clientWidth, document.documentElement.scrollWidth - document.documentElement.clientWidth); })()",
+        "equals": 0,
+        "note": "ページ（エディタ全体）は横に動かない"
+      }
+    },
+    {
+      "screenshot": "table-layout-issue-900"
+    },
+    {
+      "viewport": {
+        "width": 600,
+        "height": 1500
+      }
+    },
+    {
+      "eval": "(() => { const w = document.querySelectorAll('.cm-md-table')[0]; const fs = parseFloat(getComputedStyle(document.querySelector('.cm-content')).fontSize); const lines = (el) => { const r = document.createRange(); r.selectNodeContents(el); return new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size; }; const ths = [...w.querySelectorAll('th')]; const words = [...w.querySelectorAll('td')].filter((c) => /^[A-Za-z_]+$/.test(c.textContent)); return ({ viewport: innerWidth, columns: ths.map((t) => Math.round(t.getBoundingClientRect().width)), headLines: ths.map(lines), table: Math.round(w.querySelector('table').getBoundingClientRect().width), column: Math.round(w.clientWidth) }); })()"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const w = document.querySelectorAll('.cm-md-table')[0]; const fs = parseFloat(getComputedStyle(document.querySelector('.cm-content')).fontSize); const lines = (el) => { const r = document.createRange(); r.selectNodeContents(el); return new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size; }; const ths = [...w.querySelectorAll('th')]; const words = [...w.querySelectorAll('td')].filter((c) => /^[A-Za-z_]+$/.test(c.textContent)); return lines(ths[0]); })()",
+        "lte": 2,
+        "note": "幅 600: 見出しは 2 行以内（HEAD は 4 行）"
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const w = document.querySelectorAll('.cm-md-table')[0]; const fs = parseFloat(getComputedStyle(document.querySelector('.cm-content')).fontSize); const lines = (el) => { const r = document.createRange(); r.selectNodeContents(el); return new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size; }; const ths = [...w.querySelectorAll('th')]; const words = [...w.querySelectorAll('td')].filter((c) => /^[A-Za-z_]+$/.test(c.textContent)); return words.filter((c) => lines(c) > 1).length; })()",
+        "equals": 0,
+        "note": "幅 600: 語は途中で折れない（HEAD は 3 つが折れる）"
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const w = document.querySelectorAll('.cm-md-table')[0]; const fs = parseFloat(getComputedStyle(document.querySelector('.cm-content')).fontSize); const lines = (el) => { const r = document.createRange(); r.selectNodeContents(el); return new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size; }; const ths = [...w.querySelectorAll('th')]; const words = [...w.querySelectorAll('td')].filter((c) => /^[A-Za-z_]+$/.test(c.textContent)); return Math.round(Math.min(...ths.map((t) => t.getBoundingClientRect().width)) / fs * 100) / 100; })()",
+        "gte": 7.35,
+        "note": "幅 600: どの列も約 7.4em 以上（HEAD は最小 75px）"
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = document.querySelector('.cm-scroller'); return Math.max(s.scrollWidth - s.clientWidth, document.documentElement.scrollWidth - document.documentElement.clientWidth); })()",
+        "equals": 0,
+        "note": "幅 600: ページは横に動かない"
+      }
+    },
+    {
+      "screenshot": "table-layout-issue-600"
+    },
+    {
+      "eval": "(() => { const w = document.querySelectorAll('.cm-md-table')[1]; return { client: w.clientWidth, scroll: w.scrollWidth, overflowX: getComputedStyle(w).overflowX }; })()"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const w = document.querySelectorAll('.cm-md-table')[1]; return w.scrollWidth > w.clientWidth; })()",
+        "equals": true,
+        "note": "10 列の表は本文の幅に入らず、表の囲み（.cm-md-table）の中で横にスクロールできる"
+      }
+    },
+    {
+      "expect": {
+        "eval": "getComputedStyle(document.querySelectorAll('.cm-md-table')[1]).overflowX",
+        "equals": "auto"
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = document.querySelector('.cm-scroller'); return Math.max(s.scrollWidth - s.clientWidth, document.documentElement.scrollWidth - document.documentElement.clientWidth); })()",
+        "equals": 0,
+        "note": "10 列の表でも、ページは横に動かない"
+      }
+    },
+    {
+      "eval": "(() => { const w = document.querySelectorAll('.cm-md-table')[1]; w.scrollLeft = w.scrollWidth; return w.scrollLeft; })()"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = document.querySelector('.cm-scroller'); return Math.max(s.scrollWidth - s.clientWidth, document.documentElement.scrollWidth - document.documentElement.clientWidth); })()",
+        "equals": 0,
+        "note": "表を右端までスクロールしても、ページは横に動かない"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__sel.head",
+        "equals": 0,
+        "note": "スクロールで、カーソルは動かない"
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-md-table",
+        "read": "count",
+        "equals": 3,
+        "note": "スクロールで、表は原文にならない"
+      }
+    },
+    {
+      "screenshot": "table-layout-many-scrolled"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const w = document.querySelectorAll('.cm-md-table')[2]; return w.scrollWidth > w.clientWidth; })()",
+        "equals": true,
+        "note": "長い URL と長い英字の語の 3 列の表は、折れずに本文の幅より広くなり、囲みの中で横にスクロールできる"
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const w = document.querySelectorAll('.cm-md-table')[2]; return [...w.querySelectorAll('tbody td')].map((c) => { const r = document.createRange(); r.selectNodeContents(c); return new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size; }).join(','); })()",
+        "equals": "1,1,1",
+        "note": "URL と長い英字の語は、セルの中で 1 行（途中で折れない。継承される word-break: break-word は normal で打ち消してある）"
+      }
+    },
+    {
+      "expect": {
+        "eval": "getComputedStyle(document.querySelectorAll('.cm-md-table')[2].querySelector('td')).wordBreak",
+        "equals": "normal"
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = document.querySelector('.cm-scroller'); return Math.max(s.scrollWidth - s.clientWidth, document.documentElement.scrollWidth - document.documentElement.clientWidth); })()",
+        "equals": 0,
+        "note": "URL の表でも、ページは横に動かない"
+      }
+    },
+    {
+      "click": {
+        "css": ".cm-md-table >> nth=1 >> tbody td >> nth=9"
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-md-table",
+        "read": "count",
+        "equals": 2,
+        "note": "右端へスクロールした後の最後のセルのクリックで、その表だけが原文になる"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__sel.head).endsWith('データの内容10')",
+        "equals": true,
+        "note": "カーソルは、クリックした 10 列目のセルの中身の末尾"
+      }
+    },
+    {
+      "screenshot": "table-layout-many-source"
+    }
+  ]
+}

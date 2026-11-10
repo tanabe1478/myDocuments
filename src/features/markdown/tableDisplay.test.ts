@@ -315,6 +315,77 @@ describe('clicking a table', () => {
   });
 });
 
+describe('a table wider than the text column scrolls sideways', () => {
+  const start = DOC.indexOf('| 名前');
+  const cellEnd = (needle: string) => DOC.indexOf(needle) + needle.length;
+
+  /** 横スクロールバーが出ている囲みを装う（jsdom には、レイアウトがない）。囲みは上から 100px、高さ 60px のうち、下の 10px がスクロールバー。 */
+  function withScrollbar(wrap: HTMLElement, thickness = 10): void {
+    Object.defineProperty(wrap, 'offsetHeight', { configurable: true, value: 60 });
+    Object.defineProperty(wrap, 'clientHeight', { configurable: true, value: 60 - thickness });
+    wrap.getBoundingClientRect = () => ({ left: 0, right: 300, top: 100, bottom: 160, width: 300, height: 60, x: 0, y: 100, toJSON: () => ({}) }) as DOMRect;
+  }
+
+  it('leaves a press on the horizontal scrollbar to the scrollbar: no preventDefault, the caret does not move, the table stays', () => {
+    const v = mount(DOC, 'cursorLine', [], 2);
+    const [wrap] = tables();
+    withScrollbar(wrap!);
+    for (const init of [{ clientY: 155 }, { clientY: 150 }, { clientY: 159.5 }, { clientY: 155, shiftKey: true }, { clientY: 155, ctrlKey: true }]) {
+      const event = mouseDown(wrap!, { clientX: 20, ...init });
+      expect(event.defaultPrevented).toBe(false);
+    }
+    expect(v.state.selection.main.head).toBe(2);
+    expect(tables()).toHaveLength(1);
+    expect(v.state.doc.toString()).toBe(DOC);
+  });
+
+  it('still moves the caret for a press above the scrollbar (the padding of the block goes to the nearest cell) and on a cell', () => {
+    const v = mount(DOC);
+    withScrollbar(tables()[0]!);
+    const event = mouseDown(tables()[0]!, { clientX: 20, clientY: 149 });
+    expect(event.defaultPrevented).toBe(true);
+    expect(v.state.selection.main.head).toBe(start); // jsdom に座標はないので、決められなければ表の頭
+    v.dispatch({ selection: { anchor: 0 } });
+    expect(tables()).toHaveLength(1);
+    withScrollbar(tables()[0]!);
+    // セルの上の押下は、囲みの下端に近い位置でも、セルの行き先（target がセル）
+    const cell = tables()[0]!.querySelectorAll('td')[0]!;
+    const onCell = mouseDown(cell, { clientX: 20, clientY: 155 });
+    expect(onCell.defaultPrevented).toBe(true);
+    expect(v.state.selection.main.head).toBe(cellEnd('りんご'));
+  });
+
+  it('does not treat a press as one on the scrollbar when there is no scrollbar (offsetHeight equals clientHeight)', () => {
+    const v = mount(DOC);
+    withScrollbar(tables()[0]!, 0);
+    const event = mouseDown(tables()[0]!, { clientX: 20, clientY: 159 });
+    expect(event.defaultPrevented).toBe(true);
+    expect(v.state.selection.main.head).toBe(start);
+  });
+
+  it('puts the width rules in the theme: the cells have a minimum width in em, words break only when they must, and only the block of the table scrolls', () => {
+    mount(DOC);
+    const css = Array.from(document.querySelectorAll('style'))
+      .map((el) => el.textContent ?? '')
+      .join('\n');
+    const rule = (selector: string): string => {
+      const found = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].find((m) => m[1]!.split(',').some((part) => part.trim().endsWith(selector)));
+      return found ? found[2]! : '';
+    };
+    expect(rule('.cm-md-table-grid td')).toMatch(/min-width:\s*6em/);
+    expect(rule('.cm-md-table-grid th')).toMatch(/min-width:\s*6em/);
+    expect(rule('.cm-md-table-grid')).toMatch(/overflow-wrap:\s*break-word/);
+    // CodeMirror の .cm-lineWrapping が付ける word-break: break-word が継承されると、列の最小の幅が 1 文字ほどになる。normal で打ち消す。
+    expect(rule('.cm-md-table-grid')).toMatch(/word-break:\s*normal/);
+    expect(rule('.cm-md-table-grid')).not.toMatch(/anywhere/);
+    expect(rule('.cm-md-table-grid')).not.toMatch(/max-width/);
+    expect(rule('.cm-md-table')).toMatch(/overflow-x:\s*auto/);
+    expect(rule('.cm-md-table')).toMatch(/overflow-y:\s*hidden/);
+    expect(rule('.cm-md-table::-webkit-scrollbar')).toMatch(/height:\s*10px/);
+    expect(rule('.cm-md-table::-webkit-scrollbar-thumb')).toMatch(/var\(--md-color-border\)/);
+  });
+});
+
 describe('IME composition holds the switching', () => {
   const start = DOC.indexOf('| 名前');
 

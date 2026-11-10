@@ -211,7 +211,8 @@ async function snapshot(page, extra = {}) {
 
 // ---- 実行 ----
 const { chromium } = loadPlaywright();
-const browser = await chromium.launch({ headless: !args.headed });
+// 既定の headless は --hide-scrollbars で、スクロールバーを描かない。シナリオの showScrollbars: true で外す（表の横スクロールバーの撮影用）。
+const browser = await chromium.launch({ headless: !args.headed, ...(scenario.showScrollbars === true ? { ignoreDefaultArgs: ['--hide-scrollbars'] } : {}) });
 const context = await browser.newContext({ viewport });
 const page = await context.newPage();
 const consoleErrors = [];

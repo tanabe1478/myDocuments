@@ -1,6 +1,6 @@
 ---
 name: verify-mydocuments
-description: Immersive Markdown Editor（Tauri 2 + CodeMirror 6 の没入型 Markdown エディタ）の動作を、実ユーザー面で再現可能に起動・操作・証跡化する。primary は VITE_E2E ビルドの Web UI を Playwright（chromium）で操作する面、secondary は macOS の Tauri debug ビルドの窓の観測。文書の保存、設定画面（外観と編集の節、最後の節「診断」のログの設定）と外観、左サイドバーとエクスプローラー（フォルダツリー、作成・名前の変更・ゴミ箱への移動、移動（ドラッグアンドドロップ、切り取りと貼り付け、同じ名前があるときの確認、開いている文書への追従）、外部の変更の自動反映、同梱の段 2 の部品「パスをコピー」と部品の権限の確認）、右ペインの部品のパネルと同梱の部品「アウトライン」、同梱の部品「タイピング音」（設定画面の「執筆の補助」のチェックと「音」の節の音色と音量、音色の切り替え、鳴り始めの位置、鳴らす要求の数え方、アプリのログへの記録）、アプリのログ基盤（設定「ログを記録する」、本体のロガー、Rust の app.log）、性能の計測（ログがオンの間だけ、区間ごとの所要時間を 1 分ごとにまとめる。ADR-007 の R16）、執筆モード、保存の信頼性、書き心地（Enter でのリストの継続、カーソルのない行で記法を隠す記号の表示、⌘/Ctrl+クリックでリンクを開く操作、隠した行のチェックボックスのクリックでの切り替え、表の表示と表の中の Tab でのセルの移動、表の入力の支援を含む）を変えたとき、または変更を検証して証跡を残したいときに使う。
+description: Immersive Markdown Editor（Tauri 2 + CodeMirror 6 の没入型 Markdown エディタ）の動作を、実ユーザー面で再現可能に起動・操作・証跡化する。primary は VITE_E2E ビルドの Web UI を Playwright（chromium）で操作する面、secondary は macOS の Tauri debug ビルドの窓の観測。文書の保存、設定画面（外観と編集の節、最後の節「診断」のログの設定）と外観、左サイドバーとエクスプローラー（フォルダツリー、作成・名前の変更・ゴミ箱への移動、移動（ドラッグアンドドロップ、切り取りと貼り付け、同じ名前があるときの確認、開いている文書への追従）、外部の変更の自動反映、同梱の段 2 の部品「パスをコピー」と部品の権限の確認）、右ペインの部品のパネルと同梱の部品「アウトライン」、同梱の部品「タイピング音」（設定画面の「執筆の補助」のチェックと「音」の節の音色と音量、音色の切り替え、鳴り始めの位置、鳴らす要求の数え方、アプリのログへの記録）、アプリのログ基盤（設定「ログを記録する」、本体のロガー、Rust の app.log）、性能の計測（ログがオンの間だけ、区間ごとの所要時間を 1 分ごとにまとめる。ADR-007 の R16）、執筆モード、保存の信頼性、書き心地（Enter でのリストの継続、カーソルのない行で記法を隠す記号の表示、⌘/Ctrl+クリックでリンクを開く操作、隠した行のチェックボックスのクリックでの切り替え、表の表示と列幅・横スクロール、表の中の Tab でのセルの移動、表の入力の支援を含む）を変えたとき、または変更を検証して証跡を残したいときに使う。
 ---
 
 # verify-mydocuments
@@ -71,7 +71,7 @@ ps や lsof が使えない sandbox（レビューや quality gate の実行環�
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/document-open-edit-save.json
 ```
 
-オプション: `--name <label>`（証跡の保存名。既定はシナリオのファイル名）、`--platform mac|windows|linux`（navigator を偽装し、ControlOrMeta をその OS の修飾キーに読み替える。tests/e2e/helpers.ts と同じ作法。省略時はホスト OS）、`--viewport 1280x800`、`--headed`（ブラウザを表示）。シナリオは { "seed", "steps", "viewport"?, "platform"? }。
+オプション: `--name <label>`（証跡の保存名。既定はシナリオのファイル名）、`--platform mac|windows|linux`（navigator を偽装し、ControlOrMeta をその OS の修飾キーに読み替える。tests/e2e/helpers.ts と同じ作法。省略時はホスト OS）、`--viewport 1280x800`、`--headed`（ブラウザを表示）。シナリオは { "seed", "steps", "viewport"?, "platform"?, "showScrollbars"? }。showScrollbars: true は、headless の既定の --hide-scrollbars を外し、スクロールバーを描いて場所も取らせる（表の横スクロールバーの撮影用）。
 
 seed は window.__E2E_SEED__ に入る初期状態で、ページを開く前に注入される。
 
