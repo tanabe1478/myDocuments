@@ -8,6 +8,7 @@
 - SND-2: 鳴らすキーは、文字の入力になるキー（日本語入力の変換中の keydown、key が Process または keyCode が 229 のものを含む）、Space、Enter、Backspace、Delete、Tab。鳴らさないのは、修飾キーだけ、Cmd または Ctrl を伴うキー、矢印などの移動、Escape、ファンクションキー。押し続けた繰り返しは、全体で 30ms に 1 回に間引く。同時に鳴る音は 8 個まで。
 - SND-3: 毎回、選んでいる音色の素材（キーボード 10 個、タイプライター 8 個）から無作為に選ぶ（直前と同じものは続かない）。高さ（再生速度）は ±4%、音量は ±10% 揺れる。Enter は再生速度が 0.8 前後で、少し低い。音量の段階は小 0.25、中 0.5、大 1.0 の gain。
 - SND-4: オフの間は、素材の fetch も AudioContext の生成もしない。オンになると素材を fetch する。AudioContext の生成と resume は、最初の鳴らすキーの中で行い、そのキー自身はデコードが終わっていないので鳴らない。keydown は観察だけ（preventDefault しない）。失敗は例外として外へ出ず、鳴らないだけ。部品を外すときに AudioContext を閉じる。
+- SND-7: アプリのログ（ADR-007、R14）への記録。設定「診断」の「ログを記録する」（既定はオフ。appearance-canvas.md の APP-11）がオンの間だけ、source typing-sound で記録する。AudioContext を作った（context.created: sample_rate、base_latency、output_latency、state）、statechange（context.statechange: from、to、current_time）、resume を頼んだ（resume.requested）とその結果（resume.result: ok、state、失敗なら error の名前）、素材の読み込みの失敗（fetch.failed: timbre、status、error）、デコードの結果（decode.result: timbre、ok、failed）、時計の止まりの疑い（clock.stalled: running のまま、前に見たときから 500ms 以上たつのに currentTime の進みが 4 分の 1 未満。続く間は 1 回、進めば clock.recovered）、devicechange（イベントが使える環境だけ）。鳴らすキーごとには書かず、鳴り方と、keydown から start までの同期の経路は変えない（currentTime の読み取りと比較だけを足した）。記録だけで、作り直しはしない。
 
 ## How to get to it (user POV)
 
@@ -34,8 +35,11 @@ node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenari
 - 素材ごとの鳴り始めの位置（decodedOffsets）が、WAV の標本から求めた期待値と一致すること、keydown から start までが 5 ms 未満であること、AudioContext が latencyHint 'interactive' で作られること、タイプライターの素材だけが fetch されること（ネットワークの要求のファイル名）は、tests/e2e/typing-sound.spec.ts が確かめる（Playwright の chromium。WebKit でも同じテストが通ることは、設定のファイルを repo の外に置いて確かめた）。
 - 本番の dist には、WAV がちょうど 18 個（キーボード 10、加工後のタイプライター 8）あり、元の録音（sounds/typewriter/original/）は入らない。確かめは check-probe-absent.mjs（dist/assets の WAV の数と名前を見る）、`ls dist/assets/*.wav | wc -l` と、リポジトリ直下の scripts フォルダの make-typewriter-sounds.mjs を `--check` 付きで node に渡す実行（加工後の 8 個が元から作り直せること）。
 - 保存・読み込みの実体は Rust 側（crates/docio）。メモリ bridge は、同じタブでの再読み込みで設定を読み直す。
+- ログ（SND-7）の確かめ方: seed の preferences に appLog: true と typingSound: true を入れて起動し、最初のキーのあと、window.__mdeE2E.logging.entries の source が typing-sound の行を読む（渡されるまで 1 秒ほど。expect の timeout で待つ）。context.created と decode.result（ok が 10、failed が 0）は、最初のキーのあとに出る。時計の止まり、statechange、resume、devicechange、素材の失敗は、本物の AudioContext に包みを被せたり、route で素材の応答を差し替えたりするので、tests/e2e/app-log.spec.ts が確かめ、シナリオには含めない。appLog がオフ（既定）なら、window.__mdeE2E.logging.appendLogCalls は 0 件のまま。
 
 ## Gotchas
+
+- ログ（SND-7）の時計の止まりは、鳴らすキーの間隔が 500ms 以上空いたときに比べる。e2e の chromium では、AudioContext の currentTime を止める包みで模したもので、WKWebView で実際に止まる条件は未確認。
 
 - 鳴らす要求を数えるシナリオは、最初に 1 回キーを押して、decoded が 1 になるのを待つ。待たずに数え始めると、最初のキーが鳴らないので、数が 1 つ足りない。
 - 要求は 30ms に 1 回までに間引かれる。連続して押すシナリオは、キーの間に wait（60ms 程度）を置く。固定の待ちは間引きの間隔を空けるためだけに使い、結果の待ちには expect の timeout を使う。

@@ -6,6 +6,7 @@ mod entries;
 mod error;
 mod external;
 mod folders;
+mod logging;
 mod plugin_permissions;
 mod preferences;
 #[cfg(feature = "isolation-probe")]
@@ -18,6 +19,7 @@ use documents::{DiskStateDto, FormatDto, KnownPaths, OpenedDocument, SaveResultD
 use drafts::{Draft, DraftSummary};
 use error::{CommandError, ErrorKind};
 use folders::{FolderListingDto, OpenFolders};
+use logging::LogState;
 use plugin_permissions::PluginPermissions;
 use session::Session;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -290,6 +292,22 @@ async fn save_plugin_permissions(app: AppHandle, permissions: serde_json::Value)
     plugin_permissions::save_to(&data_dir(&app)?, &permissions)
 }
 
+/// アプリのログを記録するかを切り替える（設定「ログを記録する」。既定は無効）。無効から有効に変わったとき、起動の情報を 1 行書く。
+/// 書き込みの失敗は、アプリの動作に影響させない（常に Ok）。
+#[tauri::command]
+async fn set_logging(enabled: bool, log: State<'_, LogState>) -> Result<(), CommandError> {
+    log.set_enabled(enabled);
+    Ok(())
+}
+
+/// ログの行（{ level, source, event, data? } の配列。時刻はここで付ける）を、有効の間だけ app.log へ追記する。
+/// 形が合わない項目は捨てる（エラーにしない）。無効の間は何も書かず、書けなくても Ok を返す。部品の隔離した iframe からは呼べない（capabilities は main の窓だけ）。
+#[tauri::command]
+async fn append_log(entries: serde_json::Value, log: State<'_, LogState>) -> Result<(), CommandError> {
+    log.append(&entries);
+    Ok(())
+}
+
 /// UI が終了の確認を済ませた後に呼ぶ。アプリを終了する。
 #[tauri::command]
 async fn close_app(app: AppHandle, guard: State<'_, CloseGuard>) -> Result<(), CommandError> {
@@ -362,12 +380,17 @@ macro_rules! app_commands {
             write_clipboard_text,
             load_plugin_permissions,
             save_plugin_permissions,
+            set_logging,
+            append_log,
             $($extra),*
         ]
     };
 }
 
 pub fn run() {
+    // ログの状態。パニックのフックも同じ状態を見る（有効の間だけ書く。既定のフックは残す）。
+    let log_state = LogState::default();
+    logging::install_panic_hook(log_state.clone());
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         // リンクを開くための Rust 側の API（OpenerExt）だけを使う。JavaScript 向けのコマンドは capabilities で許可せず、
@@ -377,7 +400,8 @@ pub fn run() {
         .manage(OpenFolders::default())
         .manage(DocumentWatcher::default())
         .manage(FolderWatcher::default())
-        .manage(CloseGuard::default());
+        .manage(CloseGuard::default())
+        .manage(log_state);
     // クリップボードに書くための Rust 側の API（ClipboardExt）だけを使う。JavaScript 向けのコマンドは capabilities で許可しない
     // （書く入口は write_clipboard_text だけ）。隔離の検証用のビルドは、書き込みを記録に差し替えるので、プラグインを入れない。
     #[cfg(not(feature = "isolation-probe"))]
@@ -405,6 +429,11 @@ pub fn run() {
             // 隔離の検証用のコマンドの許可。feature のときだけ足す。
             #[cfg(feature = "isolation-probe")]
             probe::grant(app)?;
+
+            // ログの置き場所（macOS では ~/Library/Logs/<identifier>/）。決められなければ、ログは書かれない。
+            if let Ok(dir) = app.path().app_log_dir() {
+                app.state::<LogState>().set_dir(dir);
+            }
 
             let handle = app.handle().clone();
             app.listen("frontend-ready", move |_| {
@@ -541,6 +570,35 @@ mod no_remote_capability_tests {
                 remote.is_none() || remote == Some(&serde_json::Value::Null),
                 "capability {id} has a remote entry: {remote:?}"
             );
+        }
+    }
+}
+
+/// ログのコマンド（set_logging、append_log）は、ほかの自前のコマンドと同じ作りで許可されることの検査（ADR-007）。
+/// 許可は main の窓だけ（部品の隔離した iframe は、capability の対象にならない）。
+#[cfg(test)]
+mod logging_acl_tests {
+    #[test]
+    fn the_logging_commands_are_granted_to_the_main_window_only() {
+        let caps: serde_json::Value = serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
+        let permissions: Vec<&str> = caps["permissions"].as_array().unwrap().iter().filter_map(|p| p.as_str()).collect();
+        assert!(permissions.contains(&"allow-set-logging"));
+        assert!(permissions.contains(&"allow-append-log"));
+        assert!(!permissions.iter().any(|p| (p.starts_with("log:") || p.contains("plugin-log") || p.contains("logging") || p.contains("append-log")) && !matches!(*p, "allow-set-logging" | "allow-append-log")), "no other log permission (such as a log plugin) may be granted: {permissions:?}");
+        assert_eq!(caps["windows"], serde_json::json!(["main"]));
+    }
+
+    #[test]
+    fn the_generated_acl_has_both_commands() {
+        let out = std::path::Path::new(env!("OUT_DIR"));
+        let text = ["acl-manifests.json", "capabilities.json"]
+            .iter()
+            .map(|name| std::fs::read_to_string(out.join(name)).unwrap())
+            .collect::<Vec<_>>()
+            .join("\n");
+        for name in ["set_logging", "append_log"] {
+            assert!(text.contains(name), "{name}");
+            assert!(text.contains(&format!("allow-{}", name.replace('_', "-"))), "{name}");
         }
     }
 }

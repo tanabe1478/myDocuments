@@ -365,8 +365,23 @@ export interface RadioSettingsItem extends SettingsItemBase {
 
 export type SettingsItemRegistration = CheckboxSettingsItem | RadioSettingsItem;
 
+/** 部品が記録するログの重さ（本体のロガーと同じ 3 つ）。 */
+export type PluginLogLevel = 'info' | 'warn' | 'error';
+
+/** ログの data。キーは [a-z0-9._-] の 1〜64 文字、値は数値、真偽値、null、文字列（500 文字まで）。合わない項目は捨てられる。本文とファイルのパスは入れない。 */
+export type PluginLogData = { readonly [key: string]: string | number | boolean | null | undefined };
+
+/**
+ * 本体のアプリのログ（ADR-007）に記録する口。source は部品の id に固定される。ログが無効（設定「ログを記録する」がオフ）の間は何もしない。
+ * 例外は出さない。本文とファイルのパスは記録しない。
+ * 貸す相手は、段 3（エディタの中の拡張。同梱の部品と、信頼した部品）の activate の ctx だけ。段 2 の部品（Worker）には貸さない。
+ */
+export type PluginLog = (level: PluginLogLevel, event: string, data?: PluginLogData) => void;
+
 /** activate に渡される登録の口。 */
 export interface PluginContext {
+  /** アプリのログに記録する（上の PluginLog）。段 3 の部品だけが使える。 */
+  readonly log: PluginLog;
   registerSetting<T>(definition: SettingDefinition<T>): SettingHandle<T>;
   registerEditorExtension<T>(registration: EditorExtensionRegistration<T>): void;
   registerCommand(registration: CommandRegistration): void;

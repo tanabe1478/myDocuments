@@ -6,6 +6,7 @@ import {
   BridgeError,
   FOLDER_LISTING_LIMIT,
   type BackgroundImageData,
+  type BridgeErrorKind,
   type DiskState,
   type DocumentBridge,
   type Draft,
@@ -19,6 +20,7 @@ import {
   type SessionInfo,
 } from '../DocumentBridge';
 import { normalizePermissionsFile, type PluginPermissionsFile } from '../../plugin-api';
+import type { LogEntry } from '../../logging/types';
 import { isOpenableExternalUrl } from '../externalUrl';
 import { decodeBytes, encodeText, sameBytes, sha256Hex, sniffImageMime } from './bytes';
 
@@ -120,6 +122,25 @@ export interface E2EState {
   clipboard: string[];
   /** savePluginPermissions に渡された値（保存された順）。 */
   savedPluginPermissions: PluginPermissionsFile[];
+  /**
+   * アプリのログ（ADR-007）。ネイティブ側の app.log の代わり。ネイティブ側と同じく、有効（setLogging(true)）の間だけ entries に残す
+   * （無効の間に appendLog が呼ばれても記録しない。呼ばれた回数は appendLogCalls に残るので、既定で 1 回も呼ばれないことを確かめられる）。
+   * 実際のファイルには書かない。時刻（t）は、渡された時点の ISO 8601。
+   */
+  logging: {
+    enabled: boolean;
+    /** setLogging に渡された値（呼ばれた順）。 */
+    setLoggingCalls: boolean[];
+    /** appendLog に渡された配列（呼ばれた順。有効かどうかによらない）。 */
+    appendLogCalls: LogEntry[][];
+    /** 有効の間に書かれた行（書かれた順）。 */
+    entries: Array<LogEntry & { t: string }>;
+  };
+  /**
+   * 次の 1 回だけ失敗させる操作（テスト用。アプリのログの、文書の失敗の記録を確かめるため）。値は、投げる BridgeError の kind。
+   * 投げるメッセージには、あえてパスを含める（ログにメッセージもパスも出ないことを確かめるため）。
+   */
+  failNext: Partial<Record<'openDocument' | 'saveDocument' | 'saveDocumentAs' | 'writeDraft', BridgeErrorKind>>;
   /** 取り込み済みの背景画像（imageId → 画像）。 */
   images: Map<string, BackgroundImageData>;
   imagePath: string | null;
@@ -233,6 +254,8 @@ export function createMemoryBridge(): DocumentBridge {
     fullscreen: false,
     clipboard: [],
     savedPluginPermissions: [],
+    logging: { enabled: false, setLoggingCalls: [], appendLogCalls: [], entries: [] },
+    failNext: {},
     images: new Map(),
     imagePath: seed.imagePath ?? null,
     checkDelayMs: 0,
@@ -368,6 +391,14 @@ export function createMemoryBridge(): DocumentBridge {
   /** 自分の操作の後にも、監視しているフォルダの通知は届く（本物の監視と同じ）。 */
   const notifyFolderSoon = (dir: string) => void setTimeout(() => state.emitFolderChanged(dir), 0);
 
+  /** state.failNext に指定があれば、その 1 回だけ失敗させる。 */
+  function failIfRequested(op: keyof E2EState['failNext']): void {
+    const kind = state.failNext[op];
+    if (kind === undefined) return;
+    delete state.failNext[op];
+    throw new BridgeError(kind, 'injected failure for /Users/e2e-user/Documents/secret-path.md');
+  }
+
   /** 実際にバイト列を書き換える。内容が同一なら書かない（unchanged）。 */
   function commit(kind: 'save' | 'saveAs', path: string, bytes: Uint8Array): SaveOutcome {
     const existing = state.files.get(path);
@@ -396,6 +427,7 @@ export function createMemoryBridge(): DocumentBridge {
     },
     async openDocument(path: string): Promise<OpenedDocument> {
       state.calls.open++;
+      failIfRequested('openDocument');
       const bytes = state.files.get(path);
       if (!bytes) throw new BridgeError('not-found', 'no such file');
       const { text, format } = decodeBytes(bytes);
@@ -405,6 +437,7 @@ export function createMemoryBridge(): DocumentBridge {
     // crates/docio の save_checked と同じ規則（正本は Rust 側）。
     async saveDocument(path, text, format, options: SaveOptions): Promise<SaveResult> {
       state.calls.save++;
+      failIfRequested('saveDocument');
       if (!known.has(path)) throw new BridgeError('not-allowed', 'not opened in this session');
       const bytes = encodeText(text, format);
       const existing = state.files.get(path);
@@ -428,6 +461,7 @@ export function createMemoryBridge(): DocumentBridge {
     },
     async saveDocumentAs(path, text, format): Promise<SaveResult> {
       state.calls.saveAs++;
+      failIfRequested('saveDocumentAs');
       const bytes = encodeText(text, format);
       const outcome = commit('saveAs', path, bytes);
       known.add(path);
@@ -449,6 +483,7 @@ export function createMemoryBridge(): DocumentBridge {
     },
     async writeDraft(draft) {
       state.calls.draftWrite++;
+      failIfRequested('writeDraft');
       state.drafts.set(draft.draftId, structuredClone(draft));
       return `memory://drafts/${draft.draftId}.json`;
     },
@@ -622,6 +657,16 @@ export function createMemoryBridge(): DocumentBridge {
       const normalized = normalizePermissionsFile(permissions);
       state.savedPluginPermissions.push(structuredClone(normalized));
       sessionStorage.setItem(PERMISSIONS_KEY, JSON.stringify(normalized));
+    },
+    async setLogging(enabled) {
+      state.logging.setLoggingCalls.push(enabled);
+      state.logging.enabled = enabled;
+    },
+    async appendLog(entries) {
+      state.logging.appendLogCalls.push(structuredClone([...entries]));
+      if (!state.logging.enabled) return;
+      // ネイティブ側と同じく、1 回に 100 件まで。
+      for (const entry of entries.slice(0, 100)) state.logging.entries.push({ t: new Date().toISOString(), ...structuredClone(entry) });
     },
     async toggleFullscreen() {
       state.calls.fullscreen++;

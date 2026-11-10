@@ -16,6 +16,7 @@ import { UNTITLED, documentTitle, isDirty } from './document/state';
 import { ExplorerController, type TrashTarget } from './explorer/controller';
 import type { EditorAdapter } from './editor/EditorAdapter';
 import { createCodeMirrorAdapter } from './editor/codemirror/CodeMirrorAdapter';
+import { applyLogSetting, logger } from './logging';
 import { BridgeError, type DocumentBridge, type DraftSummary } from './platform';
 import { createHostServices, createIsolatedServices } from './platform/hostServices';
 import type { PermissionController } from './permissions/controller';
@@ -116,6 +117,8 @@ export function App({
         askRecovery: (draft, others) =>
           new Promise<RecoveryChoice>((resolve) => setRecovery({ draft, others, resolve })),
         notify: (n: Notice) => setNotice({ ...n, id: ++noticeId.current }),
+        // アプリのログ（ADR-007）。失敗の操作の名前とエラーの種類だけ。ログが無効の間は何もしない。
+        log: (level, event, data) => logger.log(level, 'document', event, data),
       }),
     [bridge],
   );
@@ -313,6 +316,9 @@ export function App({
 
   // 設定を CSS 変数と data-theme に反映する（即時）。
   useEffect(() => applyPreferences(prefs), [prefs]);
+
+  // 診断の設定「ログを記録する」（ADR-007）をネイティブ側とロガーに伝える。起動時の値は main.tsx が先に伝えてあり、同じ値なら何もしない。
+  useEffect(() => void applyLogSetting(prefs.appLog), [prefs.appLog]);
 
   // 保存は debounce。ウィンドウを閉じる直前の分は pagehide で出す。
   const savedRef = useRef(initialPreferences);

@@ -1,0 +1,87 @@
+{
+ "seed": {
+  "files": {
+   "/work/private-notes/diary.md": {
+    "text": "はじめ"
+   }
+  },
+  "openPath": "/work/private-notes/diary.md",
+  "preferences": {
+   "theme": "dark",
+   "autoHideChrome": false,
+   "appLog": true
+  }
+ },
+ "steps": [
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.setLoggingCalls",
+    "equals": [
+     true
+    ],
+    "timeout": 4000
+   },
+   "note": "オンで起動すると、最初から有効がネイティブ側へ伝わる"
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.entries.map((e) => e.source + '.' + e.event).join(',')",
+    "contains": "app.start",
+    "timeout": 5000
+   },
+   "note": "起動の記録（userAgent）が渡る"
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.entries.find((e) => e.event === 'start').data.user_agent === navigator.userAgent",
+    "equals": true
+   }
+  },
+  {
+   "press": "ControlOrMeta+,"
+  },
+  {
+   "expect": {
+    "eval": "document.documentElement.dataset.theme",
+    "equals": "dark"
+   }
+  },
+  {
+   "expect": {
+    "eval": "document.querySelector('[data-testid=settings-diagnostics] input[type=checkbox]').checked",
+    "equals": true
+   },
+   "note": "保存済みの設定がチェックに出る"
+  },
+  {
+   "expect": {
+    "eval": "(document.querySelector('[data-testid=settings-diagnostics]').scrollIntoView({ block: 'end' }), true)",
+    "equals": true
+   },
+   "note": "撮影のため、「診断」の節が見える位置までスクロールする"
+  },
+  {
+   "screenshot": "diagnostics-on-dark"
+  },
+  {
+   "uncheck": {
+    "panel": true,
+    "role": "checkbox",
+    "name": "ログを記録する"
+   }
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.setLoggingCalls",
+    "equals": [
+     true,
+     false
+    ],
+    "timeout": 4000
+   }
+  },
+  {
+   "screenshot": "diagnostics-off-dark"
+  }
+ ]
+}

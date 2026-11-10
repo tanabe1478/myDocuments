@@ -72,6 +72,11 @@ export interface SoundContext {
   /** 観測用（e2e のビルドが記録する）。無い環境もある。 */
   readonly baseLatency?: number;
   readonly outputLatency?: number;
+  /** アプリのログ用（ADR-007）。無い環境（テスト用の簡単な実装）もある。 */
+  readonly sampleRate?: number;
+  readonly currentTime?: number;
+  addEventListener?(type: 'statechange', listener: () => void): void;
+  removeEventListener?(type: 'statechange', listener: () => void): void;
   resume(): Promise<void>;
   close(): Promise<void>;
   decodeAudioData(data: ArrayBuffer): Promise<SoundBuffer>;
@@ -99,6 +104,21 @@ export type TypingSoundEvent =
       readonly outputLatency: number | null;
     };
 
+/** アプリのログ（ADR-007）への記録口。source は部品の id に固定済み（index.ts が ctx.log を渡す）。無効の間は何もしない。 */
+export type TypingSoundLog = (level: 'info' | 'warn' | 'error', event: string, data?: Record<string, string | number | boolean | null>) => void;
+
+/** デバイスの増減の通知元（navigator.mediaDevices）。 */
+export interface DeviceEventSource {
+  addEventListener(type: 'devicechange', listener: () => void): void;
+  removeEventListener(type: 'devicechange', listener: () => void): void;
+}
+
+/** 時計の止まりを疑うときの、前に見たときからの最短の経過（ミリ秒）と、currentTime の進みが「止まり」になる、経過に対する割合。 */
+export const STALL_MIN_WALL_MS = 500;
+export const STALL_ADVANCE_RATIO = 1 / 4;
+/** suspended などで resume を頼み続けるとき、同じ記録を繰り返さない間隔（ミリ秒）。 */
+const RESUME_LOG_INTERVAL_MS = 5000;
+
 export interface TypingSoundPlayerOptions {
   /** 音色ごとの素材の URL（本体と同じオリジン）。 */
   readonly urls: Readonly<Record<TypingSoundTimbre, readonly string[]>>;
@@ -110,6 +130,10 @@ export interface TypingSoundPlayerOptions {
   /** 今の時刻（ミリ秒）。間引きと同時の上限、keydown から start までの時間に使う。 */
   readonly now?: () => number;
   readonly observe?: (event: TypingSoundEvent) => void;
+  /** アプリのログ（ADR-007）。observe とは別の受け口。状態が変わったとき、失敗、時計の止まりの疑いのときだけ呼ぶ（鳴らすキーごとには呼ばない）。 */
+  readonly log?: TypingSoundLog;
+  /** デバイスの増減の通知元。省略は navigator.mediaDevices（ない環境、イベントが使えない環境では、記録しない）。null なら使わない。 */
+  readonly mediaDevices?: DeviceEventSource | null;
 }
 
 export interface TypingSoundPlayer {
@@ -136,11 +160,22 @@ const defaultCreateContext = (): SoundContext => {
   return createAudioContext(Ctor as unknown as new (options?: { latencyHint?: string }) => unknown);
 };
 
+/** 素材の取得が、HTTP の失敗の状態で終わった。ログに状態を残すため、status を持つ（メッセージは従来のまま）。 */
+export class SoundHttpError extends Error {
+  constructor(readonly status: number) {
+    super(`素材を読めません（${status}）`);
+    this.name = 'SoundHttpError';
+  }
+}
+
 async function defaultFetchBytes(url: string): Promise<ArrayBuffer> {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`素材を読めません（${res.status}）`);
+  if (!res.ok) throw new SoundHttpError(res.status);
   return res.arrayBuffer();
 }
+
+const errorName = (e: unknown): string => (e instanceof Error ? e.name : typeof e === 'object' && e !== null ? 'object' : typeof e);
+const finiteOrNull = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) ? value : null);
 
 /** デコードした素材の、鳴り始めの位置（秒）。読めなければ 0（頭から鳴らす）。 */
 function offsetOfBuffer(buffer: SoundBuffer): number {
@@ -182,6 +217,7 @@ interface TimbreState {
  */
 export function createTypingSoundPlayer(options: TypingSoundPlayerOptions): TypingSoundPlayer {
   const { urls, observe } = options;
+  const logOption = options.log;
   const createContext = options.createContext ?? defaultCreateContext;
   const fetchBytes = options.fetchBytes ?? defaultFetchBytes;
   const random = options.random ?? Math.random;
@@ -211,6 +247,121 @@ export function createTypingSoundPlayer(options: TypingSoundPlayerOptions): Typi
     }
   };
 
+  const log: TypingSoundLog = (level, event, data) => {
+    try {
+      logOption?.(level, event, data);
+    } catch {
+      // ログは、鳴らす処理を妨げない。
+    }
+  };
+
+  // ---- アプリのログ（ADR-007）のための状態。鳴らし方には使わない。 ----
+  /** 最後に見た AudioContext の state（statechange の前の状態として記録する）。 */
+  let lastState = '';
+  /** 時計を比べる基準（前に見たときの、時刻と currentTime）。state が running でなくなったら取り直す。 */
+  let clockBase: { at: number; time: number } | null = null;
+  /** 時計の止まりを記録した後、進むようになるまで true（続く間は 1 回だけ記録する）。 */
+  let stalled = false;
+  /** resume を頼んだ記録を、同じ状態の間は繰り返さないための印と、最後に記録した時刻、記録しなかった頼みの数。 */
+  let resumeLogged = false;
+  let resumeLoggedAt = Number.NEGATIVE_INFINITY;
+  let resumeSkipped = 0;
+  let detachLogging: (() => void) | null = null;
+
+  /** 作った AudioContext の記録（作ったこと、statechange、devicechange）。記録の失敗は、鳴らす処理に出さない。 */
+  function watchContext(ctx: SoundContext): void {
+    try {
+      lastState = ctx.state;
+      clockBase = null;
+      stalled = false;
+      resumeLogged = false;
+      log('info', 'context.created', {
+        sample_rate: finiteOrNull(ctx.sampleRate),
+        base_latency: finiteOrNull(ctx.baseLatency),
+        output_latency: finiteOrNull(ctx.outputLatency),
+        state: ctx.state,
+      });
+      const onStateChange = () => {
+        const to = ctx.state;
+        log('info', 'context.statechange', { from: lastState, to, current_time: finiteOrNull(ctx.currentTime) });
+        lastState = to;
+        // どの状態の変化でも、時計の比べ直しの基準は取り直す（suspended からの resume のあとを含む）。
+        clockBase = null;
+        if (to === 'running') resumeLogged = false;
+      };
+      const cleanups: Array<() => void> = [];
+      if (typeof ctx.addEventListener === 'function') {
+        ctx.addEventListener('statechange', onStateChange);
+        cleanups.push(() => ctx.removeEventListener?.('statechange', onStateChange));
+      }
+      const devices = options.mediaDevices !== undefined ? options.mediaDevices : ((globalThis.navigator as Navigator | undefined)?.mediaDevices ?? null);
+      if (devices && typeof devices.addEventListener === 'function') {
+        const onDeviceChange = () => log('info', 'devicechange', { state: ctx.state, output_latency: finiteOrNull(ctx.outputLatency) });
+        devices.addEventListener('devicechange', onDeviceChange);
+        cleanups.push(() => devices.removeEventListener?.('devicechange', onDeviceChange));
+      }
+      detachLogging = () => {
+        for (const cleanup of cleanups) {
+          try {
+            cleanup();
+          } catch {
+            // 外せなくても、以降の処理には影響しない。
+          }
+        }
+      };
+    } catch {
+      // 記録の準備に失敗しても、鳴らす処理は続ける。
+    }
+  }
+
+  function unwatchContext(): void {
+    const detach = detachLogging;
+    detachLogging = null;
+    detach?.();
+  }
+
+  /** state が running のときの、時計の止まりの検査。currentTime の読み取りと比較だけ（await もログの書き込みも挟まない）。 */
+  function checkClock(ctx: SoundContext, t: number): void {
+    const time = ctx.currentTime;
+    if (typeof time !== 'number' || !Number.isFinite(time)) return;
+    if (clockBase === null) {
+      clockBase = { at: t, time };
+      return;
+    }
+    const wall = t - clockBase.at;
+    if (wall < STALL_MIN_WALL_MS) return;
+    const advance = (time - clockBase.time) * 1000;
+    clockBase = { at: t, time };
+    if (advance < wall * STALL_ADVANCE_RATIO) {
+      if (!stalled) {
+        stalled = true;
+        log('warn', 'clock.stalled', { elapsed_ms: Math.round(wall), advance_ms: Math.round(advance), state: ctx.state });
+      }
+    } else if (stalled) {
+      stalled = false;
+      log('info', 'clock.recovered', { elapsed_ms: Math.round(wall), advance_ms: Math.round(advance), state: ctx.state });
+    }
+  }
+
+  /** running でないときの resume の頼み。頼み方は従来のまま（結果は待たず、失敗は握りつぶす）。記録は、状態の間に 1 回（続くときは 5 秒に 1 回）。 */
+  function requestResume(ctx: SoundContext, t: number): void {
+    const record = !resumeLogged || t - resumeLoggedAt >= RESUME_LOG_INTERVAL_MS;
+    if (record) {
+      log('info', 'resume.requested', { state: ctx.state, skipped: resumeSkipped });
+      resumeLogged = true;
+      resumeLoggedAt = t;
+      resumeSkipped = 0;
+    } else {
+      resumeSkipped += 1;
+    }
+    void ctx.resume().then(
+      () => {
+        if (record) log('info', 'resume.result', { ok: true, state: ctx.state });
+      },
+      (e: unknown) => log('warn', 'resume.result', { ok: false, error: errorName(e), state: ctx.state }),
+    );
+  }
+
   function startDecode(ctx: SoundContext, timbre: TypingSoundTimbre, state: TimbreState): void {
     if (state.decoding || state.sounds || !state.bytes) return;
     state.decoding = true;
@@ -219,7 +370,16 @@ export function createTypingSoundPlayer(options: TypingSoundPlayerOptions): Typi
       const decoded = results.flatMap((r) => (r.status === 'fulfilled' ? [{ buffer: r.value, offset: offsetOfBuffer(r.value) }] : []));
       // 1 つも読めなければ、鳴らさない（次のキーで、同じ失敗を繰り返さない）。
       state.sounds = decoded;
-      if (!disposed) emit({ type: 'decoded', timbre, count: decoded.length, offsets: decoded.map((d) => d.offset) });
+      if (!disposed) {
+        emit({ type: 'decoded', timbre, count: decoded.length, offsets: decoded.map((d) => d.offset) });
+        const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+        log(failures.length > 0 ? 'warn' : 'info', 'decode.result', {
+          timbre,
+          ok: decoded.length,
+          failed: failures.length,
+          ...(failures[0] ? { error: errorName(failures[0].reason) } : {}),
+        });
+      }
     });
   }
 
@@ -238,18 +398,23 @@ export function createTypingSoundPlayer(options: TypingSoundPlayerOptions): Typi
         // キーが先に来て AudioContext がもうあるなら、ここからデコードを始める。
         if (context && !disposed) startDecode(context, timbre, state);
       },
-      () => {
+      (error: unknown) => {
         // 読めなかった。次に設定がオンになったとき、または音色が選ばれたとき（prepare）、もう一度試す。
         state.loading = false;
+        if (!disposed) log('warn', 'fetch.failed', { timbre, status: error instanceof SoundHttpError ? error.status : null, error: errorName(error) });
       },
     );
   }
 
   function ensureContext(): SoundContext | null {
-    if (context?.state === 'closed') context = null;
+    if (context?.state === 'closed') {
+      unwatchContext();
+      context = null;
+    }
     if (!context) {
       context = createContext();
       emit({ type: 'context' });
+      watchContext(context);
     }
     return context;
   }
@@ -275,9 +440,12 @@ export function createTypingSoundPlayer(options: TypingSoundPlayerOptions): Typi
       startDecode(ctx, timbre, state);
       if (ctx.state !== 'running') {
         // 自動再生の制限、窓が裏に回った、スリープなど。利用者の操作（このキー）の中で resume する。
-        void ctx.resume().catch(() => {});
+        clockBase = null;
+        requestResume(ctx, t);
         return;
       }
+      resumeLogged = false;
+      checkClock(ctx, t);
       const sounds = state.sounds;
       if (!sounds || sounds.length === 0) return;
       ends = ends.filter((end) => end > t);
@@ -334,6 +502,7 @@ export function createTypingSoundPlayer(options: TypingSoundPlayerOptions): Typi
     disposed = true;
     const ctx = context;
     context = null;
+    unwatchContext();
     states.clear();
     ends = [];
     if (ctx) {

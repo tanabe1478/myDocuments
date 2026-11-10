@@ -52,6 +52,8 @@ export interface Preferences {
   readonly surfaceOpacity: number;
   /** 背景を描かず、テーマの既定配色だけにする（アクセシビリティ）。 */
   readonly hideBackground: boolean;
+  /** アプリのログ（app.log）を記録する（ADR-007。設定画面の「診断」）。既定はオフ。 */
+  readonly appLog: boolean;
 }
 
 /**
@@ -77,6 +79,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   overlayOpacity: 0.35,
   surfaceOpacity: 0.85,
   hideBackground: false,
+  appLog: false,
 };
 
 export const RANGES = {
@@ -166,5 +169,6 @@ function normalizeCore(raw: unknown): Preferences {
     overlayOpacity: number(r.overlayOpacity, RANGES.overlayOpacity, d.overlayOpacity),
     surfaceOpacity: number(r.surfaceOpacity, RANGES.surfaceOpacity, d.surfaceOpacity),
     hideBackground: boolean(r.hideBackground, d.hideBackground),
+    appLog: boolean(r.appLog, d.appLog),
   };
 }

@@ -1,4 +1,5 @@
 import type { DocumentFormat } from '../document/format';
+import type { LogEntry } from '../logging/types';
 import type { PluginPermissionsFile } from '../plugin-api';
 import type { Preferences } from '../preferences/preferences';
 
@@ -208,6 +209,16 @@ export interface DocumentBridge {
   loadPluginPermissions(): Promise<PluginPermissionsFile>;
   /** 部品の権限の決定を保存する（ネイティブ側が、形と大きさを検査する）。 */
   savePluginPermissions(permissions: PluginPermissionsFile): Promise<void>;
+  /**
+   * アプリのログを記録するかを、ネイティブ側へ伝える（設定「ログを記録する」。既定はオフ）。無効から有効に変わったとき、ネイティブ側が起動の情報を 1 行書く。
+   * ログの本体は src/logging/。ここは入口だけ。
+   */
+  setLogging(enabled: boolean): Promise<void>;
+  /**
+   * ログの行を、ネイティブ側の app.log へ追記する（有効の間だけ。無効の間、ネイティブ側は何も書かずに成功を返す）。時刻はネイティブ側が付ける。
+   * 1 回に 100 件まで。形の合わない項目は、ネイティブ側が捨てる。書けなくても、失敗にしない。
+   */
+  appendLog(entries: readonly LogEntry[]): Promise<void>;
   /** 全画面を切り替え、切替後の状態（true なら全画面）を返す。 */
   toggleFullscreen(): Promise<boolean>;
   /** 最初の描画が済んだことをネイティブ側へ知らせる（窓の表示）。 */

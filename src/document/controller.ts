@@ -1,3 +1,4 @@
+import { errorKind } from '../logging/sanitize';
 import { BridgeError, type DocumentBridge, type Draft, type DraftSummary, type SaveResult as BridgeSaveResult } from '../platform';
 import { DraftKeeper, buildDraft, type DraftKeeperDeps } from './drafts';
 import {
@@ -53,6 +54,11 @@ export interface ControllerDeps {
   /** 起動時に、復旧できる草稿があるときの確認。others はそれ以外の草稿の件数。 */
   askRecovery(draft: DraftSummary, others: number): Promise<RecoveryChoice>;
   notify(notice: Notice): void;
+  /**
+   * アプリのログ（ADR-007）への記録口。source は document。開く、保存、別名保存、草稿の書き込みの失敗のとき、操作の名前とエラーの種類だけを渡す
+   * （本文とパスは渡さない）。ない環境では、記録しない。
+   */
+  log?(level: 'error', event: string, data: Record<string, string>): void;
   /** 草稿の識別子の生成（既定は crypto.randomUUID）。 */
   newDraftId?: () => string;
   /** 草稿の自動保存のタイマー（テストで差し替える）。 */
@@ -114,10 +120,21 @@ export class DocumentController {
     this.state = newDocumentState(this.newId());
     this.keeper = new DraftKeeper({
       bridge: deps.bridge,
-      onError: (e) =>
-        deps.notify({ kind: 'error', message: `草稿を保存できませんでした。${describeError(e)}` }),
+      onError: (e) => {
+        this.logFailure('draft-write', e);
+        deps.notify({ kind: 'error', message: `草稿を保存できませんでした。${describeError(e)}` });
+      },
       ...deps.draftTimers,
     });
+  }
+
+  /** 失敗をアプリのログに残す（操作の名前とエラーの種類だけ。本文もパスも、メッセージも書かない）。記録の失敗は、操作に影響させない。 */
+  private logFailure(op: 'open' | 'save' | 'save-as' | 'draft-write', e: unknown): void {
+    try {
+      this.deps.log?.('error', `${op}-failed`, { op, ...errorKind(e) });
+    } catch {
+      // 記録の失敗で、文書の操作を止めない。
+    }
   }
 
   getState = (): DocumentState => this.state;
@@ -217,6 +234,7 @@ export class DocumentController {
       this.setState(openedDocumentState(opened, this.newId()));
       return true;
     } catch (e) {
+      this.logFailure('open', e);
       if (!(options.quietNotFound && e instanceof BridgeError && e.kind === 'not-found')) {
         this.deps.notify({ kind: 'error', message: describeError(e) });
       }
@@ -413,6 +431,7 @@ export class DocumentController {
     try {
       path = await this.deps.bridge.pickSavePath(suggestedFileName(this.state));
     } catch (e) {
+      this.logFailure('save-as', e);
       this.deps.notify({ kind: 'error', message: describeError(e) });
       return 'failed';
     }
@@ -422,6 +441,7 @@ export class DocumentController {
       const result = await this.deps.bridge.saveDocumentAs(path, text, format);
       return await this.applySaveResult(result, { path, text, format });
     } catch (e) {
+      this.logFailure('save-as', e);
       this.deps.notify({ kind: 'error', message: describeError(e) });
       return 'failed';
     }
@@ -436,6 +456,7 @@ export class DocumentController {
       });
       return await this.applySaveResult(result, { path: plan.path, text, format });
     } catch (e) {
+      this.logFailure('save', e);
       this.deps.notify({ kind: 'error', message: describeError(e) });
       return 'failed';
     }

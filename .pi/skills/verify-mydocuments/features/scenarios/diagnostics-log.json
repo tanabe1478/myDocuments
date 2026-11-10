@@ -1,0 +1,266 @@
+{
+ "seed": {
+  "files": {
+   "/work/private-notes/diary.md": {
+    "text": "はじめ"
+   }
+  },
+  "openPath": "/work/private-notes/diary.md",
+  "preferences": {
+   "theme": "light",
+   "autoHideChrome": false
+  }
+ },
+ "steps": [
+  {
+   "press": "ControlOrMeta+o"
+  },
+  {
+   "expect": {
+    "testId": "doc-title",
+    "equals": "diary.md"
+   }
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.setLoggingCalls",
+    "equals": [
+     false
+    ]
+   },
+   "note": "起動時に、保存済みの設定（既定はオフ）がネイティブ側へ伝わる"
+  },
+  {
+   "click": ".cm-content"
+  },
+  {
+   "press": "ControlOrMeta+End"
+  },
+  {
+   "type": "BODY-MARKER-7f3c9a"
+  },
+  {
+   "press": "ControlOrMeta+s"
+  },
+  {
+   "expect": {
+    "testId": "unsaved-mark",
+    "read": "count",
+    "equals": 0
+   }
+  },
+  {
+   "wait": 1500
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.appendLogCalls.length",
+    "equals": 0
+   },
+   "note": "既定はオフ: 入力と保存をしても、appendLog は 1 回も呼ばれない"
+  },
+  {
+   "press": "ControlOrMeta+,"
+  },
+  {
+   "expect": {
+    "eval": "[...document.querySelectorAll('[data-testid=settings-dialog] .settings-section h3')].map((h) => h.textContent).at(-1)",
+    "equals": "診断"
+   },
+   "note": "最後の節は「診断」"
+  },
+  {
+   "expect": {
+    "panel": true,
+    "role": "checkbox",
+    "name": "ログを記録する",
+    "read": "visible",
+    "equals": true
+   }
+  },
+  {
+   "expect": {
+    "eval": "document.querySelector('[data-testid=settings-diagnostics] input[type=checkbox]').checked",
+    "equals": false
+   },
+   "note": "「ログを記録する」の既定はオフ"
+  },
+  {
+   "expect": {
+    "testId": "log-location",
+    "contains": "置き場所"
+   }
+  },
+  {
+   "expect": {
+    "eval": "document.querySelector('[data-testid=settings-diagnostics]').textContent.includes('オフにしても、書いたファイルは残ります')",
+    "equals": true
+   }
+  },
+  {
+   "expect": {
+    "eval": "(document.querySelector('[data-testid=settings-diagnostics]').scrollIntoView({ block: 'end' }), true)",
+    "equals": true
+   },
+   "note": "撮影のため、「診断」の節が見える位置までスクロールする"
+  },
+  {
+   "screenshot": "diagnostics-off-light"
+  },
+  {
+   "check": {
+    "panel": true,
+    "role": "checkbox",
+    "name": "ログを記録する"
+   }
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.savedPreferences.at(-1)?.appLog",
+    "equals": true,
+    "timeout": 4000
+   },
+   "note": "debounce の後に bridge へ保存される"
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.setLoggingCalls",
+    "equals": [
+     false,
+     true
+    ],
+    "timeout": 4000
+   },
+   "note": "オンにすると、ネイティブ側が有効になる"
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.entries.map((e) => e.source + '.' + e.event).join(',')",
+    "contains": "app.logging-enabled",
+    "timeout": 5000
+   },
+   "note": "オンにしたことの記録（userAgent つき）が、1 秒ほどでまとめて渡る"
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.entries.find((e) => e.event === 'logging-enabled').data.user_agent === navigator.userAgent",
+    "equals": true
+   }
+  },
+  {
+   "screenshot": "diagnostics-on-light"
+  },
+  {
+   "press": "Escape"
+  },
+  {
+   "click": ".cm-content"
+  },
+  {
+   "press": "ControlOrMeta+End"
+  },
+  {
+   "type": "更に打つ"
+  },
+  {
+   "press": "ControlOrMeta+s"
+  },
+  {
+   "expect": {
+    "testId": "unsaved-mark",
+    "read": "count",
+    "equals": 0
+   }
+  },
+  {
+   "wait": 1500
+  },
+  {
+   "expect": {
+    "eval": "JSON.stringify(window.__mdeE2E.logging.appendLogCalls).includes('BODY-MARKER-7f3c9a')",
+    "equals": false
+   },
+   "note": "本文に打った目印の文字列は、渡された記録のどこにもない"
+  },
+  {
+   "expect": {
+    "eval": "/diary|private-notes|[/]work[/]/.test(JSON.stringify(window.__mdeE2E.logging.appendLogCalls))",
+    "equals": false
+   },
+   "note": "開いたファイルの名前もパスも、記録にない"
+  },
+  {
+   "press": "ControlOrMeta+,"
+  },
+  {
+   "uncheck": {
+    "panel": true,
+    "role": "checkbox",
+    "name": "ログを記録する"
+   }
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.setLoggingCalls",
+    "equals": [
+     false,
+     true,
+     false
+    ],
+    "timeout": 4000
+   },
+   "note": "オフに戻すと、ネイティブ側も止まる"
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.savedPreferences.at(-1)?.appLog",
+    "equals": false,
+    "timeout": 4000
+   }
+  },
+  {
+   "expect": {
+    "eval": "(window.__callsAtOff = window.__mdeE2E.logging.appendLogCalls.length, window.__callsAtOff > 0)",
+    "equals": true
+   },
+   "note": "オンの間に渡した分の回数を控える"
+  },
+  {
+   "press": "Escape"
+  },
+  {
+   "click": ".cm-content"
+  },
+  {
+   "press": "ControlOrMeta+End"
+  },
+  {
+   "type": "オフの間"
+  },
+  {
+   "press": "ControlOrMeta+s"
+  },
+  {
+   "wait": 2000
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.appendLogCalls.length === window.__callsAtOff",
+    "equals": true
+   },
+   "note": "オフの間は、入力と保存をしても、appendLog は増えない"
+  },
+  {
+   "press": "ControlOrMeta+,"
+  },
+  {
+   "expect": {
+    "eval": "(document.querySelector('[data-testid=settings-diagnostics]').scrollIntoView({ block: 'end' }), true)",
+    "equals": true
+   }
+  },
+  {
+   "screenshot": "diagnostics-off-again"
+  }
+ ]
+}

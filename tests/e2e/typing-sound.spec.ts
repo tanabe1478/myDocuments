@@ -158,8 +158,8 @@ test.describe('設定画面 (Q1)', () => {
     await expect(sound.getByRole('radio', { name: '小' })).not.toBeChecked();
     await expect(sound.getByRole('radio', { name: '中' })).toBeChecked();
     await expect(sound.getByRole('radio', { name: '大' })).not.toBeChecked();
-    // 節の並び: 外観、編集、音。
-    await expect(dialog(page).locator('.settings-section h3')).toHaveText(['外観', '編集', '音']);
+    // 節の並び: 外観、編集、音、診断（診断は R14 で最後に足した節）。
+    await expect(dialog(page).locator('.settings-section h3')).toHaveText(['外観', '編集', '音', '診断']);
   });
 
   test('チェックと音量を操作すると保存され、再読み込み（起動し直し）のあとも残る', async ({ page }) => {

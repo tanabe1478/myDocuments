@@ -198,6 +198,11 @@ export interface PluginRegistryOptions {
    * 既定は false（作った時点で動かす）。
    */
   readonly deferStart?: boolean;
+  /**
+   * アプリのログ（ADR-007）への記録口。部品が止められたこと（source は plugin、event は stopped、data は id と reason）と、
+   * 段 3 の部品が ctx.log で記録するもの（source は部品の id）を、ここへ渡す。ない環境では、記録しない。例外は握りつぶす。
+   */
+  readonly log?: (level: 'info' | 'warn' | 'error', source: string, event: string, data?: Record<string, string | number | boolean | null | undefined>) => void;
   /** 読み込まなかった・止めたことの記録先。既定は console（warn / error）。 */
   readonly report?: (level: 'warn' | 'error', message: string, error?: unknown) => void;
 }
@@ -283,6 +288,13 @@ export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[]
   const report =
     options.report ??
     ((level, message, error) => (error === undefined ? console[level](message) : console[level](message, error)));
+  const hostLog: NonNullable<PluginRegistryOptions['log']> = (level, source, event, data) => {
+    try {
+      options.log?.(level, source, event, data);
+    } catch {
+      // ログの失敗で、部品も本体も止めない。
+    }
+  };
   const entries: Entry[] = [];
   const gate = options.permissions;
   let services: IsolatedServices | null = null;
@@ -345,6 +357,7 @@ export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[]
     entry.status = 'stopped';
     entry.reason = describe(error);
     report('error', `[plugin] 部品「${entry.id}」を止めました: ${entry.reason}`, error);
+    hostLog('error', 'plugin', 'stopped', { id: entry.id, reason: entry.reason });
     runCleanup(entry);
     refreshMenus();
     refreshPanels();
@@ -603,6 +616,8 @@ export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[]
       }
     };
     return {
+      log: (level, event, data) => hostLog(level, entry.id, event, data),
+
       registerSetting<T>(definition: SettingDefinition<T>): SettingHandle<T> {
         const { key } = definition;
         if (typeof key !== 'string' || !SETTING_KEY_PATTERN.test(key)) throw new Error(`設定のキーが不正です: ${String(key)}`);

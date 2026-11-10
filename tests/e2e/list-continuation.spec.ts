@@ -99,10 +99,10 @@ test.describe('リストの継続 (Run 11)', () => {
   test('(b)(c) 設定画面の「編集」で「リストの形に合わせる」に変えると空行が入り、戻すとすぐ入らなくなる。再読み込み後も保たれる', async ({ page }) => {
     await launchWith(page, LOOSE);
 
-    // 「編集」の節は「外観」の後にあり（そのあとに「音」の節がある）、既定は「空行を入れない」。
+    // 「編集」の節は「外観」の後にあり（そのあとに「音」と「診断」の節がある）、既定は「空行を入れない」。
     await page.keyboard.press('ControlOrMeta+,');
     const sections = dialog(page).locator('.settings-section h3');
-    await expect(sections).toHaveText(['外観', '編集', '音']);
+    await expect(sections).toHaveText(['外観', '編集', '音', '診断']);
     const editing = dialog(page).getByTestId('settings-editing');
     await expect(editing.getByRole('radio', { name: '空行を入れない' })).toBeChecked();
     await expect(editing.getByRole('radio', { name: 'リストの形に合わせる' })).not.toBeChecked();
@@ -140,8 +140,8 @@ test.describe('リストの継続 (Run 11)', () => {
     ).toBeChecked();
   });
 
-  test('設定画面の最後のラジオ（「音」の節の音量）でも、Tab は設定画面の中で循環する（選択が最後の「大」でも、そうでなくても）', async ({ page }) => {
-    // 「編集」の節は最後ではなくなった（「音」の節が続く）。DOM 順で最後のラジオ（の組）は、「音」の節の音量（音色の組は音量の前にある）。
+  test('設定画面の最後の項目（「診断」の節のチェック）でも、その前の「音」の節の音量のラジオ（選択が最後の「大」でも、そうでなくても）でも、Tab は設定画面の中で循環する', async ({ page }) => {
+    // R14 で「診断」の節が最後に加わった。DOM 順で最後の項目は「診断」のチェック。その前が「音」の節の音量のラジオ（音色の組は音量の前にある）。
     for (const volume of ['low', 'medium', 'high']) {
       const other = await page.context().newPage();
       await launchWith(other, LOOSE, { typingSoundVolume: volume });
@@ -149,14 +149,22 @@ test.describe('リストの継続 (Run 11)', () => {
       const root = dialog(other);
       await expect(root).toBeVisible();
       const insideDialog = () => other.evaluate(() => !!document.activeElement?.closest('[data-testid=settings-dialog]'));
-      // 選択中のラジオ（Tab で止まる側）へフォーカスし、Tab で最初の項目（閉じるボタン）へ戻る。
-      await root.getByTestId('settings-sound').locator('input[name=typing-sound-volume]:checked').focus();
+      const checkedVolume = root.getByTestId('settings-sound').locator('input[name=typing-sound-volume]:checked');
+      const logCheck = root.getByTestId('settings-diagnostics').getByRole('checkbox', { name: 'ログを記録する' });
+      // 選択中のラジオ（Tab で止まる側）へフォーカスし、Tab で次の項目（「診断」のチェック）へ。
+      await checkedVolume.focus();
+      await other.keyboard.press('Tab');
+      expect(await insideDialog(), volume).toBe(true);
+      await expect(logCheck, volume).toBeFocused();
+      // 最後の項目から Tab で、最初の項目（閉じるボタン）へ戻る。
       await other.keyboard.press('Tab');
       expect(await insideDialog(), volume).toBe(true);
       await expect(root.getByTestId('settings-close'), volume).toBeFocused();
-      // 最初の項目から Shift+Tab で、選択中のラジオへ戻る。
+      // 最初の項目から Shift+Tab で、最後の項目へ。もう一度で、選択中のラジオへ戻る。
       await other.keyboard.press('Shift+Tab');
-      await expect(root.getByTestId('settings-sound').locator('input[name=typing-sound-volume]:checked'), volume).toBeFocused();
+      await expect(logCheck, volume).toBeFocused();
+      await other.keyboard.press('Shift+Tab');
+      await expect(checkedVolume, volume).toBeFocused();
     }
   });
 

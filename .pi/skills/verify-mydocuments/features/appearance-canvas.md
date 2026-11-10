@@ -12,6 +12,7 @@
 - APP-8: 紙の幅（surfaceWidth）。既定の「窓いっぱい」（fill）は、紙（canvas-surface）が本文の領域（サイドバーを除いた領域）いっぱいで、影はない。「本文に合わせる」（text）は、本文の最大幅 + 左右の余白（広い窓で 56px ずつ）の幅で、領域の中央に置き、影がある。どちらも 1 行の長さは本文の最大幅で決まり、本文の列は本文の領域の中央。設定画面の「紙の幅」で切り替え、保存され、再読み込み後も維持される。不正な保存値は fill に戻る。
 - APP-9: 左サイドバー（aside、名前「サイドバー」）。既定は閉じている。上部バー左端の開閉ボタンか Mod+B で開閉し、開くと本文の領域を右へ 260px 押し出す（重ねない）。中身は見出し「エクスプローラー」と、フォルダ未選択なら「フォルダはまだ開かれていません」と「フォルダを開く」ボタン、選択後はフォルダのツリー（explorer.md）。開閉は保存され、再読み込み後に復元される。入力中の自動非表示では隠れない。IME の変換中は Mod+B に反応しない。設定画面を開いている間は Mod+B を無視する。
 - APP-10: 狭い窓。押し出すと本文が最小幅（本文の最大幅の最小値 320px + 左右の余白 20px ずつ = 360px）を割る窓（幅が 620px 未満）では、サイドバーは本文の上に重なり、本文は動かない。そのとき、サイドバーの中に閉じるボタン（sidebar-close）が出て、Esc でも閉じる。
+- APP-11: 設定画面の最後の節「診断」（ADR-007、R14）。チェック「ログを記録する」は既定でオフ。オンにすると preferences の appLog が保存され、ネイティブ側へ有効が伝わり（bridge の setLogging）、本体のロガーが、起動、拾われなかった例外、visibilitychange、時計の飛び、文書の失敗、部品の停止、タイピング音の状態などを、1 秒ごとにまとめて bridge の appendLog へ渡す（ネイティブ側が app.log へ JSON Lines で追記する）。オフの間は appendLog が 1 回も呼ばれない。オフに戻すと、ためていた分を捨てて止まる。補足に置き場所（macOS は `~/Library/Logs/io.github.tanabe1478.immersive-markdown-editor/`、ほかの OS は「OS のログのフォルダ」）と、オフにしても書いたファイルは残ることを書く。本文とファイルのパスは書かない。
 
 ## How to get to it (user POV)
 
@@ -20,6 +21,7 @@
 - 入力中に上部バーが隠れていても、F6 でバーへフォーカスを移して（最初に届くのは左端のサイドバーの開閉ボタン）、Tab で設定ボタンへ進んで Enter で押せる（writing-modes.md）。
 - 上部バー左端のサイドバーの開閉ボタン（data-testid sidebar-toggle。aria-expanded と aria-controls を持つ）をクリックする。Mod+B（macOS は Cmd+B、Windows と Linux は Ctrl+B）でも開閉する。狭い窓で重なって開いたときは、サイドバー内の閉じるボタン（sidebar-close）か Esc。
 - 設定画面内の部品は、ラベルの名前（文字サイズ、行高、段落間隔、字間、本文の最大幅、フォントの種類、font-family（自由入力）、単色の色、画像の明るさ、オーバーレイ濃度、本文面の不透明度、背景を表示しない など）とラジオの名前（ライト、ダーク、単色、グラデーション、画像、窓いっぱい、本文に合わせる、「編集」の節の 空行を入れない、リストの形に合わせる）で届く。
+- 「診断」の節（data-testid settings-diagnostics。設定画面の最後）のチェック「ログを記録する」と、置き場所の補足（data-testid log-location）。起動時の自動処理として、保存済みの appLog が、部品を読み込む前に、ネイティブ側とロガーへ伝わる。
 - 画像の選択は「画像を選ぶ」ボタン（image-pick）。ネイティブのダイアログは、メモリ bridge では seed の imagePath が戻り値の代わり。
 - 起動時の自動処理: 保存済みの設定（preferences。sidebarOpen と surfaceWidth を含む）が読み込まれて反映される。
 
@@ -33,12 +35,16 @@ Preconditions: Launch 済みで Doctor が全 PASS。画像のシナリオは se
 | layout-sidebar-surface.json | 文書を開き、Mod+B でサイドバーを開く。Mod+, で設定画面を開き、紙の幅を「本文に合わせる」、Esc、Mod+B で閉じる。ダークにして、サイドバー閉・開 × 紙 text・fill の順に切り替える。最後にサイドバーを開いて reload | 既定で data-surface が fill、サイドバーは閉じ（aria-expanded が false）、紙の矩形は窓全体（left 0、幅 1280、影なし）。開くと .workspace が left 260、幅 1020 になり、上部バー・下部バー・本文の左端がサイドバーの右端以上。fill の紙は 260〜1280。text の紙は幅 792 で中心が 770（閉じると 640）。設定画面を閉じるとフォーカスは本文。保存された設定が sidebarOpen true、surfaceWidth fill、theme dark で、reload 後もサイドバーが開いている。画像は light-fill-closed.png、light-fill-open.png、settings-open-light.png、light-text-open.png、light-text-closed.png、dark-text-closed.png、dark-text-open.png、dark-fill-open.png、dark-fill-closed.png、after-reload-open.png |
 | layout-sidebar-narrow.json | 560 幅の窓で Mod+B。閉じるボタンで閉じる。700 幅にして Mod+B | 560 幅では data-sidebar-mode が overlay で、.workspace は left 0、幅 560 のまま、本文の列は 320px 以上。sidebar-close が見え、押すと閉じてフォーカスは本文。700 幅では push で、.workspace が left 260、幅 440。画像は narrow-overlay-open.png、narrow-push-open.png |
 | appearance-background.json | Mod+, を開き、単色（#336699）、グラデーション（夕暮れ）、画像（選択）、明るさ 0.5、背景を表示しない、暗い単色 + 本文面の不透明度 0 を順に操作 | canvas-bg の data-kind が gradient から color、gradient、image と変わり、色は rgb(51, 102, 153)。画像は blob: の URL で、image-status が「取り込み済み」、filter が brightness(0.5)。背景を表示しないで canvas-bg が 0 件、canvas-surface の opacity が 1。コントラスト警告が出て、不透明度を 1 に戻すと消える |
+| diagnostics-log.json | 既定（オフ）のまま本文を入力して保存する。設定画面を開き、最後の節「診断」を見て撮影する。「ログを記録する」をオンにして撮影し、閉じて入力と保存をしてから、もう一度開いてオフに戻し、オフのまま入力と保存をする | setLoggingCalls が [false]、オフの間は appendLogCalls が 0 件。最後の節の見出しが「診断」、チェックは未選択で、補足に「置き場所」と「オフにしても、書いたファイルは残ります」がある。オンにすると appLog true が保存され、setLoggingCalls が [false, true]、entries に app.logging-enabled（data.user_agent が navigator.userAgent）が 1 秒ほどで渡る。本文に打った目印の文字列（BODY-MARKER-7f3c9a）と、開いたファイルの名前とパスは、appendLogCalls のどこにもない。オフに戻すと setLoggingCalls が [false, true, false]、appLog false が保存され、オフの間の入力と保存では appendLogCalls が増えない。画像は diagnostics-off-light.png、diagnostics-on-light.png、diagnostics-off-again.png |
+| diagnostics-log-dark.json | appLog をオンにして、ダークで起動する。設定画面を開いて「診断」の節を撮影し、オフにする | setLoggingCalls が [true]（起動の最初から有効）。entries に app.start（data.user_agent が navigator.userAgent）。チェックは選択済み。オフにすると [true, false]。画像は diagnostics-on-dark.png、diagnostics-off-dark.png |
 
 ```
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/appearance-typography.json
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/appearance-background.json
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/layout-sidebar-surface.json
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/layout-sidebar-narrow.json
+node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/diagnostics-log.json
+node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/diagnostics-log-dark.json
 ```
 
 見た目の確認は、evidence/<scenario 名>/ の settings-open-dark.png、bg-gradient-dusk.png、bg-image.png、contrast-warning.png などの画像で行う。
@@ -55,4 +61,6 @@ node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenari
 - 紙の幅の既定は fill に変わった。以前の見た目（左右に背景の帯がある）を確かめるシナリオは、seed の preferences に surfaceWidth: text を入れるか、設定画面で「本文に合わせる」を選ぶ。背景画像は fill では紙に隠れ、紙の透け具合（本文面の不透明度）か text でしか見えない。
 - 設定画面とサイドバーの Tab 循環、スクロール、幕のクリック、IME 中の無視、ダークのコントラストは tests/e2e/settings-sidebar.spec.ts が確かめ、シナリオの範囲外。
 - 背景の見え方やコントラストの値は、テーマと画像の平均色に依存する。値の判定は expect（比や警告の有無）で行い、画像の見た目は screenshot を目で見て確かめる。
+- ログ（APP-11）の確かめ方は、メモリ bridge の記録 window.__mdeE2E.logging（enabled、setLoggingCalls、appendLogCalls、entries。ネイティブ側と同じく、有効の間の行だけ entries に残る）を読む。実際の app.log への書き込み（Rust）は src-tauri の cargo test が確かめ、Tauri の窓で app.log が書かれることは、この Skill では未確認。ログのキーと event 名は小文字と `.` `_` `-` だけ（data のキーは `elapsed_ms` のような形）。渡されるのは 1 秒ごとなので、entries を読む expect は timeout（5000ms 程度）で待ち、「渡されないこと」は 1.5 秒以上待ってから見る。
+- 文書の失敗（open-failed、save-failed、save-as-failed、draft-write-failed）は、メモリ bridge の window.__mdeE2E.failNext（例: `failNext.saveDocument = 'permission-denied'`。次の 1 回だけ、パスを含むメッセージの BridgeError を投げる）で起こす。ログにメッセージとパスが出ないことは、tests/e2e/app-log.spec.ts が確かめる。例外、visibilitychange、時計の飛び（Playwright の clock）、部品の停止、タイピング音の記録も、同じ spec が確かめ、シナリオの範囲外。
 - ネイティブのファイル選択ダイアログと、実際の画像ファイルの読み込み（Rust 側の形式判定と 20 MiB の上限）は、この Skill では確かめない。

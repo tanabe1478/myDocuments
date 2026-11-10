@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { bundledActionPlugins, bundledPlugins } from './features';
 import { loadIsolatedPlugins } from './isolated-plugins';
+import { applyLogSetting, attachLogBridge, installAppDiagnostics, logger } from './logging';
 import { createPluginRegistry } from './plugin-api';
 import { createIsolatedPluginHost } from './plugin-host';
 import { applyPreferences } from './preferences/apply';
@@ -13,6 +14,18 @@ import './styles.css';
 
 async function bootstrap(): Promise<void> {
   const bridge = await createBridge();
+
+  // アプリのログ（ADR-007）。保存済みの設定「ログを記録する」（既定はオフ）を、部品を読み込む前に伝える
+  // （部品の読み込みの失敗も記録できるように）。設定が読めないときは、オフのまま。オフの間は、何も書かない。
+  let storedPreferences: unknown = null;
+  try {
+    storedPreferences = await bridge.loadPreferences();
+  } catch {
+    // 既定値で続行
+  }
+  attachLogBridge(bridge);
+  installAppDiagnostics(logger);
+  await applyLogSetting(normalizePreferences(storedPreferences).appLog);
 
   // 部品の一覧。部品の例外や版の不一致で起動を止めない（その部品だけを外す）。
   // 隔離した操作（段 2）の部品。同梱の部品（bundledActionPlugins）と、検証用の部品（e2e、隔離の検証。本番では空）。
@@ -34,16 +47,12 @@ async function bootstrap(): Promise<void> {
     ...(isolation ? { isolation } : {}),
     permissions,
     deferStart: true,
+    log: (level, source, event, data) => logger.log(level, source, event, data),
   });
   isolated.afterBoot?.(plugins);
 
   // 設定が読めなくても起動する。値は検証して、範囲外の項目だけ既定値に戻す。
-  let prefs = normalizePreferences(null, plugins.settings);
-  try {
-    prefs = normalizePreferences(await bridge.loadPreferences(), plugins.settings);
-  } catch {
-    // 既定値で続行
-  }
+  const prefs = normalizePreferences(storedPreferences, plugins.settings);
   applyPreferences(prefs);
 
   const root = document.getElementById('root');

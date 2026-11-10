@@ -136,6 +136,8 @@ export function createTauriBridge(): DocumentBridge {
       return normalizePermissionsFile(await call<unknown>('load_plugin_permissions'));
     },
     savePluginPermissions: (permissions) => call<void>('save_plugin_permissions', { permissions }),
+    setLogging: (enabled: boolean) => call<void>('set_logging', { enabled }),
+    appendLog: (entries) => call<void>('append_log', { entries }),
     async toggleFullscreen() {
       const win = getCurrentWindow();
       const next = !(await win.isFullscreen());

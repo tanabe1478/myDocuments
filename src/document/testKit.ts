@@ -12,6 +12,7 @@ import {
 } from '../platform';
 import {
   DocumentController,
+  type ControllerDeps,
   type DiscardChoice,
   type Notice,
   type RecoveryChoice,
@@ -33,6 +34,8 @@ export interface SetupOptions {
   files?: Record<string, string>;
   drafts?: Draft[];
   session?: SessionInfo;
+  /** アプリのログへの記録口（ADR-007）。渡さなければ、記録しない。 */
+  log?: ControllerDeps['log'];
 }
 
 export function setup(options: SetupOptions = {}) {
@@ -117,6 +120,8 @@ export function setup(options: SetupOptions = {}) {
     writeClipboardText: vi.fn(async (_text: string) => {}),
     loadPluginPermissions: vi.fn(async () => ({ version: 1 as const, plugins: {} })),
     savePluginPermissions: vi.fn(async () => {}),
+    setLogging: vi.fn(async (_enabled: boolean) => {}),
+    appendLog: vi.fn(async (_entries: readonly unknown[]) => {}),
     toggleFullscreen: vi.fn(async () => true),
     notifyReady: vi.fn(async () => {}),
   } satisfies DocumentBridge;
@@ -160,6 +165,7 @@ export function setup(options: SetupOptions = {}) {
     confirmRecreate,
     askRecovery,
     notify: (n) => notices.push(n),
+    ...(options.log ? { log: options.log } : {}),
     newDraftId: () => `draft-${++ids}`,
     draftTimers: timers,
   });

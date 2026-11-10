@@ -37,6 +37,8 @@
     "allow-read-background-image",
     "allow-write-clipboard-text",
     "allow-load-plugin-permissions",
-    "allow-save-plugin-permissions"
+    "allow-save-plugin-permissions",
+    "allow-set-logging",
+    "allow-append-log"
   ]
 }

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { bundledPlugins } from '../features';
-import { createPluginRegistry } from '../plugin-api';
+import { PLUGIN_API_VERSION, createPluginRegistry, type PluginContext } from '../plugin-api';
 import { DEFAULT_PREFERENCES, RANGES, normalizePreferences as normalizeWith } from './preferences';
 import { resolveTheme } from './apply';
 
@@ -59,6 +59,7 @@ describe('normalizePreferences', () => {
       typingSound: true,
       typingSoundVolume: 'high',
       typingSoundTimbre: 'typewriter',
+      appLog: true,
     };
     expect(normalizePreferences(valid)).toEqual(valid);
   });
@@ -167,6 +168,8 @@ describe('background and accessibility fields (R3-1)', () => {
       typingSoundVolume: DEFAULTS_WITH_PLUGINS.typingSoundVolume,
       // 音色（既定はキーボード）。
       typingSoundTimbre: DEFAULTS_WITH_PLUGINS.typingSoundTimbre,
+      // ADR-007 で増えた項目（アプリのログ。既定はオフ）。
+      appLog: false,
     });
   });
 
@@ -392,7 +395,10 @@ describe('stored shape of plugin settings (R1: typewriter, R2: focus mode, R3: l
     const before = createPluginRegistry(bundledPlugins.filter((p) => p.manifest.id !== 'typing-sound')).settings;
     expect(golden.length).toBeGreaterThanOrEqual(10);
     for (const c of golden) {
-      expect(bytes(normalizeWith(c.input, before)), c.name).toBe(c.expected);
+      // 正本は R1 の前の形なので、あとから足した本体の項目 appLog（ADR-007）は除いて比べる。appLog の形は、下の describe で確かめる。
+      const { appLog, ...withoutAppLog } = normalizeWith(c.input, before);
+      expect(appLog, c.name).toBe(false);
+      expect(bytes(withoutAppLog), c.name).toBe(c.expected);
     }
   });
 
@@ -434,5 +440,40 @@ describe('stored shape of plugin settings (R1: typewriter, R2: focus mode, R3: l
     expect(normalizeWith({ demoCount: 7, theme: 'dark' }, settings)).toMatchObject({ demoCount: 7, theme: 'dark' });
     expect(normalizeWith({ demoCount: 'x' }, settings).demoCount).toBe(3);
     expect(normalizeWith(null, settings).demoCount).toBe(3);
+  });
+});
+
+describe('appLog (ADR-007: the setting "ログを記録する" in the diagnostics section)', () => {
+  it('is a boolean at the top level, off by default', () => {
+    expect(DEFAULT_PREFERENCES.appLog).toBe(false);
+    expect(normalizePreferences({}).appLog).toBe(false);
+    expect(normalizePreferences(null).appLog).toBe(false);
+    expect(Object.keys(normalizePreferences({}))).toContain('appLog');
+  });
+
+  it('keeps true and false, and resets every other type to off (only that item)', () => {
+    expect(normalizePreferences({ appLog: true }).appLog).toBe(true);
+    expect(normalizePreferences({ appLog: false }).appLog).toBe(false);
+    for (const bad of [1, 0, 'true', 'on', null, [true], {}, undefined]) {
+      expect(normalizePreferences({ appLog: bad, theme: 'dark' }), String(bad)).toMatchObject({ appLog: false, theme: 'dark' });
+    }
+  });
+
+  it('is saved as a plain boolean next to the other host settings, and a value saved before it existed reads as off', () => {
+    const saved = JSON.parse(JSON.stringify(normalizePreferences({ appLog: true, fontSizePx: 20 })));
+    expect(saved.appLog).toBe(true);
+    expect(saved.fontSizePx).toBe(20);
+    expect(normalizePreferences(saved)).toEqual(saved);
+    expect(normalizePreferences({ fontSizePx: 20 }).appLog).toBe(false);
+  });
+
+  it('is a host key that no plugin can take', () => {
+    const taker = {
+      manifest: { id: 'taker', name: 'taker', version: '1.0.0', apiVersion: PLUGIN_API_VERSION, tier: 'editor' as const },
+      activate: (ctx: PluginContext) => void ctx.registerSetting({ key: 'appLog', defaultValue: false, normalize: () => false }),
+    };
+    const registry = createPluginRegistry([taker], { reservedSettingKeys: Object.keys(DEFAULT_PREFERENCES), report: () => {} });
+    expect(registry.records[0]).toMatchObject({ id: 'taker', status: 'stopped' });
+    expect(registry.settings).toEqual([]);
   });
 });
