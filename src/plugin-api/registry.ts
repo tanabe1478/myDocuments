@@ -22,6 +22,7 @@ import {
   type PanelItem,
   type Plugin,
   type PluginContext,
+  type PluginPerf,
   type RadioOption,
   type SettingDefinition,
   type SelectionSnapshot,
@@ -203,11 +204,18 @@ export interface PluginRegistryOptions {
    * 段 3 の部品が ctx.log で記録するもの（source は部品の id）を、ここへ渡す。ない環境では、記録しない。例外は握りつぶす。
    */
   readonly log?: (level: 'info' | 'warn' | 'error', source: string, event: string, data?: Record<string, string | number | boolean | null | undefined>) => void;
+  /**
+   * 性能の計測（ADR-007 の R16）の口。段 3 の部品が ctx.perf で使う（名前は部品が付ける）。ない環境では、何も数えない（enabled は常に false）。
+   * 段 2 の部品（Worker）には貸さない。
+   */
+  readonly perf?: PluginPerf;
   /** 読み込まなかった・止めたことの記録先。既定は console（warn / error）。 */
   readonly report?: (level: 'warn' | 'error', message: string, error?: unknown) => void;
 }
 
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+/** 計測の口がない環境（部品を使うテストなど）。何も数えない。 */
+const NO_PERF: PluginPerf = { enabled: false, span: () => () => {}, measure: (_name, fn) => fn(), record: () => {} };
 /** 段 2 の部品のコード（文字列）の大きさの上限。 */
 const MAX_ACTION_SOURCE = 1024 * 1024;
 const SETTING_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9]*$/;
@@ -295,6 +303,7 @@ export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[]
       // ログの失敗で、部品も本体も止めない。
     }
   };
+  const hostPerf: PluginPerf = options.perf ?? NO_PERF;
   const entries: Entry[] = [];
   const gate = options.permissions;
   let services: IsolatedServices | null = null;
@@ -617,6 +626,7 @@ export function createPluginRegistry(plugins: readonly (Plugin | ActionPlugin)[]
     };
     return {
       log: (level, event, data) => hostLog(level, entry.id, event, data),
+      perf: hostPerf,
 
       registerSetting<T>(definition: SettingDefinition<T>): SettingHandle<T> {
         const { key } = definition;

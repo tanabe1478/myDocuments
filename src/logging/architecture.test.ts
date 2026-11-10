@@ -93,8 +93,8 @@ describe('isolated plugins cannot reach the log', () => {
 describe('src/logging/ (the logger of the host)', () => {
   const files = listFiles('src/logging').filter((f) => /\.(ts|tsx)$/.test(f) && !/\.test\./.test(f));
 
-  it('has the logger, the switch, the diagnostics and the cleaning of strings', () => {
-    expect(files.map((f) => path.basename(f)).sort()).toEqual(['control.ts', 'diagnostics.ts', 'index.ts', 'logger.ts', 'sanitize.ts', 'types.ts']);
+  it('has the logger, the switch, the diagnostics, the performance measurement (R16) and the cleaning of strings', () => {
+    expect(files.map((f) => path.basename(f)).sort()).toEqual(['control.ts', 'diagnostics.ts', 'index.ts', 'logger.ts', 'perf.ts', 'sanitize.ts', 'types.ts']);
   });
 
   it('imports only its own files (no plugin, no UI, no bridge, no React, no Tauri)', () => {
@@ -138,5 +138,48 @@ describe('the log is off by default and the setting key is the host\'s', () => {
     const main = strip(read('src/main.tsx'));
     expect(main.indexOf('applyLogSetting(')).toBeGreaterThan(0);
     expect(main.indexOf('applyLogSetting(')).toBeLessThan(main.indexOf('createPluginRegistry('));
+  });
+});
+
+describe('performance measurement (R16) boundaries', () => {
+  it('the isolated stage (Worker, relay, host page, IsolatedServices) has no perf: only editor-tier plugins get ctx.perf, from the registry', () => {
+    for (const file of ['src/plugin-host/relay.js', 'src/plugin-host/host.html', 'src/features/outline/worker.js', 'src/features/copy-path/worker.js']) {
+      expect(read(file), file).not.toMatch(/\bperf\b|PluginPerf|__mdePerf/);
+    }
+    const types = strip(read('src/plugin-api/types.ts'));
+    const block = types.slice(types.indexOf('export interface IsolatedServices'), types.indexOf('export type IsolatedCall ='));
+    expect(block).not.toMatch(/perf/i);
+    expect(types.slice(types.indexOf('export interface PluginContext'))).toMatch(/readonly perf: PluginPerf;/);
+    expect(strip(read('src/plugin-api/registry.ts'))).toContain('perf: hostPerf,');
+  });
+
+  it('the bundled editor-tier plugins use the measurement through ctx.perf, never by importing src/logging/', () => {
+    expect(strip(read('src/features/markdown/index.ts'))).toContain('markdownDecorations(value, ctx.perf)');
+    expect(strip(read('src/features/typing-sound/index.ts'))).toContain('perf: ctx.perf');
+    for (const f of listFiles('src/features')) {
+      if (!/\.(ts|tsx)$/.test(f)) continue;
+      expect(specifiers(f).filter((s) => /logging/.test(s)), f).toEqual([]);
+    }
+  });
+
+  it('the plugin host (Worker host) gets the measurement as an injected option, not by importing the logger', () => {
+    for (const f of listFiles('src/plugin-host').filter((f) => /\.(ts|tsx)$/.test(f) && !/\.test\./.test(f))) {
+      expect(specifiers(f).filter((s) => /logging/.test(s)), f).toEqual([]);
+    }
+    expect(strip(read('src/main.tsx'))).toMatch(/perf,\s*\}\)/);
+  });
+
+  it('the bridge wrapper measures the commands by name and never the log itself (appendLog) nor the dialogs', async () => {
+    const { MEASURED_BRIDGE_METHODS } = await import('../platform/instrument');
+    const methods: readonly string[] = MEASURED_BRIDGE_METHODS;
+    expect(methods).not.toContain('appendLog');
+    expect(methods.filter((m) => /^(pick|on)/.test(m))).toEqual([]);
+    expect(methods).toEqual(expect.arrayContaining(['saveDocument', 'writeDraft', 'moveEntry', 'listFolder']));
+  });
+
+  it('the measurement code reads no document text, path or command argument (names and numbers only)', () => {
+    const code = strip(read('src/logging/perf.ts'));
+    expect(code).not.toMatch(/console\.|getText|toString\(\)|readFile|openDocument|__mdeE2E/);
+    expect(strip(read('src/platform/instrument.ts'))).not.toMatch(/JSON\.stringify|\.path\b|args\[/);
   });
 });

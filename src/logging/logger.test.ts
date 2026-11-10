@@ -177,6 +177,34 @@ describe('the rate limit (10 per minute for the same source and event)', () => {
     expect(later[1]!.data).toEqual({ i: 101 });
   });
 
+  it('R14 N1: data with 20 items plus suppressed stays at 20 items (the 20th item of the caller is dropped, suppressed is kept)', async () => {
+    const { logger, all } = setup();
+    logger.setEnabled(true);
+    const twenty = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`k${String(i).padStart(2, '0')}`, i]));
+    for (let i = 0; i < RATE_LIMIT + 4; i++) logger.info('app', 'wide', twenty);
+    await flushAll();
+    // 制限に掛からない間は、20 項目をそのまま残す。
+    expect(all().every((e) => Object.keys(e.data).length === 20 && e.data.suppressed === undefined)).toBe(true);
+    await vi.advanceTimersByTimeAsync(RATE_WINDOW_MS);
+    logger.info('app', 'wide', twenty);
+    await flushAll();
+    const withSuppressed = all().at(-1)!;
+    expect(withSuppressed.data.suppressed).toBe(4);
+    expect(Object.keys(withSuppressed.data)).toHaveLength(20);
+    // 残るのは、呼び出し側の最初の 19 項目。
+    expect(Object.keys(withSuppressed.data).filter((k) => k !== 'suppressed')).toEqual(Array.from({ length: 19 }, (_, i) => `k${String(i).padStart(2, '0')}`));
+  });
+
+  it('data with more than 20 items is cut to 20, counting only the valid items (invalid ones do not use up a place)', async () => {
+    const { logger, all } = setup();
+    logger.setEnabled(true);
+    const data: Record<string, number | string | undefined> = { 'Bad Key': 1, skipped: undefined };
+    for (let i = 0; i < 30; i++) data[`k${i}`] = i;
+    logger.info('app', 'many', data);
+    await flushAll();
+    expect(Object.keys(all()[0]!.data)).toEqual(Array.from({ length: 20 }, (_, i) => `k${i}`));
+  });
+
   it('counts per source and event: other events and other sources are not affected', async () => {
     const { logger, all } = setup();
     logger.setEnabled(true);

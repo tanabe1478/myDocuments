@@ -27,6 +27,7 @@ import {
 import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import { AFTER_COMPOSITION_MS, DIMMED_BLOCK_CLASS, dimExemptLines, isDimmedBlock } from '../../plugin-api';
 import { markupDisplayFacet } from './markdownDecorations';
+import { perfFacet } from './perf';
 import { buildTableModel, topLevelTables, type CellModel, type RowModel, type SyntaxNode, type TableRef } from './tableModel';
 
 /** 表示中の表の class（見た目は theme.ts）。 */
@@ -293,7 +294,17 @@ function decorate(entries: readonly Entry[], active: readonly number[], doc: Tex
   return { decorations: RangeSet.of(ranges), rendered };
 }
 
+/** 表の表示の組み立て（表の検出と、表示する装飾）。区間 markdown.table-display として数える（R16）。 */
 function compute(state: EditorState, composing: boolean): TableState {
+  const end = state.facet(perfFacet).span('markdown.table-display');
+  try {
+    return computeInner(state, composing);
+  } finally {
+    end();
+  }
+}
+
+function computeInner(state: EditorState, composing: boolean): TableState {
   const entries: Entry[] =
     state.facet(markupDisplayFacet) === 'cursorLine' ? topLevelTables(syntaxTree(state), state.doc).map((table) => ({ table, deco: null })) : [];
   const active = touchedTables(entries, state.selection);
@@ -330,7 +341,12 @@ const tableField = StateField.define<TableState>({
       // 選択だけが変わった: 触れている表が変わったときだけ、装飾を作り直す（表の一覧は使い回す）。
       const active = touchedTables(value.entries, tr.state.selection);
       if (active.length !== value.active.length || active.some((n, i) => n !== value.active[i])) {
-        return { ...value, active, ...decorate(value.entries, active, tr.state.doc) };
+        const end = tr.state.facet(perfFacet).span('markdown.table-display');
+        try {
+          return { ...value, active, ...decorate(value.entries, active, tr.state.doc) };
+        } finally {
+          end();
+        }
       }
     }
     return composing === value.composing ? value : { ...value, composing };

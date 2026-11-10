@@ -102,7 +102,7 @@ describe('context.created and context.statechange', () => {
     h.player.prepare('keyboard');
     await flush();
     press(h);
-    expect(h.calls[0]).toEqual(['info', 'context.created', { sample_rate: 48000, base_latency: 0.01, output_latency: 0.05, state: 'running' }]);
+    expect(h.calls[0]).toEqual(['info', 'context.created', { sample_rate: 48000, base_latency: 0.01, output_latency: 0.05, state: 'running', reason: 'first-key' }]);
     h.clock.t += 100;
     press(h);
     expect(h.calls.filter((c) => c[1] === 'context.created')).toHaveLength(1);
@@ -113,7 +113,7 @@ describe('context.created and context.statechange', () => {
     delete (h.ctx as Partial<typeof h.ctx>).sampleRate;
     (h.ctx as { baseLatency?: number }).baseLatency = Number.NaN;
     press(h);
-    expect(h.calls[0]![2]).toEqual({ sample_rate: null, base_latency: null, output_latency: 0.05, state: 'running' });
+    expect(h.calls[0]![2]).toEqual({ sample_rate: null, base_latency: null, output_latency: 0.05, state: 'running', reason: 'first-key' });
   });
 
   it('records each state change with the previous state, the new state and currentTime', async () => {

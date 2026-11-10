@@ -4,10 +4,12 @@
  */
 import { createLogSwitch, type LogBridge } from './control';
 import { createLogger } from './logger';
+import { createPerf } from './perf';
 import type { LogEntry } from './types';
 
 export { installAppDiagnostics } from './diagnostics';
 export { createLogger, type Logger } from './logger';
+export { createPerf, type Perf, type PerfController, type PerfEnvironment } from './perf';
 export { createLogSwitch, type LogBridge, type LogSwitch } from './control';
 export { basenameOf, clip, errorFields, errorKind, scrubHome } from './sanitize';
 export type { LogData, LogEntry, LogFn, LogLevel, LogValue } from './types';
@@ -21,6 +23,9 @@ let sink: LogSink | null = null;
 
 /** アプリのロガー（1 つ）。結ぶまでは、有効にしても、渡し先がない。 */
 export const logger = createLogger({ append: (entries) => sink?.appendLog(entries) });
+
+/** 性能の計測（R16）。ログがオンの間だけ動く。区間は perf.span / perf.measure / perf.record、使い方は perf.ts。 */
+export const perf = createPerf(logger);
 
 /** 本体のログの書き方: log.info('document', 'save-failed', { op: 'save' })。 */
 export const log = {

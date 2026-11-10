@@ -25,8 +25,8 @@ export const typingSoundPlugin: Plugin = {
   activate(ctx) {
     // e2e のビルドだけ、音の要求を数える（__E2E__ が false の本番では、この呼び出しごと取り除かれる）。
     const observe = __E2E__ ? createTypingSoundE2EProbe() : undefined;
-    // ログ（ADR-007）は、本体が貸す ctx.log（source は typing-sound に固定）。無効の間は何もしない。
-    const player = createTypingSoundPlayer({ urls: SOUND_URLS, log: ctx.log, ...(observe ? { observe } : {}) });
+    // ログ（ADR-007）は、本体が貸す ctx.log（source は typing-sound に固定）。性能の計測（R16）は ctx.perf。どちらも無効の間は何もしない。
+    const player = createTypingSoundPlayer({ urls: SOUND_URLS, log: ctx.log, perf: ctx.perf, ...(observe ? { observe } : {}) });
 
     const enabled = ctx.registerSetting<boolean>({
       key: TYPING_SOUND_SETTING_KEY,

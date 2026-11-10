@@ -1,0 +1,189 @@
+{
+ "seed": {
+  "files": {
+   "/work/private-notes/perf-diary.md": {
+    "text": "# 見出し\n\n本文の *強調* と表。\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\n終わり\n"
+   }
+  },
+  "openPath": "/work/private-notes/perf-diary.md",
+  "preferences": {
+   "theme": "light",
+   "autoHideChrome": false,
+   "appLog": true
+  }
+ },
+ "steps": [
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.setLoggingCalls",
+    "equals": [
+     true
+    ],
+    "timeout": 4000
+   },
+   "note": "オンで起動すると、最初から有効がネイティブ側へ伝わる"
+  },
+  {
+   "press": "ControlOrMeta+o"
+  },
+  {
+   "expect": {
+    "testId": "doc-title",
+    "equals": "perf-diary.md"
+   }
+  },
+  {
+   "click": ".cm-content"
+  },
+  {
+   "press": "ControlOrMeta+End"
+  },
+  {
+   "type": "PERF-MARKER-5b2e91"
+  },
+  {
+   "press": "Enter"
+  },
+  {
+   "press": "Backspace"
+  },
+  {
+   "press": "ControlOrMeta+s"
+  },
+  {
+   "expect": {
+    "testId": "unsaved-mark",
+    "read": "count",
+    "equals": 0
+   }
+  },
+  {
+   "type": "!"
+  },
+  {
+   "wait": 2500
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.readDrafts().length > 0",
+    "equals": true,
+    "timeout": 4000
+   },
+   "note": "草稿が書かれた（約 2 秒の入力停止のあと）"
+  },
+  {
+   "expect": {
+    "eval": "(window.__mdePerf.flush(), true)",
+    "equals": true
+   },
+   "note": "e2e のビルドだけにある window.__mdePerf.flush() で、1 分を待たずにまとめを書かせる"
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.entries.filter((e) => e.source === 'perf').map((e) => e.event).sort().join(',')",
+    "contains": "input.keydown-to-update",
+    "timeout": 6000
+   },
+   "note": "まとめの行が、1 秒ほどで渡る"
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.entries.filter((e) => e.source === 'perf').map((e) => e.event).sort().join(',')",
+    "contains": "input.keydown-to-paint"
+   }
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.entries.filter((e) => e.source === 'perf').map((e) => e.event).sort().join(',')",
+    "contains": "markdown.decorations"
+   }
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.entries.filter((e) => e.source === 'perf').map((e) => e.event).sort().join(',')",
+    "contains": "markdown.table-display"
+   }
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.entries.filter((e) => e.source === 'perf').map((e) => e.event).sort().join(',')",
+    "contains": "feed.publish"
+   }
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.entries.filter((e) => e.source === 'perf').map((e) => e.event).sort().join(',')",
+    "contains": "bridge.save_document"
+   }
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.entries.filter((e) => e.source === 'perf').map((e) => e.event).sort().join(',')",
+    "contains": "bridge.write_draft"
+   }
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.entries.filter((e) => e.source === 'perf').map((e) => e.event).sort().join(',')",
+    "contains": "document.save"
+   }
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.entries.filter((e) => e.source === 'perf').map((e) => e.event).sort().join(',')",
+    "contains": "document.draft-write"
+   }
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.entries.filter((e) => e.source === 'perf').map((e) => e.event).join(',').includes('bridge.append_log')",
+    "equals": false
+   },
+   "note": "appendLog 自身は数えない（ログを書くたびに区間が増えない）"
+  },
+  {
+   "expect": {
+    "eval": "Object.keys(window.__mdeE2E.logging.entries.find((e) => e.source === 'perf' && e.event === 'input.keydown-to-update').data).join(',')",
+    "equals": "count,p50_ms,p95_ms,max_ms,total_ms,slow"
+   },
+   "note": "まとめの行の形: 件数、p50、p95、max、total（ms）、50ms 以上の回数"
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.entries.find((e) => e.source === 'perf' && e.event === 'input.keydown-to-update').data.count >= 5",
+    "equals": true
+   }
+  },
+  {
+   "expect": {
+    "eval": "Object.keys(window.__mdeE2E.logging.entries.find((e) => e.source === 'perf-system' && e.event === 'gauges').data).join(',')",
+    "equals": "doc_chars,doc_lines,dom_nodes,heap_used_mb"
+   },
+   "note": "量の推移: 文書の長さと行数、DOM の要素の数、JS のメモリ（なければ null）"
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.entries.find((e) => e.source === 'perf-system' && e.event === 'gauges').data.doc_chars > 20",
+    "equals": true
+   }
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.entries.filter((e) => e.source === 'perf-system' && e.event === 'frames').length > 0",
+    "equals": true,
+    "timeout": 4000
+   },
+   "note": "画面の止まり（描画の間隔）の集計"
+  },
+  {
+   "expect": {
+    "eval": "(() => { const all = JSON.stringify(window.__mdeE2E.logging.appendLogCalls); return ['PERF-MARKER', 'perf-diary', 'private-notes', '/work/'].some((s) => all.includes(s)); })()",
+    "equals": false
+   },
+   "note": "本文に打った目印の文字列と、開いたファイルの名前とパスは、appendLogCalls のどこにもない"
+  },
+  {
+   "screenshot": "performance-log-on"
+  }
+ ]
+}

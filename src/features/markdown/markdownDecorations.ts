@@ -9,7 +9,7 @@ import {
   type ViewUpdate,
 } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
-import { AFTER_COMPOSITION_MS, isBlankLine } from '../../plugin-api';
+import { AFTER_COMPOSITION_MS, isBlankLine, type PluginPerf } from '../../plugin-api';
 import { fallbackPrefixWidthEm, hangPrefix, measurableText } from './lineKinds';
 import {
   MARKER_WIDGET_EM,
@@ -23,6 +23,7 @@ import {
   type MarkupSpan,
 } from './liveMarkup';
 import { DEFAULT_MARKUP_DISPLAY, type MarkupDisplay } from './markupDisplay';
+import { NO_PERF, perfFacet } from './perf';
 
 /**
  * Markdown の見た目。表示だけを変え、本文には何も加えない。
@@ -341,6 +342,15 @@ class BlockLinePlugin {
 
   /** 隠す範囲とリンクを、いまの構文木と選択から決め直す。 */
   private recomputeMarkup(view: EditorView): void {
+    const end = view.state.facet(perfFacet).span('markdown.live-markup');
+    try {
+      this.recomputeMarkupInner(view);
+    } finally {
+      end();
+    }
+  }
+
+  private recomputeMarkupInner(view: EditorView): void {
     const { state } = view;
     const ranges = view.visibleRanges;
     const from = ranges[0]?.from ?? 0;
@@ -359,6 +369,15 @@ class BlockLinePlugin {
   }
 
   update(update: ViewUpdate) {
+    const end = update.state.facet(perfFacet).span('markdown.decorations');
+    try {
+      this.updateInner(update);
+    } finally {
+      end();
+    }
+  }
+
+  private updateInner(update: ViewUpdate) {
     const forced = update.transactions.some((tr) => tr.effects.some((e) => e.is(refreshMarkup)));
     const relaid = update.transactions.some((tr) => tr.effects.some((e) => e.is(relayout)));
     const display = update.state.facet(markupDisplayFacet);
@@ -434,6 +453,6 @@ export function visibleLinks(view: EditorView): readonly LinkRange[] {
  * Markdown の装飾の拡張一式（色、行の装飾、記号の隠し方）。記号の見せ方 display を、この拡張の中の Facet として持つ。
  * Markdown の言語（構文木）は、本体が文書の種類に応じて入れる。この拡張はその構文木を読む。
  */
-export function markdownDecorations(display: MarkupDisplay): Extension {
-  return [syntaxHighlighting(markdownHighlightStyle), blockLineDecorations, markupDisplayFacet.of(display)];
+export function markdownDecorations(display: MarkupDisplay, perf: PluginPerf = NO_PERF): Extension {
+  return [syntaxHighlighting(markdownHighlightStyle), blockLineDecorations, markupDisplayFacet.of(display), perfFacet.of(perf)];
 }

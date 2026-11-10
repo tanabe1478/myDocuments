@@ -18,6 +18,7 @@ export type {
   SessionInfo,
 } from './DocumentBridge';
 export { BridgeError, FOLDER_LISTING_LIMIT } from './DocumentBridge';
+export { bridgeSpanName, instrumentBridge, MEASURED_BRIDGE_METHODS } from './instrument';
 
 /**
  * 実行環境に合った DocumentBridge を返す。

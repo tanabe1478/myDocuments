@@ -1,4 +1,4 @@
-import { AFTER_COMPOSITION_MS, type DocumentSnapshot, type SelectionSnapshot, type TextKind } from '../plugin-api';
+import { AFTER_COMPOSITION_MS, type DocumentSnapshot, type PluginPerf, type SelectionSnapshot, type TextKind } from '../plugin-api';
 
 /** 入力が止まってから、本文を部品に届けるまでの待ち（ミリ秒。後ろ寄せ）。入力のたびに待ち直す。 */
 export const DOCUMENT_DEBOUNCE_MS = 200;
@@ -17,6 +17,8 @@ export interface DocumentFeedDeps {
   debounceMs?: number;
   selectionMs?: number;
   afterCompositionMs?: number;
+  /** 性能の計測（R16）。publish（本文とカーソルの位置を部品に届ける処理）の所要時間を、区間 feed.publish として数える。省略か無効の間は、何もしない。 */
+  perf?: PluginPerf;
 }
 
 /**
@@ -74,7 +76,12 @@ export function createDocumentFeed(deps: DocumentFeedDeps, initial: { readonly t
       return;
     }
     pending = false;
-    deps.publish({ version, kind, text }, selectionNow());
+    const end = deps.perf?.span('feed.publish');
+    try {
+      deps.publish({ version, kind, text }, selectionNow());
+    } finally {
+      end?.();
+    }
   };
 
   const schedule = (ms: number): void => {

@@ -37,6 +37,8 @@ export interface SetupOptions {
   session?: SessionInfo;
   /** アプリのログへの記録口（ADR-007）。渡さなければ、記録しない。 */
   log?: ControllerDeps['log'];
+  /** 性能の計測（R16）。渡さなければ、数えない。 */
+  perf?: ControllerDeps['perf'];
 }
 
 export function setup(options: SetupOptions = {}) {
@@ -168,6 +170,7 @@ export function setup(options: SetupOptions = {}) {
     askRecovery,
     notify: (n) => notices.push(n),
     ...(options.log ? { log: options.log } : {}),
+    ...(options.perf ? { perf: options.perf } : {}),
     newDraftId: () => `draft-${++ids}`,
     draftTimers: timers,
   });

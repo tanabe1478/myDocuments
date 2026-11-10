@@ -1,4 +1,4 @@
-import type { DocumentSnapshot, IsolatedCall, IsolatedCallResult, IsolatedPluginHost, IsolatedPluginListener, IsolatedRun, MenuTarget, SelectionSnapshot } from '../plugin-api';
+import type { DocumentSnapshot, IsolatedCall, IsolatedCallResult, IsolatedPluginHost, IsolatedPluginListener, IsolatedRun, MenuTarget, PluginPerf, SelectionSnapshot } from '../plugin-api';
 import { LIMITS, docMessage, parseRelayMessage, resultMessage, runMenuMessage, runMessage, selectionMessage, startMessage, stopMessage, type MainMessage } from './protocol';
 
 /** 本体が持つ、仲介の iframe への入口。DOM の実装は domFrame.ts。単体テストでは偽物を渡す。 */
@@ -39,6 +39,11 @@ export interface WorkerHostOptions {
   activateTimeoutMs?: number;
   /** コマンドの実行が、この時間で終わらなければ止める。 */
   runTimeoutMs?: number;
+  /**
+   * 性能の計測（R16）。部品への実行の要求（run、runMenu）から、Worker の done が返るまでの往復を、区間 plugin-host.run として数える
+   * （止まった、時間切れの実行は数えない）。省略か無効の間は、何もしない。応答のある呼び出しだけで、本文やカーソルの位置を届ける一方向のメッセージは数えない。
+   */
+  perf?: PluginPerf;
   /** 無視したメッセージの記録先（部品を止めた記録は、レジストリが残す）。 */
   report?: (level: 'warn', message: string) => void;
 }
@@ -69,7 +74,7 @@ interface Slot {
   readonly panels: Set<string>;
   /** panel.setItems を受け取った時刻（頻度の上限の検査用。window より古いものは捨てる）。 */
   readonly itemTimes: number[];
-  readonly pending: Map<number, { readonly command: string; readonly timeout: Timeout; readonly settle: () => void }>;
+  readonly pending: Map<number, { readonly command: string; readonly timeout: Timeout; readonly settle: () => void; readonly end: (() => void) | undefined }>;
   /** 結果待ちの呼び出し（部品の中の番号 → 呼び出しの種類）。 */
   readonly calls: Map<number, IsolatedCall['method']>;
   activate: Timeout | null;
@@ -300,6 +305,7 @@ export function createWorkerHost(options: WorkerHostOptions): IsolatedPluginHost
         if (!run) return violation(slot, '要求していない番号の done です');
         cancelTimeout(run.timeout);
         slot.pending.delete(message.req);
+        run.end?.();
         run.settle();
         trace({ type: 'done', plugin: slot.id, command: run.command, req: message.req });
         return;
@@ -321,7 +327,7 @@ export function createWorkerHost(options: WorkerHostOptions): IsolatedPluginHost
       settle = resolve;
     });
     const timeout = armTimeout(slot, runTimeoutMs, () => stopSlot(slot, timeoutMessage, true));
-    slot.pending.set(req, { command: label, timeout, settle });
+    slot.pending.set(req, { command: label, timeout, settle, end: options.perf?.span('plugin-host.run') });
     return { finished };
   };
 

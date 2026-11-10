@@ -16,7 +16,7 @@ import { UNTITLED, documentTitle, isDirty } from './document/state';
 import { ExplorerController, type MoveConflictChoice, type MoveConflictInfo, type TrashTarget } from './explorer/controller';
 import type { EditorAdapter } from './editor/EditorAdapter';
 import { createCodeMirrorAdapter } from './editor/codemirror/CodeMirrorAdapter';
-import { applyLogSetting, errorKind, logger } from './logging';
+import { applyLogSetting, errorKind, logger, perf } from './logging';
 import { BridgeError, type DocumentBridge, type DraftSummary } from './platform';
 import { createHostServices, createIsolatedServices } from './platform/hostServices';
 import type { PermissionController } from './permissions/controller';
@@ -126,6 +126,8 @@ export function App({
         notify: (n: Notice) => setNotice({ ...n, id: ++noticeId.current }),
         // アプリのログ（ADR-007）。失敗の操作の名前とエラーの種類だけ。ログが無効の間は何もしない。
         log: (level, event, data) => logger.log(level, 'document', event, data),
+        // 性能の計測（R16）。保存と草稿の書き込みの区間。ログがオフの間は、何もしない。
+        perf,
       }),
     [bridge],
   );
@@ -199,7 +201,7 @@ export function App({
     const host = hostRef.current;
     if (!host) return;
     // 本体が部品に貸す機能（外部の URL を開く、OS の判定）。部品は bridge を直接使わない。
-    const adapter = createCodeMirrorAdapter(plugins.editorExtensions, createHostServices({ bridge, notify, isMacPlatform }));
+    const adapter = createCodeMirrorAdapter(plugins.editorExtensions, createHostServices({ bridge, notify, isMacPlatform }), perf);
     adapter.mount(host);
     adapter.focus();
     adapterRef.current = adapter;
@@ -216,10 +218,13 @@ export function App({
         publishSelection: (selection) => plugins.publishSelection(selection),
         isComposing: () => adapter.isComposing(),
         getSelection: () => adapter.getSelection(),
+        perf,
       },
       { text: startState.text, kind: textKindOf(startState.path) },
     );
     feedRef.current = feed;
+    // ログの量の推移（R16）に書く、文書の長さと行数。本文は読まない。
+    perf.setDocumentStats(() => adapter.getDocumentStats());
     const offSelection = adapter.onSelectionChange(() => feed.selectionChanged());
     // 文書を開いた・切り替えた・読み直した、種類が変わった（コントローラーの本文と種類が変わった）。
     const offDocument = controller.subscribe(() => {
@@ -274,6 +279,7 @@ export function App({
       offDocument();
       feed.dispose();
       feedRef.current = null;
+      perf.setDocumentStats(null);
       adapter.destroy();
       adapterRef.current = null;
     };

@@ -1,4 +1,5 @@
 import type { Draft, DocumentBridge } from '../platform';
+import type { PluginPerf } from '../plugin-api';
 import { isDirty, type DocumentState } from './state';
 
 /** 入力が止まってから草稿を書くまでの待ち（仕様 §13「自動保存の間隔」。docs/decision-001 に決定を記録）。 */
@@ -20,6 +21,8 @@ export interface DraftKeeperDeps {
   bridge: Pick<DocumentBridge, 'writeDraft' | 'deleteDraft'>;
   /** 書く・消すの失敗を伝える（連続する失敗は 1 回にまとめる）。 */
   onError(e: unknown): void;
+  /** 性能の計測（R16）。草稿の書き込み（writeDraft の往復）を区間 document.draft-write として数える。省略か無効の間は、何もしない。 */
+  perf?: PluginPerf;
   delayMs?: number;
   now?: () => number;
   setTimer?: (fn: () => void, ms: number) => unknown;
@@ -75,7 +78,12 @@ export class DraftKeeper {
     const draft = buildDraft(state, (this.deps.now ?? Date.now)());
     this.known.add(draft.draftId);
     this.enqueue(async () => {
-      await this.deps.bridge.writeDraft(draft);
+      const end = this.deps.perf?.span('document.draft-write');
+      try {
+        await this.deps.bridge.writeDraft(draft);
+      } finally {
+        end?.();
+      }
       this.failing = false;
     });
   }

@@ -29,6 +29,8 @@ export interface EditorSelection {
 export interface EditorAdapter {
   mount(el: HTMLElement): void;
   getText(): string;
+  /** 本文の文字数（UTF-16）と行数。本文は読まない（ログの量の推移に使う。ADR-007 の R16）。 */
+  getDocumentStats(): { chars: number; lines: number };
   setText(text: string): void;
   onChange(cb: (text: string) => void): () => void;
   onSelectionChange(cb: (selection: EditorSelection) => void): () => void;

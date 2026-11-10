@@ -1,0 +1,92 @@
+{
+ "seed": {
+  "files": {
+   "/work/private-notes/perf-diary.md": {
+    "text": "# 見出し\n\n本文の *強調* と表。\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\n終わり\n"
+   }
+  },
+  "openPath": "/work/private-notes/perf-diary.md",
+  "preferences": {
+   "theme": "light",
+   "autoHideChrome": false
+  }
+ },
+ "steps": [
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.setLoggingCalls",
+    "equals": [
+     false
+    ],
+    "timeout": 4000
+   },
+   "note": "既定はオフ"
+  },
+  {
+   "press": "ControlOrMeta+o"
+  },
+  {
+   "expect": {
+    "testId": "doc-title",
+    "equals": "perf-diary.md"
+   }
+  },
+  {
+   "click": ".cm-content"
+  },
+  {
+   "press": "ControlOrMeta+End"
+  },
+  {
+   "type": "PERF-MARKER-5b2e91"
+  },
+  {
+   "press": "Enter"
+  },
+  {
+   "press": "Backspace"
+  },
+  {
+   "press": "ControlOrMeta+s"
+  },
+  {
+   "expect": {
+    "testId": "unsaved-mark",
+    "read": "count",
+    "equals": 0
+   }
+  },
+  {
+   "type": "!"
+  },
+  {
+   "wait": 2500
+  },
+  {
+   "expect": {
+    "eval": "(window.__mdePerf.flush(), true)",
+    "equals": true
+   },
+   "note": "まとめを書かせても、オフの間は何も出ない"
+  },
+  {
+   "wait": 1500
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.appendLogCalls.length",
+    "equals": 0
+   },
+   "note": "オフの間は、計測も appendLog を 1 回も呼ばない"
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.entries.length",
+    "equals": 0
+   }
+  },
+  {
+   "screenshot": "performance-log-off"
+  }
+ ]
+}

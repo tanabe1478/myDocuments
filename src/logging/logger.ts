@@ -46,17 +46,24 @@ interface RateState {
   suppressed: number;
 }
 
-/** data を、渡せる形にする: 使えない値と名前の項目は捨て、文字列はホームのパスを `~` にして 500 文字までに切る。 */
-function cleanData(data: LogData | undefined): Record<string, LogValue> {
+/**
+ * data を、渡せる形にする: 使えない値と名前の項目は捨て、文字列はホームのパスを `~` にして 500 文字までに切る。
+ * 項目は max 個まで（あとで suppressed を足すときは、足す分を残した数を渡す。Rust 側の上限 20 を超えないため）。
+ */
+function cleanData(data: LogData | undefined, max: number): Record<string, LogValue> {
   const out: Record<string, LogValue> = {};
   if (!data) return out;
+  let count = 0;
   for (const [key, value] of Object.entries(data)) {
-    if (Object.keys(out).length >= MAX_DATA_ITEMS) break;
+    if (count >= max) break;
     if (!NAME.test(key) || value === undefined) continue;
     if (typeof value === 'string') out[key] = clip(value, MAX_VALUE_CHARS);
     else if (typeof value === 'number') {
-      if (Number.isFinite(value)) out[key] = value;
+      if (!Number.isFinite(value)) continue;
+      out[key] = value;
     } else if (typeof value === 'boolean' || value === null) out[key] = value;
+    else continue;
+    count += 1;
   }
   return out;
 }
@@ -150,8 +157,10 @@ export function createLogger(options: LoggerOptions): Logger {
         return;
       }
       rate.count += 1;
-      const cleaned = cleanData(data);
-      if (rate.suppressed > 0) {
+      // suppressed を足すときは、その 1 項目を残す（渡す側の項目が 20 あっても、合わせて 20 を超えない）。
+      const addSuppressed = rate.suppressed > 0;
+      const cleaned = cleanData(data, addSuppressed ? MAX_DATA_ITEMS - 1 : MAX_DATA_ITEMS);
+      if (addSuppressed) {
         cleaned.suppressed = rate.suppressed;
         rate.suppressed = 0;
       }

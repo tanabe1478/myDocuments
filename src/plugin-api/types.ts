@@ -378,10 +378,30 @@ export type PluginLogData = { readonly [key: string]: string | number | boolean 
  */
 export type PluginLog = (level: PluginLogLevel, event: string, data?: PluginLogData) => void;
 
+/**
+ * 性能の計測（ADR-007 の R16）。区間（名前のついた処理）の所要時間を、本体が 1 分ごとにまとめて、アプリのログに書く。
+ * ログが無効（設定「ログを記録する」がオフ）の間は、何も数えず、時刻も読まない（enabled が false で、span は何もしない関数を返す）。
+ * 名前は [a-z0-9._-] の 1〜64 文字（合わないものは数えない）。区間の名前は全体で 32 個まで（超えた分は「other」にまとまる）。
+ * 例外は出さない。名前と所要時間（ms）だけを扱い、本文とファイルのパスは渡せない。
+ * 貸す相手は、段 3（エディタの中の拡張。同梱の部品と、信頼した部品）の activate の ctx だけ。段 2 の部品（Worker）には貸さない。
+ */
+export interface PluginPerf {
+  /** ログが有効の間だけ true。時刻の取得など、計測の準備を省くための印。 */
+  readonly enabled: boolean;
+  /** 区間を始める。戻り値を呼ぶと終わる（2 回目以降は何もしない）。無効の間は、何もしない関数を返す。 */
+  span(name: string): () => void;
+  /** 同期の関数 fn の所要時間を数えて、戻り値を返す。fn の例外は、数えたうえでそのまま投げ直す。 */
+  measure<T>(name: string, fn: () => T): T;
+  /** 自分で測った所要時間（ms）を渡す。 */
+  record(name: string, ms: number): void;
+}
+
 /** activate に渡される登録の口。 */
 export interface PluginContext {
   /** アプリのログに記録する（上の PluginLog）。段 3 の部品だけが使える。 */
   readonly log: PluginLog;
+  /** 性能の計測（上の PluginPerf）。段 3 の部品だけが使える。 */
+  readonly perf: PluginPerf;
   registerSetting<T>(definition: SettingDefinition<T>): SettingHandle<T>;
   registerEditorExtension<T>(registration: EditorExtensionRegistration<T>): void;
   registerCommand(registration: CommandRegistration): void;

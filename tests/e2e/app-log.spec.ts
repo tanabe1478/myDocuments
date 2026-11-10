@@ -379,7 +379,9 @@ test.describe('タイピング音の記録 (Q3)', () => {
     }
     await page.waitForTimeout(1500);
     const added = (await soundEvents(page)).slice(before).map((e) => e.event);
-    expect(added.filter((e) => !['context.statechange', 'resume.requested', 'resume.result'].includes(e))).toEqual([]);
+    // R16: 出力の遅れの見積もり（output.latency）は、1 分に 1 回だけ増える（鳴らすキーごとではない）。
+    expect(added.filter((e) => !['context.statechange', 'resume.requested', 'resume.result', 'output.latency'].includes(e))).toEqual([]);
+    expect(added.filter((e) => e === 'output.latency').length).toBeLessThanOrEqual(1);
     expect(added.length).toBeLessThan(6);
     // 音の要求は、従来どおり出ている。
     expect(await page.evaluate(() => (window as unknown as { __mdeE2ETypingSound: { requests: unknown[] } }).__mdeE2ETypingSound.requests.length)).toBeGreaterThan(5);

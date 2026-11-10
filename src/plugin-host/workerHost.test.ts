@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { IsolatedCommandInfo, IsolatedPluginListener } from '../plugin-api';
+import type { IsolatedCommandInfo, IsolatedPluginListener, PluginPerf } from '../plugin-api';
 import type { MainMessage } from './protocol';
 import { createWorkerHost, type FrameHandle, type HostTrace } from './workerHost';
 
 const IFRAME_WINDOW = { name: 'the-iframe-window' };
 const OTHER_WINDOW = { name: 'another-window' };
 
-function setup(options: { activateTimeoutMs?: number; runTimeoutMs?: number } = {}) {
+function setup(options: { activateTimeoutMs?: number; runTimeoutMs?: number; perf?: PluginPerf } = {}) {
   const posted: MainMessage[] = [];
   let handler: ((event: { source: unknown; data: unknown }) => void) | null = null;
   const events: HostTrace[] = [];
@@ -346,5 +346,68 @@ describe('stop and dispose', () => {
     expect(t.frame.disposed).toBe(true);
     expect(t.hasHandler()).toBe(false);
     expect(() => t.host.start('b', 'c', t.listener())).toThrow();
+  });
+});
+
+
+describe('R16: the round trip of run is counted as plugin-host.run', () => {
+  const withPerf = () => {
+    const started: Array<{ name: string; at: number }> = [];
+    const ended: Array<{ name: string; at: number }> = [];
+    const perf: PluginPerf = {
+      enabled: true,
+      span: (name) => {
+        started.push({ name, at: Date.now() });
+        return () => void ended.push({ name, at: Date.now() });
+      },
+      measure: (_n, fn) => fn(),
+      record: () => {},
+    };
+    const t = setup({ perf });
+    const l = t.listener();
+    t.host.start('a', 'c', l);
+    t.fromIframe(hello);
+    t.fromIframe(command('a', 'x'));
+    t.fromIframe(ready('a'));
+    return { t, started, ended };
+  };
+
+  it('starts at the run request and ends when the Worker answers done', () => {
+    const { t, started, ended } = withPerf();
+    t.host.run('a', 'x');
+    expect(started.map((s) => s.name)).toEqual(['plugin-host.run']);
+    expect(ended).toEqual([]);
+    vi.advanceTimersByTime(30);
+    t.fromIframe({ v: 0, kind: 'done', plugin: 'a', req: 1 });
+    expect(ended.map((e) => e.name)).toEqual(['plugin-host.run']);
+    expect(ended[0]!.at - started[0]!.at).toBe(30);
+  });
+
+  it('does not count a run that was stopped by the time limit, by failing, or by stopping the plugin', () => {
+    const a = withPerf();
+    a.t.host.run('a', 'x');
+    vi.advanceTimersByTime(10_000);
+    expect(a.ended).toEqual([]);
+    const b = withPerf();
+    b.t.host.run('a', 'x');
+    b.t.fromIframe({ v: 0, kind: 'failed', plugin: 'a', req: 1, reason: 'boom' });
+    expect(b.ended).toEqual([]);
+  });
+
+  it('does not count the one-way messages (the document and the selection delivered to a plugin)', () => {
+    const { t, started } = withPerf();
+    t.host.deliverDocument?.('a', { version: 1, kind: 'markdown', text: 'x' });
+    t.host.deliverSelection?.('a', { version: 1, anchor: 0, head: 0 });
+    expect(started).toEqual([]);
+  });
+
+  it('counts nothing without perf', () => {
+    const t = setup();
+    t.host.start('a', 'c', t.listener());
+    t.fromIframe(hello);
+    t.fromIframe(command('a', 'x'));
+    t.fromIframe(ready('a'));
+    expect(t.host.run('a', 'x')).toBeDefined();
+    t.fromIframe({ v: 0, kind: 'done', plugin: 'a', req: 1 });
   });
 });

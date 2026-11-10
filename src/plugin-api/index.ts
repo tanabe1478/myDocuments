@@ -62,6 +62,7 @@ export {
   type PluginLogData,
   type PluginLogLevel,
   type PluginManifest,
+  type PluginPerf,
   type MenuTarget,
   type PanelItem,
   type PluginTier,

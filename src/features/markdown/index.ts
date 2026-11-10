@@ -37,7 +37,7 @@ export const markdownPlugin: Plugin = {
       create: (value, { textKind, openExternalUrl, isMacPlatform }) =>
         textKind === 'plain'
           ? []
-          : [markdownDecorations(value), tableDisplay(), tableKeys(), linkOpenExtension(openExternalUrl, isMacPlatform), taskToggleExtension(), markdownTheme],
+          : [markdownDecorations(value, ctx.perf), tableDisplay(), tableKeys(), linkOpenExtension(openExternalUrl, isMacPlatform), taskToggleExtension(), markdownTheme],
     });
     ctx.registerSettingsItem({
       placement: 'appearance.body',

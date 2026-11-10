@@ -1,4 +1,5 @@
 import { errorKind } from '../logging/sanitize';
+import type { PluginPerf } from '../plugin-api';
 import { BridgeError, type DocumentBridge, type Draft, type DraftSummary, type SaveResult as BridgeSaveResult } from '../platform';
 import { DraftKeeper, buildDraft, type DraftKeeperDeps } from './drafts';
 import {
@@ -59,6 +60,11 @@ export interface ControllerDeps {
    * （本文とパスは渡さない）。ない環境では、記録しない。
    */
   log?(level: 'error', event: string, data: Record<string, string>): void;
+  /**
+   * 性能の計測（R16）。保存（書き込みの要求から結果の反映まで。ダイアログと確認の待ちは含めない）を区間 document.save、
+   * 草稿の書き込みを区間 document.draft-write として数える。省略か無効の間は、何もしない。
+   */
+  perf?: PluginPerf;
   /** 草稿の識別子の生成（既定は crypto.randomUUID）。 */
   newDraftId?: () => string;
   /** 草稿の自動保存のタイマー（テストで差し替える）。 */
@@ -124,6 +130,7 @@ export class DocumentController {
         this.logFailure('draft-write', e);
         deps.notify({ kind: 'error', message: `草稿を保存できませんでした。${describeError(e)}` });
       },
+      ...(deps.perf ? { perf: deps.perf } : {}),
       ...deps.draftTimers,
     });
   }
@@ -437,6 +444,7 @@ export class DocumentController {
     }
     if (path === null) return 'cancelled';
     const { format } = this.state;
+    const end = this.deps.perf?.span('document.save');
     try {
       const result = await this.deps.bridge.saveDocumentAs(path, text, format);
       return await this.applySaveResult(result, { path, text, format });
@@ -444,11 +452,14 @@ export class DocumentController {
       this.logFailure('save-as', e);
       this.deps.notify({ kind: 'error', message: describeError(e) });
       return 'failed';
+    } finally {
+      end?.();
     }
   }
 
   private async writeExisting(plan: Extract<SavePlan, { kind: 'write' }>, text: string): Promise<SaveResult> {
     const { format } = this.state;
+    const end = this.deps.perf?.span('document.save');
     try {
       const result = await this.deps.bridge.saveDocument(plan.path, text, format, {
         expectedRevision: plan.expectedRevision,
@@ -459,6 +470,8 @@ export class DocumentController {
       this.logFailure('save', e);
       this.deps.notify({ kind: 'error', message: describeError(e) });
       return 'failed';
+    } finally {
+      end?.();
     }
   }
 

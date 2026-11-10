@@ -13,6 +13,7 @@
 - APP-9: 左サイドバー（aside、名前「サイドバー」）。既定は閉じている。上部バー左端の開閉ボタンか Mod+B で開閉し、開くと本文の領域を右へ 260px 押し出す（重ねない）。中身は見出し「エクスプローラー」と、フォルダ未選択なら「フォルダはまだ開かれていません」と「フォルダを開く」ボタン、選択後はフォルダのツリー（explorer.md）。開閉は保存され、再読み込み後に復元される。入力中の自動非表示では隠れない。IME の変換中は Mod+B に反応しない。設定画面を開いている間は Mod+B を無視する。
 - APP-10: 狭い窓。押し出すと本文が最小幅（本文の最大幅の最小値 320px + 左右の余白 20px ずつ = 360px）を割る窓（幅が 620px 未満）では、サイドバーは本文の上に重なり、本文は動かない。そのとき、サイドバーの中に閉じるボタン（sidebar-close）が出て、Esc でも閉じる。
 - APP-11: 設定画面の最後の節「診断」（ADR-007、R14）。チェック「ログを記録する」は既定でオフ。オンにすると preferences の appLog が保存され、ネイティブ側へ有効が伝わり（bridge の setLogging）、本体のロガーが、起動、拾われなかった例外、visibilitychange、時計の飛び、文書の失敗、部品の停止、タイピング音の状態などを、1 秒ごとにまとめて bridge の appendLog へ渡す（ネイティブ側が app.log へ JSON Lines で追記する）。オフの間は appendLog が 1 回も呼ばれない。オフに戻すと、ためていた分を捨てて止まる。補足に置き場所（macOS は `~/Library/Logs/io.github.tanabe1478.immersive-markdown-editor/`、ほかの OS は「OS のログのフォルダ」）と、オフにしても書いたファイルは残ることを書く。本文とファイルのパスは書かない。
+- APP-12: 性能の計測（ADR-007 の R16）。ログがオンの間だけ、区間ごとの所要時間（入力は keydown から本文の更新と次の描画まで、IME の変換、Markdown の装飾と表、部品への本文の配信、Worker の部品との往復、Rust のコマンドの往復をコマンド名ごと、保存、草稿の書き込み、タイピング音）を、1 分ごとに区間ごとの 1 行（source は perf、event は区間の名前、data は count、p50_ms、p95_ms、max_ms、total_ms、slow）にまとめて appendLog へ渡す。50ms 以上の区間は、その場で warn（source は perf-slow。区間ごとに 1 分に 5 件まで）。量の推移（perf-system の gauges）と画面の止まり（perf-system の frames）も 1 分ごと。オフの間は、時刻の読み取りも、タイマーも、requestAnimationFrame も動かず、appendLog は呼ばれない。
 
 ## How to get to it (user POV)
 
@@ -37,6 +38,8 @@ Preconditions: Launch 済みで Doctor が全 PASS。画像のシナリオは se
 | appearance-background.json | Mod+, を開き、単色（#336699）、グラデーション（夕暮れ）、画像（選択）、明るさ 0.5、背景を表示しない、暗い単色 + 本文面の不透明度 0 を順に操作 | canvas-bg の data-kind が gradient から color、gradient、image と変わり、色は rgb(51, 102, 153)。画像は blob: の URL で、image-status が「取り込み済み」、filter が brightness(0.5)。背景を表示しないで canvas-bg が 0 件、canvas-surface の opacity が 1。コントラスト警告が出て、不透明度を 1 に戻すと消える |
 | diagnostics-log.json | 既定（オフ）のまま本文を入力して保存する。設定画面を開き、最後の節「診断」を見て撮影する。「ログを記録する」をオンにして撮影し、閉じて入力と保存をしてから、もう一度開いてオフに戻し、オフのまま入力と保存をする | setLoggingCalls が [false]、オフの間は appendLogCalls が 0 件。最後の節の見出しが「診断」、チェックは未選択で、補足に「置き場所」と「オフにしても、書いたファイルは残ります」がある。オンにすると appLog true が保存され、setLoggingCalls が [false, true]、entries に app.logging-enabled（data.user_agent が navigator.userAgent）が 1 秒ほどで渡る。本文に打った目印の文字列（BODY-MARKER-7f3c9a）と、開いたファイルの名前とパスは、appendLogCalls のどこにもない。オフに戻すと setLoggingCalls が [false, true, false]、appLog false が保存され、オフの間の入力と保存では appendLogCalls が増えない。画像は diagnostics-off-light.png、diagnostics-on-light.png、diagnostics-off-again.png |
 | diagnostics-log-dark.json | appLog をオンにして、ダークで起動する。設定画面を開いて「診断」の節を撮影し、オフにする | setLoggingCalls が [true]（起動の最初から有効）。entries に app.start（data.user_agent が navigator.userAgent）。チェックは選択済み。オフにすると [true, false]。画像は diagnostics-on-dark.png、diagnostics-off-dark.png |
+| performance-log.json | appLog をオンにして起動し、文書を開いて本文の末尾に目印の文字列と 1 文字を打ち、Enter、Backspace、保存、続けて 1 文字を打って 2.5 秒待つ（草稿が書かれる）。window.__mdePerf.flush() で、1 分を待たずにまとめを書かせる | entries に source が perf の行が出る。event は区間の名前で、input.keydown-to-update、input.keydown-to-paint、markdown.decorations、markdown.table-display、feed.publish、bridge.save_document、bridge.write_draft、document.save、document.draft-write がある（bridge.append_log はない）。data のキーは count、p50_ms、p95_ms、max_ms、total_ms、slow の順で、input.keydown-to-update の count は 5 以上。perf-system の gauges（doc_chars、doc_lines、dom_nodes、heap_used_mb。メモリがなければ null）と frames の行がある。本文の目印（PERF-MARKER）、ファイル名、パスは appendLogCalls のどこにもない。画像は performance-log-on.png |
+| performance-log-off.json | 既定（オフ）のまま、performance-log.json と同じ入力と保存をして、まとめを書かせる | setLoggingCalls が [false]。appendLogCalls が 0 件、entries が空（計測もオフの間は何も書かない）。画像は performance-log-off.png |
 
 ```
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/appearance-typography.json
@@ -45,6 +48,8 @@ node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenari
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/layout-sidebar-narrow.json
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/diagnostics-log.json
 node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/diagnostics-log-dark.json
+node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/performance-log.json
+node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenario .pi/skills/verify-mydocuments/features/scenarios/performance-log-off.json
 ```
 
 見た目の確認は、evidence/<scenario 名>/ の settings-open-dark.png、bg-gradient-dusk.png、bg-image.png、contrast-warning.png などの画像で行う。
@@ -64,3 +69,4 @@ node .pi/skills/verify-mydocuments/scripts/drive.mjs --run-id <run-id> --scenari
 - ログ（APP-11）の確かめ方は、メモリ bridge の記録 window.__mdeE2E.logging（enabled、setLoggingCalls、appendLogCalls、entries。ネイティブ側と同じく、有効の間の行だけ entries に残る）を読む。実際の app.log への書き込み（Rust）は src-tauri の cargo test が確かめ、Tauri の窓で app.log が書かれることは、この Skill では未確認。ログのキーと event 名は小文字と `.` `_` `-` だけ（data のキーは `elapsed_ms` のような形）。渡されるのは 1 秒ごとなので、entries を読む expect は timeout（5000ms 程度）で待ち、「渡されないこと」は 1.5 秒以上待ってから見る。
 - 文書の失敗（open-failed、save-failed、save-as-failed、draft-write-failed）は、メモリ bridge の window.__mdeE2E.failNext（例: `failNext.saveDocument = 'permission-denied'`。次の 1 回だけ、パスを含むメッセージの BridgeError を投げる）で起こす。ログにメッセージとパスが出ないことは、tests/e2e/app-log.spec.ts が確かめる。例外、visibilitychange、時計の飛び（Playwright の clock）、部品の停止、タイピング音の記録も、同じ spec が確かめ、シナリオの範囲外。
 - ネイティブのファイル選択ダイアログと、実際の画像ファイルの読み込み（Rust 側の形式判定と 20 MiB の上限）は、この Skill では確かめない。
+- 性能の計測（APP-12）の確かめ方は、メモリ bridge の記録（window.__mdeE2E.logging.entries）に出る perf、perf-slow、perf-system の行を読む。1 分ごとのまとめは、e2e のビルドだけにある window.__mdePerf.flush() で、1 分を待たずに書かせる（eval の step で呼ぶ）。区間の所要時間の値そのもの（p50_ms など）は、環境の負荷で揺れるので、行の有無と形（キーの並び、count の下限）で確かめる。50ms 以上の warn、区間の数の上限（32）、1 分のタイマーは単体テスト（src/logging/perf.test.ts）と tests/e2e/perf-log.spec.ts が見る。Tauri の窓で、計測の行が実際に app.log へ書かれることは未確認。

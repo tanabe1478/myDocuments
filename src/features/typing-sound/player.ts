@@ -1,3 +1,4 @@
+import type { PluginPerf } from '../../plugin-api';
 import { soundKindOf, type KeyEventLike, type SoundKind } from './keys';
 import { onsetOffsetSeconds } from './onset';
 
@@ -75,6 +76,8 @@ export interface SoundContext {
   /** アプリのログ用（ADR-007）。無い環境（テスト用の簡単な実装）もある。 */
   readonly sampleRate?: number;
   readonly currentTime?: number;
+  /** 出力の遅れの見積もり用（R16）。いま出力されている位置（contextTime）と、そのときの performance.now（performanceTime）。無い環境（WKWebView の版による）もある。 */
+  getOutputTimestamp?(): { readonly contextTime?: number; readonly performanceTime?: number };
   addEventListener?(type: 'statechange', listener: () => void): void;
   removeEventListener?(type: 'statechange', listener: () => void): void;
   resume(): Promise<void>;
@@ -116,6 +119,10 @@ export interface DeviceEventSource {
 /** 時計の止まりを疑うときの、前に見たときからの最短の経過（ミリ秒）と、currentTime の進みが「止まり」になる、経過に対する割合。 */
 export const STALL_MIN_WALL_MS = 500;
 export const STALL_ADVANCE_RATIO = 1 / 4;
+/** 出力の遅れの見積もり（R16）: 読み取る間隔の下限、記録する間隔、警告にする見積もり（ms）。 */
+export const LATENCY_SAMPLE_MS = 1000;
+export const LATENCY_LOG_INTERVAL_MS = 60_000;
+export const LATENCY_WARN_MS = 150;
 /** suspended などで resume を頼み続けるとき、同じ記録を繰り返さない間隔（ミリ秒）。 */
 const RESUME_LOG_INTERVAL_MS = 5000;
 
@@ -132,6 +139,8 @@ export interface TypingSoundPlayerOptions {
   readonly observe?: (event: TypingSoundEvent) => void;
   /** アプリのログ（ADR-007）。observe とは別の受け口。状態が変わったとき、失敗、時計の止まりの疑いのときだけ呼ぶ（鳴らすキーごとには呼ばない）。 */
   readonly log?: TypingSoundLog;
+  /** 性能の計測（R16。index.ts が ctx.perf を渡す）。省略、またはログが無効の間は、何も数えない。 */
+  readonly perf?: PluginPerf;
   /** デバイスの増減の通知元。省略は navigator.mediaDevices（ない環境、イベントが使えない環境では、記録しない）。null なら使わない。 */
   readonly mediaDevices?: DeviceEventSource | null;
 }
@@ -141,6 +150,11 @@ export interface TypingSoundPlayer {
   prepare(timbre: TypingSoundTimbre): void;
   /** 本文の keydown。鳴らすキーなら 1 回だけ鳴らす。例外は外へ出さない（鳴らないだけ）。 */
   handleKeyDown(event: KeyEventLike, volume: TypingSoundVolume, timbre: TypingSoundTimbre): void;
+  /**
+   * 設定がオフになった。AudioContext を閉じ、デコードした素材を捨てる（素材のバイト列は残す。取り直さない）。
+   * 次に鳴らすキーで、AudioContext を作り直し、素材をデコードし直す。AudioContext がなければ何もしない。
+   */
+  release(reason: 'setting-off'): void;
   /** 部品を外す。AudioContext を閉じ、以降は鳴らさない。 */
   dispose(): void;
 }
@@ -176,6 +190,8 @@ async function defaultFetchBytes(url: string): Promise<ArrayBuffer> {
 
 const errorName = (e: unknown): string => (e instanceof Error ? e.name : typeof e === 'object' && e !== null ? 'object' : typeof e);
 const finiteOrNull = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) ? value : null);
+/** 秒の値を ms にして、小数 1 桁に丸める（有限でなければ null）。 */
+const finiteMs = (seconds: unknown): number | null => (typeof seconds === 'number' && Number.isFinite(seconds) ? Math.round(seconds * 10000) / 10 : null);
 
 /** デコードした素材の、鳴り始めの位置（秒）。読めなければ 0（頭から鳴らす）。 */
 function offsetOfBuffer(buffer: SoundBuffer): number {
@@ -222,6 +238,7 @@ export function createTypingSoundPlayer(options: TypingSoundPlayerOptions): Typi
   const fetchBytes = options.fetchBytes ?? defaultFetchBytes;
   const random = options.random ?? Math.random;
   const now = options.now ?? (() => performance.now());
+  const perfOption = options.perf;
 
   let disposed = false;
   let context: SoundContext | null = null;
@@ -267,9 +284,15 @@ export function createTypingSoundPlayer(options: TypingSoundPlayerOptions): Typi
   let resumeLoggedAt = Number.NEGATIVE_INFINITY;
   let resumeSkipped = 0;
   let detachLogging: (() => void) | null = null;
+  /** 次に AudioContext を作る理由（context.created に添える）。 */
+  let createReason: 'first-key' | 'after-setting-off' | 'after-closed' = 'first-key';
+  /** 出力の遅れの見積もり（R16）: 最後に読んだ時刻、最後に info を書いた時刻、最後に warn を書いた時刻。 */
+  let lastLatencySampleAt = Number.NEGATIVE_INFINITY;
+  let lastLatencyLogAt = Number.NEGATIVE_INFINITY;
+  let lastLatencyWarnAt = Number.NEGATIVE_INFINITY;
 
   /** 作った AudioContext の記録（作ったこと、statechange、devicechange）。記録の失敗は、鳴らす処理に出さない。 */
-  function watchContext(ctx: SoundContext): void {
+  function watchContext(ctx: SoundContext, reason: string): void {
     try {
       lastState = ctx.state;
       clockBase = null;
@@ -280,6 +303,7 @@ export function createTypingSoundPlayer(options: TypingSoundPlayerOptions): Typi
         base_latency: finiteOrNull(ctx.baseLatency),
         output_latency: finiteOrNull(ctx.outputLatency),
         state: ctx.state,
+        reason,
       });
       const onStateChange = () => {
         const to = ctx.state;
@@ -320,26 +344,66 @@ export function createTypingSoundPlayer(options: TypingSoundPlayerOptions): Typi
     detach?.();
   }
 
-  /** state が running のときの、時計の止まりの検査。currentTime の読み取りと比較だけ（await もログの書き込みも挟まない）。 */
-  function checkClock(ctx: SoundContext, t: number): void {
+  /**
+   * state が running のときの、時計の止まりの検査。currentTime の読み取りと比較だけをここで行い（await は挟まない）、
+   * 書くべきログがあれば、あとで呼ぶ関数として返す。呼び出し側は、source.start のあとに呼ぶ（R16 の N2: 鳴らす経路にログの書き込みを入れない）。
+   */
+  function checkClock(ctx: SoundContext, t: number): (() => void) | null {
     const time = ctx.currentTime;
-    if (typeof time !== 'number' || !Number.isFinite(time)) return;
+    if (typeof time !== 'number' || !Number.isFinite(time)) return null;
     if (clockBase === null) {
       clockBase = { at: t, time };
-      return;
+      return null;
     }
     const wall = t - clockBase.at;
-    if (wall < STALL_MIN_WALL_MS) return;
+    if (wall < STALL_MIN_WALL_MS) return null;
     const advance = (time - clockBase.time) * 1000;
     clockBase = { at: t, time };
     if (advance < wall * STALL_ADVANCE_RATIO) {
       if (!stalled) {
         stalled = true;
-        log('warn', 'clock.stalled', { elapsed_ms: Math.round(wall), advance_ms: Math.round(advance), state: ctx.state });
+        const data = { elapsed_ms: Math.round(wall), advance_ms: Math.round(advance), state: ctx.state };
+        return () => log('warn', 'clock.stalled', data);
       }
     } else if (stalled) {
       stalled = false;
-      log('info', 'clock.recovered', { elapsed_ms: Math.round(wall), advance_ms: Math.round(advance), state: ctx.state });
+      const data = { elapsed_ms: Math.round(wall), advance_ms: Math.round(advance), state: ctx.state };
+      return () => log('info', 'clock.recovered', data);
+    }
+    return null;
+  }
+
+  /**
+   * 出力の遅れの見積もり（R16）。getOutputTimestamp があるときだけ、LATENCY_SAMPLE_MS に 1 回まで読み、
+   * currentTime - contextTime（ms。いま描いている位置と、出力されている位置の差）と、performance.now() - performanceTime
+   * （ms。その出力の位置の古さ）を求める。読み取りと計算だけ（await なし）。source.start のあとに呼ぶ。
+   * 見積もりが LATENCY_WARN_MS を超えたら warn（続く間は 1 分に 1 回まで）、そうでなくても 1 分に 1 回は info を書く。作り直しはしない。
+   */
+  function sampleOutputLatency(ctx: SoundContext, t: number): void {
+    if (typeof ctx.getOutputTimestamp !== 'function') return;
+    if (t - lastLatencySampleAt < LATENCY_SAMPLE_MS) return;
+    lastLatencySampleAt = t;
+    const stamp = ctx.getOutputTimestamp();
+    const contextTime = finiteOrNull(stamp?.contextTime);
+    const performanceTime = finiteOrNull(stamp?.performanceTime);
+    const currentTime = finiteOrNull(ctx.currentTime);
+    // 出力がまだ始まっていない（0 が返る）ときは、見積もれない。
+    if (contextTime === null || performanceTime === null || currentTime === null || (contextTime === 0 && performanceTime === 0)) return;
+    const estimate = (currentTime - contextTime) * 1000;
+    const data = {
+      estimate_ms: Math.round(estimate),
+      timestamp_age_ms: Math.round(now() - performanceTime),
+      base_latency_ms: ctx.baseLatency === undefined ? null : finiteMs(ctx.baseLatency),
+      output_latency_ms: ctx.outputLatency === undefined ? null : finiteMs(ctx.outputLatency),
+      state: ctx.state,
+    };
+    if (estimate > LATENCY_WARN_MS && t - lastLatencyWarnAt >= LATENCY_LOG_INTERVAL_MS) {
+      lastLatencyWarnAt = t;
+      log('warn', 'output.latency-high', { ...data, threshold_ms: LATENCY_WARN_MS });
+    }
+    if (t - lastLatencyLogAt >= LATENCY_LOG_INTERVAL_MS) {
+      lastLatencyLogAt = t;
+      log('info', 'output.latency', data);
     }
   }
 
@@ -410,11 +474,14 @@ export function createTypingSoundPlayer(options: TypingSoundPlayerOptions): Typi
     if (context?.state === 'closed') {
       unwatchContext();
       context = null;
+      // 外から閉じられた（こちらが閉じたのは release と dispose で、そのときは context が null になっている）。
+      createReason = 'after-closed';
     }
     if (!context) {
       context = createContext();
       emit({ type: 'context' });
-      watchContext(context);
+      watchContext(context, createReason);
+      createReason = 'after-closed';
     }
     return context;
   }
@@ -428,6 +495,8 @@ export function createTypingSoundPlayer(options: TypingSoundPlayerOptions): Typi
   }
 
   function handleKeyDown(event: KeyEventLike, volume: TypingSoundVolume, timbre: TypingSoundTimbre): void {
+    // source.start のあとに書くログ（時計の止まりの検査の結果）。鳴らす経路の中には、ログの書き込みを入れない（R16 の N2）。
+    let afterStart: (() => void) | null = null;
     try {
       if (disposed) return;
       const kind = soundKindOf(event);
@@ -445,7 +514,7 @@ export function createTypingSoundPlayer(options: TypingSoundPlayerOptions): Typi
         return;
       }
       resumeLogged = false;
-      checkClock(ctx, t);
+      afterStart = checkClock(ctx, t);
       const sounds = state.sounds;
       if (!sounds || sounds.length === 0) return;
       ends = ends.filter((end) => end > t);
@@ -472,7 +541,8 @@ export function createTypingSoundPlayer(options: TypingSoundPlayerOptions): Typi
           // 片付けの失敗は無視する。
         }
       };
-      const startDelayMs = observe ? now() - t : 0;
+      const measuring = perfOption?.enabled === true;
+      const startDelayMs = observe || measuring ? now() - t : 0;
       source.start(0, sound.offset);
 
       state.lastIndex = index;
@@ -492,27 +562,57 @@ export function createTypingSoundPlayer(options: TypingSoundPlayerOptions): Typi
           outputLatency: typeof ctx.outputLatency === 'number' ? ctx.outputLatency : null,
         });
       }
+      // 計測（R16）: keydown を受け取ってから source.start を呼ぶまでの時間と、出力の遅れの見積もり。start のあとに行う。
+      if (measuring) {
+        perfOption.record('sound.start-delay', startDelayMs);
+        sampleOutputLatency(ctx, t);
+      }
     } catch {
       // 音が鳴らないだけにする。入力は妨げない。
+    } finally {
+      // 時計の止まりのログは、start のあと（鳴らさずに戻ったときも、ここ）で書く。log は例外を出さない。
+      afterStart?.();
     }
+  }
+
+  /** AudioContext を閉じる。閉じたことを、理由つきで記録する。閉じられなくても、以降の処理には影響しない。 */
+  function closeContext(ctx: SoundContext, reason: string): void {
+    log('info', 'context.closed', { reason, from: ctx.state, current_time: finiteOrNull(ctx.currentTime) });
+    try {
+      void ctx.close().catch(() => {});
+    } catch {
+      // 閉じられなくても、以降は鳴らさない。
+    }
+  }
+
+  function release(reason: 'setting-off'): void {
+    if (disposed) return;
+    const ctx = context;
+    if (!ctx) return;
+    context = null;
+    unwatchContext();
+    // デコードした素材は、閉じた AudioContext のもの。捨てて、次のキーで作り直した AudioContext でデコードし直す。
+    // 素材のバイト列（bytes）は残す（取り直さない）。
+    for (const state of states.values()) {
+      state.sounds = null;
+      state.decoding = false;
+    }
+    ends = [];
+    lastAt = Number.NEGATIVE_INFINITY;
+    createReason = 'after-setting-off';
+    closeContext(ctx, reason);
   }
 
   function dispose(): void {
     if (disposed) return;
-    disposed = true;
     const ctx = context;
     context = null;
     unwatchContext();
     states.clear();
     ends = [];
-    if (ctx) {
-      try {
-        void ctx.close().catch(() => {});
-      } catch {
-        // 閉じられなくても、以降は鳴らさない。
-      }
-    }
+    if (ctx) closeContext(ctx, 'dispose');
+    disposed = true;
   }
 
-  return { prepare, handleKeyDown, dispose };
+  return { prepare, handleKeyDown, release, dispose };
 }

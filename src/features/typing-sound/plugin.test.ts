@@ -137,6 +137,7 @@ function spyPlayer() {
     handleKeyDown: vi.fn((e, volume, timbre) => {
       calls.push({ key: e.key, volume, timbre, prevented: (e as KeyboardEvent).defaultPrevented });
     }),
+    release: vi.fn(),
     dispose: vi.fn(),
   };
   return { player, calls };
@@ -265,6 +266,7 @@ describe('the extension observes keydown in the body only', () => {
       handleKeyDown: () => {
         throw new Error('handle');
       },
+      release: () => {},
       dispose: () => {},
     };
     const v = mount(typingSoundExtension(player));
@@ -395,5 +397,46 @@ describe('from the plugin: off means no fetch and no AudioContext', () => {
     expect(() => press(v.contentDOM, 'a')).not.toThrow();
     expect(v.state.doc.toString()).toBe('hello');
     r.dispose();
+  });
+});
+
+
+describe('release on setting off (R16)', () => {
+  const slot = () => new Compartment();
+
+  it('releases the player when the extension is removed by a reconfigure (setting off), and not while it stays', () => {
+    const { player } = spyPlayer();
+    const c = slot();
+    const v = mount(c.of(typingSoundExtension(player)));
+    v.dispatch({ effects: c.reconfigure(typingSoundExtension(player)) });
+    expect(player.release).not.toHaveBeenCalled();
+    v.dispatch({ effects: c.reconfigure([]) });
+    expect(player.release).toHaveBeenCalledTimes(1);
+    expect(player.release).toHaveBeenCalledWith('setting-off');
+    // もう一度オンにして、またオフにしたら、また閉じる。
+    v.dispatch({ effects: c.reconfigure(typingSoundExtension(player)) });
+    v.dispatch({ effects: c.reconfigure([]) });
+    expect(player.release).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not release when a document is opened (setState with the extension still in the state) or when the editor is destroyed', () => {
+    const { player } = spyPlayer();
+    const c = slot();
+    const v = mount(c.of(typingSoundExtension(player)));
+    v.setState(EditorState.create({ doc: 'another document', extensions: [c.of(typingSoundExtension(player))] }));
+    expect(player.release).not.toHaveBeenCalled();
+    v.destroy();
+    view = null;
+    expect(player.release).not.toHaveBeenCalled();
+  });
+
+  it('a failure in release does not escape into the editor', () => {
+    const { player } = spyPlayer();
+    (player.release as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      throw new Error('release');
+    });
+    const c = slot();
+    const v = mount(c.of(typingSoundExtension(player)));
+    expect(() => v.dispatch({ effects: c.reconfigure([]) })).not.toThrow();
   });
 });

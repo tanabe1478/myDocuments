@@ -3,17 +3,18 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { bundledActionPlugins, bundledPlugins } from './features';
 import { loadIsolatedPlugins } from './isolated-plugins';
-import { applyLogSetting, attachLogBridge, installAppDiagnostics, logger } from './logging';
+import { applyLogSetting, attachLogBridge, installAppDiagnostics, logger, perf } from './logging';
 import { createPluginRegistry } from './plugin-api';
 import { createIsolatedPluginHost } from './plugin-host';
 import { applyPreferences } from './preferences/apply';
 import { DEFAULT_PREFERENCES, normalizePreferences } from './preferences/preferences';
-import { createBridge } from './platform';
+import { createBridge, instrumentBridge } from './platform';
 import { PermissionController } from './permissions/controller';
 import './styles.css';
 
 async function bootstrap(): Promise<void> {
-  const bridge = await createBridge();
+  // 性能の計測（R16）のため、ブリッジの往復を数える包みで覆う（appendLog は数えない。ログがオフの間は、元のメソッドをそのまま呼ぶ）。
+  const bridge = instrumentBridge(await createBridge(), perf);
 
   // アプリのログ（ADR-007）。保存済みの設定「ログを記録する」（既定はオフ）を、部品を読み込む前に伝える
   // （部品の読み込みの失敗も記録できるように）。設定が読めないときは、オフのまま。オフの間は、何も書かない。
@@ -25,6 +26,8 @@ async function bootstrap(): Promise<void> {
   }
   attachLogBridge(bridge);
   installAppDiagnostics(logger);
+  // e2e のビルドだけ: 1 分を待たずに、計測のまとめを書かせる（本番では、この呼び出しごと取り除かれる）。
+  if (__E2E__) (window as unknown as { __mdePerf?: { flush(): void } }).__mdePerf = { flush: () => perf.flush() };
   await applyLogSetting(normalizePreferences(storedPreferences).appLog);
 
   // 部品の一覧。部品の例外や版の不一致で起動を止めない（その部品だけを外す）。
@@ -38,6 +41,7 @@ async function bootstrap(): Promise<void> {
           ...(isolated.activateTimeoutMs !== undefined ? { activateTimeoutMs: isolated.activateTimeoutMs } : {}),
           ...(isolated.runTimeoutMs !== undefined ? { runTimeoutMs: isolated.runTimeoutMs } : {}),
           ...(isolated.trace ? { trace: isolated.trace } : {}),
+          perf,
         })
       : undefined;
   // 段 2 の権限の決定と確認の画面。保存済みの決定は、最初に必要になったときに読む（起動では読まない）。
@@ -48,6 +52,7 @@ async function bootstrap(): Promise<void> {
     permissions,
     deferStart: true,
     log: (level, source, event, data) => logger.log(level, source, event, data),
+    perf,
   });
   isolated.afterBoot?.(plugins);
 

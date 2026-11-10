@@ -15,13 +15,14 @@ export type { FrameHandle, HostTrace, WorkerHostOptions } from './workerHost';
 export { LIMITS, PROTOCOL_VERSION, parseRelayMessage } from './protocol';
 
 /** 実際の iframe と窓の message で動く、本体の仕組み。段 2 の部品があるときだけ作る。 */
-export function createIsolatedPluginHost(options: { activateTimeoutMs?: number; runTimeoutMs?: number; trace?: WorkerHostOptions['trace'] }): IsolatedPluginHost {
+export function createIsolatedPluginHost(options: { activateTimeoutMs?: number; runTimeoutMs?: number; trace?: WorkerHostOptions['trace']; perf?: WorkerHostOptions['perf'] }): IsolatedPluginHost {
   return createWorkerHost({
     createFrame: () => createDomFrame(hostHtml),
     listen: listenWindowMessages,
     ...(options.activateTimeoutMs !== undefined ? { activateTimeoutMs: options.activateTimeoutMs } : {}),
     ...(options.runTimeoutMs !== undefined ? { runTimeoutMs: options.runTimeoutMs } : {}),
     ...(options.trace !== undefined ? { trace: options.trace } : {}),
+    ...(options.perf !== undefined ? { perf: options.perf } : {}),
     report: (level, message) => console[level](message),
   });
 }
