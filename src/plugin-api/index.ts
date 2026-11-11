@@ -10,9 +10,20 @@ export {
   isDimmedBlock,
   ownsCaretScroll,
   skipCaretFollow,
+  suspendReadingMargins,
   tabHandlers,
   type LineSpan,
 } from './conventions';
+export {
+  CODE_LANGUAGE_RETRY_MS,
+  PLAIN_LANGUAGE_NAMES,
+  SHORT_LANGUAGE_NAMES,
+  isKnownLanguageName,
+  languageCandidates,
+  matchCodeLanguage,
+  resolveCodeLanguage,
+  type LanguageCandidate,
+} from './codeLanguages';
 export { frontmatterEndLine } from './frontmatter';
 export {
   DECLARATION_ONLY_DESCRIPTIONS,

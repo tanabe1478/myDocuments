@@ -30,6 +30,16 @@ export const ownsCaretScroll = Facet.define<boolean, boolean>({
 });
 
 /**
+ * 「いま、視線の位置の余白（ホストの scrollMargins。表示領域の上下 3 割）を止めてほしい」という宣言。
+ * CodeMirror は、ポップアップ（補完の一覧）を、スクロール領域から scrollMargins を除いた範囲にカーソルがあるときだけ描く。
+ * 余白の中（短い文書の最初の行など）にカーソルがあると、一覧が画面の外へ置かれて見えなくなる。
+ * true を返す関数がある間、ホストの視線の位置は余白を足さない（一覧が閉じれば、元に戻る）。
+ */
+export const suspendReadingMargins = Facet.define<(state: EditorState) => boolean, readonly ((state: EditorState) => boolean)[]>({
+  combine: (values) => values,
+});
+
+/**
  * Tab / Shift+Tab を、文脈に応じて部品が先に受けるための入口（Markdown の表のセルの移動など）。
  * ホストの字下げのキー割り当ては、Esc の直後でなければ、これを順に呼び、true を返したものがあればそこで終える
  * （字下げはしない）。どれも true を返さなければ、これまでどおりの字下げ。backward は Shift+Tab のとき true。

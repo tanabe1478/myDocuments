@@ -1,0 +1,187 @@
+{
+  "seed": {
+    "files": {
+      "/docs/code.md": {
+        "text": ""
+      }
+    },
+    "openPath": "/docs/code.md",
+    "preferences": {
+      "theme": "light",
+      "autoHideChrome": false
+    }
+  },
+  "viewport": {
+    "width": 1100,
+    "height": 700
+  },
+  "steps": [
+    {
+      "press": "ControlOrMeta+o"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "code.md"
+      }
+    },
+    {
+      "click": {
+        "css": ".cm-content",
+        "position": {
+          "x": 5,
+          "y": 5
+        }
+      }
+    },
+    {
+      "type": "```pyt"
+    },
+    {
+      "expect": {
+        "css": ".cm-tooltip-autocomplete",
+        "read": "visible",
+        "equals": true,
+        "note": "``` の後ろで打ち始めると、言語名の補完が出る"
+      }
+    },
+    {
+      "expect": {
+        "eval": "document.querySelector('.cm-tooltip-autocomplete li[aria-selected]').textContent.includes('python')",
+        "equals": true,
+        "note": "先頭の候補は python"
+      }
+    },
+    {
+      "screenshot": "completion-open"
+    },
+    {
+      "wait": 200
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText() === \"```python\"",
+        "equals": true,
+        "note": "Enter で、最初の語が選んだ名前に置き換わった（改行は入らない）"
+      }
+    },
+    {
+      "expect": {
+        "css": ".cm-tooltip-autocomplete",
+        "read": "count",
+        "equals": 0
+      }
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText() === \"```python\\n\\n```\"",
+        "equals": true,
+        "note": "補完が閉じたあとの Enter で、閉じのフェンスが入る"
+      }
+    },
+    {
+      "type": "let n = 1"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText() === '```python\\nlet n = 1\\n```'",
+        "equals": true
+      }
+    },
+    {
+      "expect": {
+        "eval": "![...document.querySelectorAll('.cm-content span')].some((e) => e.children.length === 0 && e.textContent === 'let')",
+        "equals": true,
+        "note": "python では let は色なし（言語を選び直す前の状態）"
+      }
+    },
+    {
+      "screenshot": "python-colors"
+    },
+    {
+      "eval": "window.__mdeE2E.editor.goToLineStart(0)"
+    },
+    {
+      "press": "End"
+    },
+    {
+      "press": "Backspace",
+      "times": 6
+    },
+    {
+      "type": "typescr"
+    },
+    {
+      "expect": {
+        "css": ".cm-tooltip-autocomplete",
+        "read": "visible",
+        "equals": true,
+        "note": "言語名を消して打ち直すと、また補完が出る"
+      }
+    },
+    {
+      "wait": 200
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText() === \"```typescript\\nlet n = 1\\n```\"",
+        "equals": true,
+        "note": "typescript に置き換わった"
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = [...document.querySelectorAll('.cm-content span')].find((e) => e.children.length === 0 && e.textContent === \"let\"); const p = document.createElement('span'); p.style.color = 'var(--md-code-keyword)'; document.body.append(p); const w = getComputedStyle(p).color; p.remove(); return !!s && getComputedStyle(s).color === w; })()",
+        "equals": true,
+        "note": "言語を選び直すと、let がキーワードの色になった",
+        "timeout": 8000
+      }
+    },
+    {
+      "screenshot": "typescript-colors"
+    },
+    {
+      "eval": "window.__mdeE2E.editor.goToLineStart(0)"
+    },
+    {
+      "press": "End"
+    },
+    {
+      "press": "Backspace",
+      "times": 10
+    },
+    {
+      "press": "Control+Space"
+    },
+    {
+      "expect": {
+        "css": ".cm-tooltip-autocomplete",
+        "read": "visible",
+        "equals": true,
+        "note": "Ctrl+Space で、何も打っていなくても出る"
+      }
+    },
+    {
+      "screenshot": "completion-ctrl-space"
+    },
+    {
+      "press": "Escape"
+    },
+    {
+      "expect": {
+        "css": ".cm-tooltip-autocomplete",
+        "read": "count",
+        "equals": 0
+      }
+    }
+  ]
+}

@@ -1,4 +1,6 @@
 import { PLUGIN_API_VERSION, type Plugin } from '../../plugin-api';
+import { codeCompletion } from './codeCompletion';
+import { codeFenceKeys } from './codeFenceKeys';
 import { linkOpenExtension } from './linkOpen';
 import { markdownDecorations } from './markdownDecorations';
 import { DEFAULT_MARKUP_DISPLAY, MARKUP_DISPLAY_SETTING_KEY, normalizeMarkupDisplay, type MarkupDisplay } from './markupDisplay';
@@ -9,10 +11,12 @@ import { markdownTheme } from './theme';
 
 /**
  * Markdown の見た目（見出し・強調・リンクなどの装飾、記法記号の隠し方 ADR-004、チェックボックスのクリック、
- * ⌘/Ctrl+クリックでリンクを開く操作、表の表示と Tab でのセルの移動、表の入力の支援（Enter と最後のセルの Tab で行を足す） ADR-006）。同梱の部品（段 3: エディタの中の拡張）。
+ * ⌘/Ctrl+クリックでリンクを開く操作、表の表示と Tab でのセルの移動、表の入力の支援（Enter と最後のセルの Tab で行を足す） ADR-006、
+ * コードブロック: 中の色、開きのフェンスの行の Enter で閉じのフェンスを足す、⌘/Ctrl+Enter で抜ける、言語名の補完 ADR-004 追補（コードブロック））。同梱の部品（段 3: エディタの中の拡張）。
  *
  * 本体との約束（ADR-005 の R4）:
  * - Markdown の文書には、本体が Markdown の言語（構文木）を入れる。この部品はその構文木を読むだけで、言語は入れない。
+ *   コードブロックの中の言語（情報文字列から選ぶ）も本体が入れる。この部品は、その tag に色を付けるだけ。
  * - 素のテキスト（.txt、.text）には何も足さない（文書の種類に依存する拡張）。素のテキストの空行の高さは本体が付ける。
  * - リンクを開くのは、本体が貸す『外部の URL を開く』だけを使う（利用者の ⌘/Ctrl+クリックのときだけ呼ぶ）。
  *   OS の判定も、本体が貸すものを使う。
@@ -37,7 +41,7 @@ export const markdownPlugin: Plugin = {
       create: (value, { textKind, openExternalUrl, isMacPlatform }) =>
         textKind === 'plain'
           ? []
-          : [markdownDecorations(value, ctx.perf), tableDisplay(), tableKeys(), linkOpenExtension(openExternalUrl, isMacPlatform), taskToggleExtension(), markdownTheme],
+          : [markdownDecorations(value, ctx.perf), tableDisplay(), codeCompletion(), tableKeys(), codeFenceKeys(), linkOpenExtension(openExternalUrl, isMacPlatform), taskToggleExtension(), markdownTheme],
     });
     ctx.registerSettingsItem({
       placement: 'appearance.body',

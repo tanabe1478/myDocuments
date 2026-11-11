@@ -108,6 +108,23 @@ MIT、BSD-2/3-Clause、ISC、Apache-2.0、Unicode-3.0（`icu_*` など）は、�
 - OpenGameArt のページの License(s) 欄が CC0 であることは、取得した時点で確かめた。それより後に記載が変わっていないかは未確認。
 - 既存製品（OmmWriter など）の音源は使っていない。
 
+### このリポジトリで足した依存（Issue #4、ADR-004 追補（コードブロック））
+
+コードブロックの色付けと言語名の補完のために、このリポジトリ（`package.json`、`package-lock.json`）へ足した npm の依存。上の棚卸し（Phase 0 の MDE の集計）とは別で、足した時点の `node_modules/<名前>/package.json` の `license` 欄と、`package-lock.json` の `license` 欄を読んで確かめた（2 つは一致した）。lockfile のパッケージ数は 178 件から 207 件（29 件増）で、ほかの版は変えていない。
+
+| 区分 | パッケージ（版） | ライセンス |
+| --- | --- | --- |
+| 直接の依存（追加） | `@codemirror/language-data` 6.5.2 | MIT |
+| 直接の依存（すでに lang-markdown 経由で入っていたものを、直接 import するので直接の依存にした。版は変えていない） | `@codemirror/autocomplete` 6.20.4 | MIT |
+| language-data が引き込む `@codemirror/lang-*`（17 件） | `lang-angular` 0.1.4、`lang-cpp` 6.0.3、`lang-go` 6.0.1、`lang-java` 6.0.2、`lang-jinja` 6.0.1、`lang-json` 6.0.2、`lang-less` 6.0.2、`lang-liquid` 6.3.3、`lang-php` 6.0.2、`lang-python` 6.2.1、`lang-rust` 6.0.2、`lang-sass` 6.0.2、`lang-sql` 6.10.0、`lang-vue` 0.1.3、`lang-wast` 6.0.2、`lang-xml` 6.1.0、`lang-yaml` 6.1.3 | すべて MIT |
+| 同、そのほかの `@codemirror` | `@codemirror/legacy-modes` 6.5.5（あまり使われない言語の字句解析） | MIT |
+| 同、`@lezer/*`（10 件） | `cpp` 1.1.6、`go` 1.0.1、`java` 1.1.5、`json` 1.0.3、`php` 1.0.6、`python` 1.1.19、`rust` 1.0.3、`sass` 1.1.0、`xml` 1.0.6、`yaml` 1.0.4 | すべて MIT |
+
+- 29 件すべてが MIT（帰属表示が要る寛容系）。MPL-2.0、GPL 系、ライセンス表記のないものは 0 件。
+- 29 件のうち、`@codemirror/language-data` と `@codemirror/autocomplete` 以外の 27 件は、`@codemirror` と `@lezer` の名前空間のもの（`deps-expected` の検査で、ほかの名前空間が増えていないことを確かめる）。
+- 言語のパッケージは、使うときに別ファイルとして読み込まれる（`dist/assets/` に言語ごとのファイルが増える。量は ADR-004 追補（コードブロック））。配布物に入る依存になるので、リリース前の THIRD-PARTY-NOTICES（上の「帰属表示が必要な寛容系」）の対象に含める。
+- この表は、この変更の時点の記録で、Phase 0 の自動集計（`phase0/results/licenses.json`、`scripts/audit-licenses.mjs`）には、まだ反映していない。
+
 ## 取り込む場合の扱い
 
 - MDE のコードを新しいリポジトリへ移す場合は、そのファイルの来歴（MDE の commit と MIT）を残し、MDE の `LICENSE` 全文をリポジトリに含める。

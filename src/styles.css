@@ -17,6 +17,14 @@
   --md-color-quote: #5d6a5d;
   --md-color-quote-bar: #7d8f7d;
   --md-color-code-bg: rgba(42, 40, 36, 0.06);
+  /* コードブロックの中の色（ADR-004 追補（コードブロック））。フェンスの帯の上で、すべて 4.5:1 以上（markdownColors.test.ts）。 */
+  --md-code-keyword: #8a2f93;
+  --md-code-string: #2d6a2d;
+  --md-code-comment: #6b6559;
+  --md-code-number: #a0480f;
+  --md-code-function: #1d5f9a;
+  --md-code-type: #0f6a73;
+  --md-code-attribute: #8a5a00;
   --md-surface-shadow: 0 1px 3px rgba(70, 58, 30, 0.1), 0 12px 44px rgba(70, 58, 30, 0.16);
   --md-color-caret: #1f5f8b;
   --md-color-selection: rgba(31, 95, 139, 0.22);
@@ -46,6 +54,13 @@
   --md-color-quote: #a3b4a3;
   --md-color-quote-bar: #6f836f;
   --md-color-code-bg: rgba(255, 255, 255, 0.06);
+  --md-code-keyword: #d49be0;
+  --md-code-string: #a6d189;
+  --md-code-comment: #9a9c92;
+  --md-code-number: #f0a870;
+  --md-code-function: #8cc0ee;
+  --md-code-type: #7fd1d6;
+  --md-code-attribute: #e6c47a;
   --md-surface-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 12px 44px rgba(0, 0, 0, 0.55);
   --md-color-caret: #7fb4d9;
   --md-color-selection: rgba(127, 180, 217, 0.3);

@@ -1,0 +1,187 @@
+{
+  "seed": {
+    "files": {
+      "/docs/code.md": {
+        "text": "# コードブロック\n\n```ts\nconst answer: number = 42; // note\nfunction greet(name: string) { return `hi ${name}`; }\n```\n\n```main.py\ndef add(a, b):\n    return a + b  # sum\n```\n\n```text\nconst keyword = 'plain';\n```\n\n"
+      }
+    },
+    "openPath": "/docs/code.md",
+    "preferences": {
+      "theme": "light",
+      "autoHideChrome": false
+    }
+  },
+  "viewport": {
+    "width": 1100,
+    "height": 900
+  },
+  "steps": [
+    {
+      "press": "ControlOrMeta+o"
+    },
+    {
+      "expect": {
+        "testId": "doc-title",
+        "equals": "code.md"
+      }
+    },
+    {
+      "click": {
+        "css": ".cm-content",
+        "position": {
+          "x": 5,
+          "y": 5
+        }
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = [...document.querySelectorAll('.cm-content span')].find((e) => e.children.length === 0 && e.textContent === \"const\"); const p = document.createElement('span'); p.style.color = 'var(--md-code-keyword)'; document.body.append(p); const w = getComputedStyle(p).color; p.remove(); return !!s && getComputedStyle(s).color === w; })()",
+        "equals": true,
+        "note": "ts のブロック: const がキーワードの色（言語は使うときに読み込まれ、読み込みが済むと色が付く）",
+        "timeout": 8000
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = [...document.querySelectorAll('.cm-content span')].find((e) => e.children.length === 0 && e.textContent === \"42\"); const p = document.createElement('span'); p.style.color = 'var(--md-code-number)'; document.body.append(p); const w = getComputedStyle(p).color; p.remove(); return !!s && getComputedStyle(s).color === w; })()",
+        "equals": true,
+        "note": "数値の色"
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = [...document.querySelectorAll('.cm-content span')].find((e) => e.children.length === 0 && e.textContent === \"// note\"); const p = document.createElement('span'); p.style.color = 'var(--md-code-comment)'; document.body.append(p); const w = getComputedStyle(p).color; p.remove(); return !!s && getComputedStyle(s).color === w; })()",
+        "equals": true,
+        "note": "コメントの色"
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = [...document.querySelectorAll('.cm-content span')].find((e) => e.children.length === 0 && e.textContent === \"def\"); const p = document.createElement('span'); p.style.color = 'var(--md-code-keyword)'; document.body.append(p); const w = getComputedStyle(p).color; p.remove(); return !!s && getComputedStyle(s).color === w; })()",
+        "equals": true,
+        "note": "```main.py（ファイル名）のブロックは Python の色",
+        "timeout": 8000
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const names = ['keyword','string','comment','number','function','type','attribute']; const colors = names.map((n) => { const p = document.createElement('span'); p.style.color = 'var(--md-code-' + n + ')'; document.body.append(p); const c = getComputedStyle(p).color; p.remove(); return c; }); const line = [...document.querySelectorAll('.cm-line')].find((l) => /keyword = 'plain'/.test(l.textContent)); return !!line && [...line.querySelectorAll('span')].every((s) => !colors.includes(getComputedStyle(s).color)); })()",
+        "equals": true,
+        "note": "```text のブロックは、コードの色（7 分類）のどれも付かない"
+      }
+    },
+    {
+      "expect": {
+        "eval": "(() => { const look = (needle) => { const w = document.createTreeWalker(document.querySelector('.cm-content'), NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) if (n.textContent.includes(needle)) break; const cs = getComputedStyle(n.parentElement); return [cs.fontFamily.includes('monospace'), cs.fontSize, cs.color].join('|'); }; const ref = look(\"keyword = 'plain'\"); return ref.startsWith('true|') && ['answer', 'name: ', 'a + b'].every((t) => look(t) === ref); })()",
+        "equals": true,
+        "note": "色の付かない文字（ts の answer と name: 、Python の a + b）の、等幅、大きさ、色が、text のブロックと同じ（HEAD と同じ見た目）"
+      }
+    },
+    {
+      "screenshot": "code-highlight"
+    },
+    {
+      "press": "ControlOrMeta+End"
+    },
+    {
+      "type": "```rs"
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().endsWith('```rs\\n\\n```')",
+        "equals": true,
+        "note": "開きのフェンスの行の Enter で、空の行と閉じのフェンスが入った"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getSelection().head === window.__mdeE2E.editor.getText().length - 4",
+        "equals": true,
+        "note": "カーソルは空の行"
+      }
+    },
+    {
+      "type": "fn main() { let n = 1; }"
+    },
+    {
+      "expect": {
+        "eval": "(() => { const s = [...document.querySelectorAll('.cm-content span')].find((e) => e.children.length === 0 && e.textContent === \"fn\"); const p = document.createElement('span'); p.style.color = 'var(--md-code-keyword)'; document.body.append(p); const w = getComputedStyle(p).color; p.remove(); return !!s && getComputedStyle(s).color === w; })()",
+        "equals": true,
+        "note": "rs のブロック（短い名前）の fn がキーワードの色",
+        "timeout": 8000
+      }
+    },
+    {
+      "screenshot": "closing-fence-added"
+    },
+    {
+      "press": "ControlOrMeta+Enter"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().endsWith('```\\n') && window.__mdeE2E.editor.getSelection().head === window.__mdeE2E.editor.getText().length",
+        "equals": true,
+        "note": "⌘/Ctrl+Enter で、閉じのフェンスの次の行（足した行）へ出た"
+      }
+    },
+    {
+      "type": "コードの後ろの文章"
+    },
+    {
+      "expect": {
+        "eval": "!document.querySelector('.cm-line.cm-md-fence-end ~ .cm-line:last-child').classList.contains('cm-md-fence')",
+        "equals": true,
+        "note": "書いた文章はコードの帯の外"
+      }
+    },
+    {
+      "screenshot": "after-exit"
+    },
+    {
+      "eval": "(() => { const t = window.__mdeE2E.editor.getText(); window.__mdeE2E.editor.goToLineStart(t.indexOf('function greet')); })()"
+    },
+    {
+      "press": "End"
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "type": "```"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().includes('${name}`; }\\n```\\n```\\n\\n```main.py')",
+        "equals": true,
+        "note": "自分で閉じを打つと、元の閉じのフェンスは新しい開きのフェンスになり、後ろの main.py のブロックを巻き込む"
+      }
+    },
+    {
+      "screenshot": "duplicate-fence-before-enter"
+    },
+    {
+      "press": "Enter"
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().includes('${name}`; }\\n```\\n\\n\\n```main.py')",
+        "equals": true,
+        "note": "Enter で、余った閉じのフェンスが取り除かれ（その行は空の行）、main.py のブロックは元の形に戻った"
+      }
+    },
+    {
+      "expect": {
+        "eval": "window.__mdeE2E.editor.getText().slice(0, window.__mdeE2E.editor.getSelection().head).endsWith('${name}`; }\\n```\\n')",
+        "equals": true,
+        "note": "カーソルはコードブロックの後ろ（閉じのフェンスの次の行）"
+      }
+    },
+    {
+      "screenshot": "duplicate-fence-after-enter"
+    }
+  ]
+}

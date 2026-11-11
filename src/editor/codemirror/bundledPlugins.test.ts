@@ -6,7 +6,7 @@ import { EditorState } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bundledPlugins } from '../../features';
-import { createPluginRegistry, ownsCaretScroll, skipCaretFollow } from '../../plugin-api';
+import { createPluginRegistry, ownsCaretScroll, skipCaretFollow, suspendReadingMargins } from '../../plugin-api';
 import type { EditorAdapter } from '../EditorAdapter';
 import { createCodeMirrorAdapter } from './CodeMirrorAdapter';
 import { readingPositionExtension } from './readingPosition';
@@ -256,22 +256,28 @@ describe('list continuation through the adapter (was setListContinuation)', () =
       .map((b) => ({ name: b.run?.name ?? '', hasShift: b.shift !== undefined }));
   }
 
-  it('Enter priority: the table keys (R12, highest) come first, then tight, then the two bindings that were behind it; preserve leaves the table keys and those two', () => {
+  it('Enter priority: the language completion (ADR-004 追補（コードブロック）) comes first, then the table keys (R12), the code fence keys (ADR-004 追補（コードブロック）), then tight, then the two bindings that were behind it; preserve leaves the first three and those two', () => {
     // 変更前のコミット（リストの継続を本体が持っていたとき）で、同じ組み立ての state から調べた並び:
     //   tight    = [insertNewlineContinueTight, (lang-markdown の Enter), (defaultKeymap の Enter。shift つき)]
     //   preserve = [(lang-markdown の Enter), (defaultKeymap の Enter。shift つき)]
     // R12 で、表の入力の支援（tableEnter。Markdown の見た目の部品）が、最優先で先頭に足された。表の行と、最上位の段落の
     // 見出しの行だけを受け、リストの中では false を返して次に回すので、リストの継続の並びと働きは変わらない。
+    // ADR-004 追補（コードブロック） で、コードブロックの 2 つが足された。言語名の補完の Enter（acceptIfChanges）は、補完の表示中だけ受けるので最初。
+    // 閉じのフェンスの Enter（fenceEnter）は、開きのフェンスの行の末尾などだけを受け、それ以外は false で次に回すので、リストの継続の前に置いても働きは変わらない。
     adapter.mount(host);
     expect(enterBindings()).toEqual([
+      { name: 'acceptIfChanges', hasShift: false },
       { name: 'tableEnter', hasShift: false },
+      { name: 'fenceEnter', hasShift: false },
       { name: 'insertNewlineContinueTight', hasShift: false },
       { name: '', hasShift: false },
       { name: '', hasShift: true },
     ]);
     adapter.setPluginSetting('listContinuation', 'preserve');
     expect(enterBindings()).toEqual([
+      { name: 'acceptIfChanges', hasShift: false },
       { name: 'tableEnter', hasShift: false },
+      { name: 'fenceEnter', hasShift: false },
       { name: '', hasShift: false },
       { name: '', hasShift: true },
     ]);
@@ -488,6 +494,106 @@ describe('tables through the adapter (ADR-006)', () => {
   });
 });
 
+describe('code blocks through the adapter (ADR-004 追補（コードブロック）)', () => {
+  function load(text: string, at: number): EditorView {
+    adapter.mount(host);
+    adapter.setText(text);
+    const view = viewOf();
+    ensureSyntaxTree(view.state, view.state.doc.length, 10_000);
+    view.dispatch({ selection: { anchor: at } });
+    return view;
+  }
+
+  function press(view: EditorView, key: string, init: KeyboardEventInit = {}): KeyboardEvent {
+    const event = new KeyboardEvent('keydown', { key, code: key, keyCode: key === 'Enter' ? 13 : 0, bubbles: true, cancelable: true, ...init });
+    view.contentDOM.dispatchEvent(event);
+    return event;
+  }
+
+  it('Enter on an opening fence adds the closing fence, with either list continuation mode; Mod-Enter leaves the block', () => {
+    for (const mode of ['tight', 'preserve']) {
+      adapter.destroy();
+      host.replaceChildren();
+      adapter = createCodeMirrorAdapter(registry.editorExtensions);
+      adapter.setPluginSetting('listContinuation', mode);
+      const view = load('intro\n\n```ts', 'intro\n\n```ts'.length);
+      expect(press(view, 'Enter').defaultPrevented).toBe(true);
+      expect(adapter.getText()).toBe('intro\n\n```ts\n\n```');
+      expect(view.state.selection.main.head).toBe('intro\n\n```ts\n'.length);
+      view.dispatch({ changes: { from: view.state.selection.main.head, insert: 'const a = 1;' } });
+      expect(press(view, 'Enter', { ctrlKey: true }).defaultPrevented).toBe(true);
+      expect(adapter.getText()).toBe('intro\n\n```ts\nconst a = 1;\n```\n');
+      expect(view.state.selection.main.head).toBe(adapter.getText().length);
+    }
+  });
+
+  it('a fence in a list item and in a quote: the closing fence carries the list indent and the quote mark; the list itself still continues', () => {
+    const list = load('- a\n- ```ts', '- a\n- ```ts'.length);
+    press(list, 'Enter');
+    expect(adapter.getText()).toBe('- a\n- ```ts\n  \n  ```');
+    adapter.destroy();
+    host.replaceChildren();
+    adapter = createCodeMirrorAdapter(registry.editorExtensions);
+    const quote = load('> ```ts', 7);
+    press(quote, 'Enter');
+    expect(adapter.getText()).toBe('> ```ts\n> \n> ```');
+    adapter.destroy();
+    host.replaceChildren();
+    adapter = createCodeMirrorAdapter(registry.editorExtensions);
+    const item = load('- a', 3);
+    press(item, 'Enter');
+    expect(adapter.getText()).toBe('- a\n- ');
+  });
+
+  it('the ordinary Enter and Mod-Enter keep working around code blocks: a closed block, the code inside, outside', () => {
+    const closed = '```ts\nfoo\n```';
+    const view = load(closed, 5);
+    press(view, 'Enter');
+    expect(adapter.getText()).toBe('```ts\n\nfoo\n```');
+    adapter.destroy();
+    host.replaceChildren();
+    adapter = createCodeMirrorAdapter(registry.editorExtensions);
+    const outside = load('para\nnext', 4);
+    press(outside, 'Enter', { ctrlKey: true });
+    expect(adapter.getText()).toBe('para\n\nnext');
+  });
+
+  it('the reading margins are suspended while the language list is open (not while typing elsewhere), and come back when it closes', async () => {
+    adapter.mount(host);
+    const view = viewOf();
+    // 視線の位置の余白（上下 3 割。ここでは 150px）を足している源があるか。
+    const margins = () => view.state.facet(EditorView.scrollMargins).map((f) => f(view)).filter((m) => m !== null && m.top === 150);
+    // 本文のどこかで文字を打つと、補完は候補を待つ状態になる。その間は、余白を止めない（打つたびに余白が効かなくなる）。
+    adapter.setText('plain text');
+    view.dispatch({ changes: { from: 10, insert: 'x' }, selection: { anchor: 11 }, userEvent: 'input.type' });
+    expect(margins()).toEqual([{ top: 150, bottom: 150 }]);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(margins()).toEqual([{ top: 150, bottom: 150 }]);
+    adapter.setText('```');
+    view.dispatch({ selection: { anchor: 3 } });
+    ensureSyntaxTree(view.state, view.state.doc.length, 10_000);
+    expect(margins()).toEqual([{ top: 150, bottom: 150 }]);
+    view.dispatch({ changes: { from: 3, insert: 'p' }, selection: { anchor: 4 }, userEvent: 'input.type' });
+    await vi.waitFor(() => expect(margins()).toEqual([]));
+    press(view, 'Escape');
+    await vi.waitFor(() => expect(margins()).toEqual([{ top: 150, bottom: 150 }]));
+  });
+
+  it('a plain text document (.txt) has none of it: no closing fence, no exit', () => {
+    adapter.mount(host);
+    adapter.setTextKind('plain');
+    adapter.setText('```ts');
+    const view = viewOf();
+    view.dispatch({ selection: { anchor: 5 } });
+    press(view, 'Enter');
+    expect(adapter.getText()).toBe('```ts\n');
+    adapter.setText('```ts\nfoo\n```\nafter');
+    view.dispatch({ selection: { anchor: 8 } });
+    press(view, 'Enter', { ctrlKey: true });
+    expect(adapter.getText()).toBe('```ts\nfoo\n\n```\nafter');
+  });
+});
+
 describe('shared conventions', () => {
   it('the checkbox click marks its transaction with skipCaretFollow (and keeps its userEvent)', () => {
     const seen: Array<{ marked: boolean; userEvent: boolean }> = [];
@@ -524,5 +630,14 @@ describe('shared conventions', () => {
       state: EditorState.create({ extensions: [readingPositionExtension(), ownsCaretScroll.of(true)] }),
     });
     expect(owned.state.facet(EditorView.scrollMargins).map((f) => f(owned))).toEqual([null]);
+    // ポップアップ（補完の一覧）が開いている間は、余白を足さない（余白の中にカーソルがあると、CodeMirror は一覧を画面の外へ置く）。
+    const open = { value: false };
+    const suspended = new EditorView({
+      parent: host,
+      state: EditorState.create({ extensions: [readingPositionExtension(), suspendReadingMargins.of(() => open.value)] }),
+    });
+    expect(suspended.state.facet(EditorView.scrollMargins).map((f) => f(suspended))).toEqual([{ top: 150, bottom: 150 }]);
+    open.value = true;
+    expect(suspended.state.facet(EditorView.scrollMargins).map((f) => f(suspended))).toEqual([null]);
   });
 });

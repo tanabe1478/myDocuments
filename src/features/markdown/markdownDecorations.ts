@@ -10,6 +10,7 @@ import {
 } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
 import { AFTER_COMPOSITION_MS, isBlankLine, type PluginPerf } from '../../plugin-api';
+import { codeTextDefaults, codeTokenStyles } from './codeHighlight';
 import { fallbackPrefixWidthEm, hangPrefix, measurableText } from './lineKinds';
 import {
   MARKER_WIDGET_EM,
@@ -53,6 +54,8 @@ export const markdownHighlightStyle = HighlightStyle.define([
   { tag: tags.monospace, fontFamily: 'var(--md-font-family-mono)', fontSize: '0.92em', color: 'var(--md-color-code)' },
   { tag: tags.quote, color: 'var(--md-color-quote)' },
   { tag: tags.contentSeparator, color: 'var(--md-color-muted)' },
+  // コードブロックの中の色（codeHighlight.ts）。monospace と同じ要素に重なるので、monospace より後ろに置く（同じ重みの CSS は後が勝つ）。
+  ...codeTokenStyles,
   // 記法記号は最後に置く（リンクや強調の内側にあっても、薄い色が勝つ）。
   { tag: tags.processingInstruction, color: 'var(--md-color-mark)', fontWeight: '400' },
 ]);
@@ -232,6 +235,8 @@ function blockLines(view: EditorView, meter: PrefixMeter, hidden: readonly Marku
               c.add('cm-md-fence');
               if (line.number === first) c.add('cm-md-fence-start');
               if (closed && line.number === last) c.add('cm-md-fence-end');
+              // 中身の行（フェンスの行を除く）。言語が分かったときに、tag のない文字がコードの色になるように（codeHighlight.ts）。
+              if (line.number !== first && !(closed && line.number === last)) c.add('cm-md-fence-code');
             });
             return false;
           }
@@ -454,5 +459,5 @@ export function visibleLinks(view: EditorView): readonly LinkRange[] {
  * Markdown の言語（構文木）は、本体が文書の種類に応じて入れる。この拡張はその構文木を読む。
  */
 export function markdownDecorations(display: MarkupDisplay, perf: PluginPerf = NO_PERF): Extension {
-  return [syntaxHighlighting(markdownHighlightStyle), blockLineDecorations, markupDisplayFacet.of(display), perfFacet.of(perf)];
+  return [syntaxHighlighting(markdownHighlightStyle), codeTextDefaults(), blockLineDecorations, markupDisplayFacet.of(display), perfFacet.of(perf)];
 }

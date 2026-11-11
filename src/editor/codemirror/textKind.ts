@@ -1,13 +1,15 @@
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { RangeSetBuilder, type Extension } from '@codemirror/state';
 import { Decoration, ViewPlugin, type DecorationSet, type EditorView, type ViewUpdate } from '@codemirror/view';
-import { isBlankLine, type TextKind } from '../../plugin-api';
+import { isBlankLine, resolveCodeLanguage, type TextKind } from '../../plugin-api';
 
 /*
  * 文書の種類に応じて、本体が入れるもの。
  * - markdown: Markdown の言語（構文木）。リストの継続（Enter）とフォーカスモードの段落の分け方、Markdown の見た目の部品が、
  *   この構文木と言語の Enter のキー割り当てに頼る。「Markdown の文書には、本体が Markdown の言語を入れる」のは、部品との約束（ADR-005 の R4）。
  *   見た目（見出し、強調、記号の隠し方など）は、本体は付けない。
+ *   コードブロックの中は、情報文字列（``` の後ろ）から言語を選んで構文解析する（codeLanguages。選び方は plugin-api の codeLanguages.ts、ADR-004 追補（コードブロック））。
+ *   言語は使うときに読み込み、読み込みの前と失敗のときは色なし。色の付け方は Markdown の見た目の部品が持つ。
  * - plain: 空行の高さだけ（Markdown の言語は入れない）。
  */
 
@@ -51,5 +53,5 @@ function plainTextDecorations(): Extension {
 
 /** 文書の種類ごとに、本体が入れる拡張。 */
 export function textKindExtension(kind: TextKind): Extension {
-  return kind === 'plain' ? plainTextDecorations() : markdown({ base: markdownLanguage });
+  return kind === 'plain' ? plainTextDecorations() : markdown({ base: markdownLanguage, codeLanguages: resolveCodeLanguage });
 }

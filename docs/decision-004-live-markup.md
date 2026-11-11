@@ -38,7 +38,7 @@ Accepted（2026-11-02、承認者: プロジェクトオーナー）。仕様 §
 | インラインコード | バッククォートを隠し、等幅と色を残す |
 | 引用 | 行頭の `>` と、直後の空白 1 つを隠す（入れ子の `> >` も）。左の縦線と色は残す |
 
-対象外（今のまま）: コードフェンスの中（フェンス行を含む）、インデントコード、HTML ブロック、frontmatter（`focusRange.ts` と同じ判定: 1 行目の `---` から、次の `---` まで）、エスケープ `\*`、参照リンク `[文字][ref]` と参照の定義行、画像 `![alt](src)`、GFM の裸の URL（もともと記号がない）。
+対象外（今のまま。コードフェンスの中の色付けと、閉じのフェンスなどの入力の支援は、この文書の末尾の追補「コードブロック」）: コードフェンスの中（フェンス行を含む）、インデントコード、HTML ブロック、frontmatter（`focusRange.ts` と同じ判定: 1 行目の `---` から、次の `---` まで）、エスケープ `\*`、参照リンク `[文字][ref]` と参照の定義行、画像 `![alt](src)`、GFM の裸の URL（もともと記号がない）。
 
 - 隠す範囲を決めるのは、純関数 `src/editor/liveMarkup.ts`（構文木と文書だけを読む。表示は関与しない）。範囲は 1 行の中に収める（行をまたぐ記号は、行ごとに分ける）。CodeMirror の `Decoration.replace` と、固定の幅の箱（ウィジェット）で表示するだけで、文書は書き換えない。保存されるテキストにも、コピーした文字列にも、記号がそのまま入る。
 - ぶら下げインデント（リストと引用の折り返し）は、隠した行では、実際に見える幅に揃える。`•` とチェックボックスは固定の幅の箱（1em）で、残りの文字（字下げ、空白、番号）は実際のフォントで測る。引用だけの行は、記号を隠すので字下げしない（縦線は、これまでどおり左の余白に出る）。
@@ -114,3 +114,177 @@ IME の変換中（`view.compositionStarted`）は、隠す・見せるの切り
 - 実 IME で、変換中の表示や確定の位置に問題が出たとき。
 - ダブルクリックやドラッグのずれが、日常の使い方で気になるとき（例: 切り替えを、ポインタが動いた後まで遅らせる）。
 - 参照リンクと画像も隠したい要望が出たとき。
+
+## 追補: コードブロックの色付け、閉じのフェンス、抜ける操作、言語名の補完（Issue #4）
+
+この節は、Issue #4（コードブロックの改善）の判断の記録。見出しの R1〜R8 は、この追補の中の番号で、上の本文の番号とは別。
+
+### Status
+
+Accepted（2026-11-11、承認者: プロジェクトオーナー）。この文書の本体（カーソルのない行で記号を隠す）と ADR-006（表の入力の支援。Enter の守り、IME の扱い）の延長。Markdown の言語は本体が入れる、という部品との約束（ADR-005 の R4）は変えない。
+
+### Context
+
+Issue #4「コードブロック記法の改善」は、次の 3 点を求めた。
+
+- 言語の選択があとから出来ない。
+- ` ``` ` の後ろに言語やファイル名を書いたら、拡張子や言語名から色が付くべき。
+- ` ``` ` で入力すると一番下の行までコードブロックになり、Enter を押してもコードブロックが終わらない。どうあるべきかを、OSS を調べて決める。
+
+これまでの作り: Markdown の文書には、本体が `markdown({ base: markdownLanguage })` を入れる（`src/editor/codemirror/textKind.ts`）。コード言語を渡していないので、コードブロックの中は色が付かない。閉じのフェンスがないコードブロックは、CommonMark の規則どおり、文書の末尾（引用やリストの中ならその入れ物の終わり）まで続く。フェンスの行に帯を付ける装飾（`cm-md-fence`）はある。Enter は、lang-markdown の `insertNewlineContinueMarkup`（`FencedCode` の中では何もしない）、リストの継続、表の入力の支援、`defaultKeymap` の順に回る。
+
+#### 調べた他のエディタ
+
+この段では外のネットワークに出られず、下の URL は開いて確かめていない（未確認）。内容は、計画の段で親が調べたメモに基づく。実際の挙動と文書の言い回しは、URL 先で確かめ直すこと。
+
+- CodiMD と Zettlr は、開きのフェンスの行で Enter を押したとき（または言語の補完のあと）、閉じのフェンスがなければ入れて、カーソルを間に置く（https://github.com/hackmdio/codimd 、https://github.com/Zettlr/Zettlr ）。
+- Obsidian は、3 つ目の ` を打った時点で閉じのフェンスを入れる（https://help.obsidian.md/syntax ）。
+- Typora は、⌘+Enter（Windows と Linux は Ctrl+Enter）でコードブロックから抜ける（https://support.typora.io/Markdown-Reference/ ）。
+- CommonMark の規則: 閉じのフェンスは、開きと同じ記号で、同じ長さ以上。情報文字列の最初の語が言語（https://spec.commonmark.org/0.31.2/#fenced-code-blocks ）。
+- Zenn と Qiita は、`言語:ファイル名`（`python:main.py`）の書き方をする（https://zenn.dev/zenn/articles/markdown-guide 、https://help.qiita.com/ja/articles/qiita-markdown ）。
+- `@codemirror/lang-markdown` の `codeLanguages` は、情報文字列の最初の語で言語を選ぶ（https://github.com/codemirror/lang-markdown ）。`@codemirror/language-data` の `LanguageDescription.matchLanguageName` は、あいまい照合（fuzzy）をするので、`py` や `rs` は一致せず、`text` は LaTeX に当たる。`matchFilename` は拡張子とファイル名で選べる（https://github.com/codemirror/language-data ）。この版（language-data 6.5.2）の挙動は、この段で、node から呼んで確かめた（`text` の fuzzy が LaTeX に当たること、`py`・`rs` の完全一致が空なこと）。
+
+選んだ規則: Enter で閉じのフェンスを入れる（CodiMD と Zettlr の型。Obsidian のように 3 つ目の ` を打った時点では入れない。` ` ` を打つ途中の文字と、インラインコードの ` を邪魔しないため）。抜けるのは Typora の ⌘/Ctrl+Enter。
+
+### Decision
+
+#### R1: 言語の選び方（`src/plugin-api/codeLanguages.ts`）
+
+本体が `markdown()` に `codeLanguages: resolveCodeLanguage`（関数）を渡す。情報文字列の最初の語から、次の順で、最初に決まったものを使う。あいまい照合は使わない。
+
+1. 名前と別名の完全一致（大文字小文字を区別しない。language-data の `alias`）。`ts`、`tsx`、`js`、`jsx`、`sh`、`bash`、`zsh`、`shell`、`yml`、`c++`、`cs`、`rb`、`python`、`Dockerfile` など。
+2. 短い名前の表。language-data の別名にないものだけを載せ、値は language-data にある言語の名前（単体テストが、全部の値の存在と、別名と重ならないことを確かめる）。
+   `py`、`py3`、`python3` は Python。`rs` は Rust。`md` は Markdown。`golang` は Go。`kt`、`kts` は Kotlin。`ps1`、`pwsh` は PowerShell。`hs` は Haskell。`ml` は OCaml。`jl` は Julia。`pl` は Perl。`fs` は F#。`vb` は VB.NET。`erl` は Erlang。`clj` は Clojure。`cljs` は ClojureScript。`proto` は ProtoBuf。`docker` は Dockerfile。`shellscript` は Shell。`jsonc` は JSON。`htm` は HTML。`svg` は XML。`mjs`、`cjs` は JavaScript。`mts`、`cts` は TypeScript。`h` は C。`hpp`、`cc`、`cxx` は C++。language-data にない言語（fish、tf など）の名前は載せない。
+3. ファイル名か拡張子（`matchFilename`）。`main.py`、`Dockerfile`、`Gemfile`、`app.tsx`。大文字の拡張子（`Main.PY`）は、小文字にして試す。
+4. `言語:ファイル名`（Zenn と Qiita）。`python:main.py`、`ts:src/index.ts`。言語が書いてあれば、言語だけで選ぶ（1 と 2。`foo:main.py` は色なし）。言語が空（`:main.py`）のときだけ、ファイル名で選ぶ。
+
+色を付けないもの: `text`、`txt`、`plain`、`plaintext`（大文字小文字を区別しない。`text:main.py` も）、情報文字列がないもの、分からない名前。ファイル名の拡張子が数字だけ（`v1.2`。language-data では troff）と `.text`（language-data では LaTeX）も色なし。素のテキスト（.txt、.text）の文書は Markdown の言語を入れないので、何も起きない。
+
+読み込みは、language-data の遅延読み込みをそのまま使う（言語ごとに別のファイル）。読み込みの前は色なしで、本文の表示と入力は止まらない。読み込みが済むと、構文木が自動で解析し直され、色が付く。読み込みに失敗したときは、色なしの言語（何も色を付けない `StreamLanguage`）に置き換わり、コンソールにもエラーを出さない。30 秒後の次の解析から、読み込みを試し直す（失敗した記述を捨てて、新しい記述を作る）。
+
+#### R2: 色（`src/features/markdown/codeHighlight.ts`、`src/styles.css`）
+
+色の付け方（tag と色）は、Markdown の見た目の部品が持つ。言語が付ける tag を 7 分類にまとめ、CSS 変数にする。変数は明暗のテーマごとに `src/styles.css` にある。
+
+| 分類 | 変数 | tag（子の tag を含む） |
+| --- | --- | --- |
+| キーワード | `--md-code-keyword` | keyword、modifier、self |
+| 文字列 | `--md-code-string` | string、special(string)、regexp |
+| コメント | `--md-code-comment` | comment |
+| 数値 | `--md-code-number` | number、bool、atom、null |
+| 関数名 | `--md-code-function` | function(variableName)、function(propertyName)、macroName |
+| 型 | `--md-code-type` | typeName、className、namespace |
+| 属性 | `--md-code-attribute` | attributeName、propertyName、tagName |
+
+それ以外（変数名、記号、演算子）は、コードの既定の色（`--md-color-code`）のまま。この既定の見た目（等幅、0.92em、コードの色）は、言語が分かったブロックでも、言語なしのブロックと同じに保つ。言語を入れた構文解析は、`FencedCode` の中身（`CodeText`）を、その言語の構文木で置き換える。置き換わった範囲の、tag のない文字は、`CodeText` の tag（`monospace`）を受け継がず、本文のフォントと色になってしまう（最初の実装がそうなっていて、レビューで指摘された）。そこで、構文木が置き換わった `CodeText`（`resolveInner` が `CodeText` ではない節に入るもの）にだけ、等幅と 0.92em の mark（class `cm-md-code-text`）を付け、中身の行（フェンスの行を除く）に、コードの色の class（`cm-md-fence-code`）を付ける。色を行の class にしたのは、tag のある文字の色（span）が、mark と行のどちらの上にも重なるようにするため（mark と highlight の span の入れ子の順に頼らない）。置き換わっていない `CodeText`（言語なし、text、読み込みの前）には mark を付けない。`monospace` の tag が効いていて、付けると 0.92em が二重に掛かるため。確かめたもの: 色の付かない文字の font-family、大きさ、色が、HEAD と同じ（ライトとダーク、ts と python と text）。単体テストと e2e（読み込みの前と後を含む）がある。`HighlightStyle` は 1 つ（`markdownHighlightStyle`）で、`tags.monospace` より後ろに置く（同じ要素に重なる 2 つの class は、CSS の後ろの規則が勝つ）。色は、フェンスの帯の上と本文の面の上で、WCAG AA（4.5:1）以上で、7 色は互いに異なる（`src/canvas/markdownColors.test.ts`）。実測値（帯の上、ライト／ダーク）: キーワード 6.09 / 6.03、文字列 5.52 / 7.63、コメント 4.88 / 4.75、数値 5.17 / 6.64、関数名 5.61 / 6.86、型 5.32 / 7.56、属性 5.00 / 7.90。
+
+#### R3: 開きのフェンスの行の Enter（`src/features/markdown/codeFence.ts`、`codeFenceKeys.ts`）
+
+開きのフェンス（` ``` ` か `~~~`、任意の情報文字列）の行の末尾にカーソルがあり、そのコードブロックに閉じのフェンスがないとき、Enter は「改行、空の行、閉じのフェンス」を足し、カーソルを空の行に置く。閉じのフェンスは、開きと同じ記号で同じ長さ（4 つ以上の ` と `~~~` に対応）。閉じがあるときは、今のとおりの改行。
+
+- 閉じのフェンスがあるかは、構文木で決める。`FencedCode` が、2 つ目以降の `CodeMark`（閉じ）を持つか。文字列の見た目では決めない。判定に使う構文木は、文書の最後まで解析が済んだもの（25ms 待って済まなければ、何もせず普通の改行）。
+- 引用とリストの中のコードブロックは、その記号を、足す 2 行にも付ける。引用の `>` はそのまま、リストの記号（`- `、`1. `）は同じ幅の空白にする（`> - ` は `>   `）。入れ物が引用とリストと文書だけで、フェンスより前の文字がその形でなければ（タブ、見慣れない記号）、何も足さない。
+- Undo は 1 回で、押す前の文書と選択に戻る（1 つの transaction、`userEvent` は input）。
+- コードブロックの中の Enter は、今のとおり改行（字下げは前の行に合わせる）。Enter を 2 回押して抜ける動きは入れない。コードの中の空行と区別できないため。
+
+#### R4: 重複の防止
+
+閉じのフェンスの直前の行（コードの最後の行）で Enter を押し、続けて自分で閉じのフェンスを打つと、元の閉じのフェンスは、新しい開きのフェンスになる。そこで、閉じのフェンスの行の末尾で Enter を押したとき、その次の行が、情報文字列のない、同じ記号のフェンスの行で、同じ入れ物（引用とリストの記号が同じ）にあり、次のどれかに当てはまれば、その行を「元の閉じのフェンス」とみなす。
+
+- (a) その開きのフェンスにも閉じがない。
+- (b) そのコードブロックの中に、同じ記号のフェンスの行が巻き込まれている（後ろのコードブロックの開きのフェンス）。
+- (c) そのコードブロックの後ろに、閉じのないコードブロックがある（フェンスの数の偶奇がずれている）。
+
+余った行の文字を取り除き、その場所を空の行にして、カーソルを置く。いまの行が閉じのフェンスとなり、新しい行がコードブロックの後ろに続く。きちんと閉じた、隣り合う 2 つのコードブロック（` ```\na\n``` ` の直後に ` ```\nb\n``` `）は、どれにも当てはまらないので、そのままにする（ただの改行）。
+
+限界: 規則は構文木の形から推す。後ろに別のコードブロックがなく、かつ閉じが偶数で揃っていて、どれにも当てはまらない形は、重複でも見分けられず、そのままになる。逆に、(c) は、後ろに閉じのないコードブロックを書きかけているとき、隣り合う 2 つのコードブロックの間の Enter で、2 つ目の開きのフェンスを取り除くことがある（1 回の Undo で戻る）。コードの途中に打った閉じ（直後の行がコード）は、対象にしない。字下げが 4 つ以上の閉じのフェンスは、CommonMark の規則で閉じにならない（コードの中の Enter は字下げを引き継ぐので、フェンスの前の空白を消してから打つ）。
+
+#### R5: 抜ける操作
+
+コードブロックの中（フェンスの行を含む）で ⌘+Enter（Windows と Linux は Ctrl+Enter。`Mod-Enter`）を押すと、閉じのフェンスの次の行へ移る。次の行がなければ空の行を足す（引用とリストの中は、その記号を付ける）。閉じのないコードブロックでは、最後の行の後ろに閉じのフェンスを足してから抜ける。↓ のキーで閉じのフェンスを越えられることは、今のまま（e2e が確かめる）。コードブロックの外の ⌘/Ctrl+Enter は、今のまま（`defaultKeymap` の空行の挿入）。
+
+#### R6: 言語名の補完（`src/features/markdown/codeCompletion.ts`）
+
+`@codemirror/autocomplete` を使う。供給元は 1 つだけで、`override` で言語の既定の補完（HTML のタグなど）は使わない。
+
+- 出す位置: 開きのフェンスの行の、情報文字列の最初の語の、`:` の前まで。閉じのフェンスの行、コードの中、2 語目以降、`:` の後ろ（ファイル名）、本文のほかの所では出ない。位置は構文木で決める。
+- 出す時機: 打ち始めたとき（` ``` ` の直後の 1 文字目から）と、Ctrl+Space（mac は Alt+` と Alt+i も）。語がすでに名前、別名、短い名前に完全一致しているときは、打ち始めでは出さない（Ctrl+Space では出る）。`ts` と打って Enter を押すと、補完が受けて何も変わらず、閉じのフェンスに届かない、という二度押しを避けるため。打つたびに供給元を呼び直す（`validFor` を付けない）ので、一覧は完全一致で閉じる。
+- 候補: language-data の名前と別名（空白を含むものを除く）と、R1 の短い名前の表。計 205 個。`javascript`、`python`、`json` など、よく使う言語を上に出す。選ぶと、最初の語（`:` の前まで）だけを置き換える。`:ファイル名` は残る。
+- キー: 補完の表示中の Enter と Tab は補完が受ける。表示していないときは今のとおり。受けても何も変わらないとき（選んだ候補が、いまの語と同じ）は、キーを受けずに一覧を閉じる。Enter は閉じのフェンスの挿入に、Tab は今のままに回る。補完を開いてから 75ms は、Enter と Tab を受けない（CodeMirror の `interactionDelay`。誤選択の防止）。Esc で閉じる。矢印と PageUp・PageDown は一覧の選択を動かす。
+- 見た目: 明暗のテーマの CSS 変数（パネルの背景、枠、選択の色）。動き（遷移とアニメーション）は付けないので、Reduced Motion でも変わらない（単体テストが、規則に `transition` と `animation` がないことを確かめる）。
+- 視線の位置の余白との関係: ホストは、カーソルを画面の上下 3 割より内側に保つため、`scrollMargins` を足している（`src/editor/codemirror/readingPosition.ts`）。CodeMirror は、ポップアップを、スクロール領域からこの余白を除いた範囲にカーソルがあるときだけ描き、余白の中では画面の外（`top: -10000px`）に置く。短い文書の最初の行などで、一覧が出なくなる（e2e で再現した）。そこで、plugin-api に `suspendReadingMargins`（「いま余白を止めてほしい」という宣言）を足し、一覧が開いている間（状態が `active`）だけ、ホストの余白を止める。閉じれば元に戻る。候補を待つ間（`pending`）は止めない。文字を打つたびに、本文のどこでも、補完は候補を待つ状態になるので、含めると、打つたびに余白が効かなくなる（最初の実装はそうなっていて、既存の e2e「視線の位置」の 2 件が落ちて分かった）。
+
+#### R7: Enter のキーの優先
+
+Enter に結び付いたキー割り当ての並び（`bundledPlugins.test.ts` が確かめる）:
+
+tight: 補完の Enter、表の Enter、コードブロックの Enter、リストの継続（tight）、lang-markdown の Enter、`defaultKeymap` の Enter（shift つき）。
+preserve: 補完の Enter、表の Enter、コードブロックの Enter、lang-markdown の Enter、`defaultKeymap` の Enter（shift つき）。
+
+補完の Enter は、補完の表示中だけ受ける。コードブロックの Enter は、開きのフェンスの行の末尾と、閉じのフェンスの行の末尾でだけ受け、ほかは false で次（リストの継続）に回す。リストの項目の Enter、表の Enter と Tab は変えていない。
+
+#### R8: IME、範囲選択、複数の選択、読み取り専用
+
+ADR-006 の Enter の守りにならう。IME の変換中の keydown は、CodeMirror が、キー割り当てを呼ぶ前に捨てる。コマンドの側でも、対象の位置では、変換中（`view.composing`、`view.compositionStarted`）は何もせずキーを受ける。範囲選択、複数の選択、読み取り専用では、計画を作らず（null）、今の Enter と ⌘/Ctrl+Enter に回す。
+
+### Consequences
+
+#### 依存とその量
+
+`@codemirror/language-data@6.5.2` を直接の依存に足した（MIT）。`@codemirror/autocomplete@6.20.4` は、lang-markdown 経由ですでに入っていたものを、直接 import するので直接の依存にした（版は変えない）。lockfile は 29 パッケージの追加だけで、ほかの版は変えていない（`@codemirror/lang-*` 17 個、`@codemirror/legacy-modes`、`@lezer/*` 10 個、`@codemirror/language-data`）。すべて MIT（`docs/licensing-audit.md`）。
+
+ビルド（`vite build`）した dist の大きさ。HEAD と作業ツリーを、同じマシンで、同じコマンド（`node node_modules/vite/bin/vite.js build`）で作り、Node の `zlib.gzipSync`（既定の水準）で数えた。
+
+| | HEAD | この変更 | 差 |
+| --- | --- | --- | --- |
+| 最初に読むファイル（`index.html` が参照する script、modulepreload、CSS）の合計 | 993,970 B（gzip 326,226 B） | 1,062,654 B（gzip 348,646 B） | +68,684 B（+6.9%）、gzip +22,420 B（+6.9%） |
+| 同、JS 本体 `index-*.js` | 974,632 B（gzip 321,934 B） | 750,741 B（gzip 249,791 B）と共有の塊 2 つ（266,603 B と 25,612 B） | 塊が分かれた |
+| dist の JS と CSS の全ファイル | 4 ファイル、1,035,212 B（gzip 339,275 B） | 118 ファイル、2,122,196 B（gzip 757,763 B） | 言語ごとの別ファイル 114 個が増えた（遅延読み込み） |
+
+計画の見積もり（最初に増える量は gzip で約 12KB）より大きく、gzip で約 22KB だった。内訳（language-data の言語の一覧、autocomplete、共有の塊の再編）は、この段では分けて測っていない（未確認）。言語ごとの別ファイルは、使うときだけ読み込まれる。
+
+CSP（`src-tauri/tauri.conf.json`。`script-src 'self'`）は変えない。遅延読み込みのファイルが CSP の下で読めることを、ビルドした dist（`VITE_E2E=1` のビルド。Web UI の部分は本番と同じ）を、同じ CSP をヘッダに付けた静的サーバーで配信し、chromium で確かめた: 文書を開いた後に 2 つの別ファイル（Python と Rust）が読み込まれ、色が付き、CSP 違反の通知（`securitypolicyviolation`）とコンソールのエラーは 0 件。Tauri の窓（WKWebView）での遅延読み込みは未確認。
+
+入力の速さ。コードブロックの多い合成の文書（200 ブロック、2,503 行、34,474 文字。ts、python、json、sh、rust、css、yaml、go を巡回）に、120 回ずつ、3 つの位置（中央付近のコードブロックの中、中央付近の本文、末尾）で、キーを打った。chromium（headless、`--mute-audio`）、HEAD とこの変更を交互に 5 回ずつ、同じ時間帯に計測した（計測のページ内の道具は `perf/lib/inpage.mjs`、1 位置あたり n=600）。入力の処理時間は、keydown から CodeMirror の更新通知まで。次は、最終のコード（等幅の既定の見た目の修正を含む）での 1 回の計測（計測の生データ: 証跡の `typing-bench-200blocks.json`）。
+
+| 位置 | 入力の処理時間 中央値（HEAD → 変更後） | 同 p95 | keydown から描画まで 中央値 | 同 p95 |
+| --- | --- | --- | --- | --- |
+| コードの中 | 1.3 → 1.6 ms | 2.4 → 2.6 ms | 10.2 → 12.8 ms | 48.5 → 101.3 ms |
+| 本文（中央） | 1.2 → 1.3 ms | 2.1 → 2.1 ms | 12.0 → 12.2 ms | 51.6 → 102.7 ms |
+| 末尾 | 1.3 → 1.4 ms | 2.1 → 2.5 ms | 12.1 → 12.6 ms | 66.2 → 66.4 ms |
+
+入力の処理時間は、中央値で 0.1〜0.3 ms の増加。描画までの p95 は、この合成の文書で、コードの中と本文（中央）で増えた（50 ms 前後から約 100 ms）。末尾では変わらなかった。同じ計測を、修正の途中のコードでも 3 回行い、同じ向きの結果だった（入力の処理時間の中央値は +0.0〜+0.5 ms、描画までの p95 は 0〜+65 ms）。HEAD の側の値も回ごとに動く（描画までの p95 は 48〜82 ms）ので、増えた幅は、数十 ms の単位でしか言えない。原因は、入れ子の構文解析（全部のコードブロックの解析し直し）が、入力の合間の空き時間に走るためと考えているが、この段では確かめていない（未確認）。数字は、1 台のマシンの、合成の文書での結果で、標本が少ない（5 回）。
+
+#### 確かめたもの
+
+- 単体テスト: 言語の選び方（完全一致、短い名前の表、ファイル名、`言語:ファイル名`、text 類、分からない名前、大文字小文字、読み込みの失敗）、閉じのフェンスを入れる条件と入れない条件（閉じがある、引用、リスト、`~~~`、4 つ以上の `、タブ）、重複の防止（(a)(b)(c) と、隣り合う 2 つのコードブロック）、⌘/Ctrl+Enter で抜ける、補完の出る位置と出ない位置と置き換えの範囲、補完の Enter と Tab、IME と範囲選択と読み取り専用の守り、色の AA、Enter の優先順（`bundledPlugins.test.ts`）、視線の位置の余白の停止。
+- e2e（`tests/e2e/code-block.spec.ts`。chromium と chromium-windows だけで動かす）: ` ```ts ` と Enter で閉じが入り、コードを打つと色が付く、明暗のテーマで色が変わる、` ```main.py `、`python:main.py`、`py`、text と分からない名前と .txt は色なし、読み込みの保留と失敗、閉じのある所の Enter、~~~ と 4 つの ` と引用とリスト、重複の防止、変換中の Enter、⌘/Ctrl+Enter、補完（Enter、Tab、`:ファイル名` が残る、選び直すと色が変わる、Ctrl+Space、画面の中に出る）、暗いテーマの補完の色。
+- verify Skill: `features/writing-feel.md` の FEEL-16 から FEEL-19、シナリオ `feel-code-block.json`、`feel-code-block-dark.json`、`feel-code-completion.json`、`feel-code-completion-dark.json`（明暗のスクリーンショットを撮る）。
+
+#### 既存のテストの変更
+
+- `bundledPlugins.test.ts` の「Enter priority」: 先頭に補完の Enter（`acceptIfChanges`）、表の Enter の後ろにコードブロックの Enter（`fenceEnter`）が足されたので、期待する並びを直した（リストの継続と既存の 3 つの割り当ての相対順は同じ）。
+- 追加したのは、このほかのテストのファイルと、`architecture.test.ts` の部品のファイル一覧（新しい 4 ファイル）、`markdownColors.test.ts` の色の検査、`bundledPlugins.test.ts` の統合のテストと余白のテスト。
+
+### 限界
+
+- 色は、language-data が持つ約 140 言語のうち、`@codemirror/legacy-modes` 由来の言語の細かさに依る（キーワードと文字列とコメントと数値は付くが、型や関数名は言語による）。7 分類の外の色（変数、演算子）は付けない。
+- 情報文字列の最初の語しか見ない。`ts{1,3}`（行の強調）、`js title="x"` の `title`、`{.python}` は解釈しない（`js title="x"` は `js` として色が付く）。
+- 重複の防止は、構文木の形からの推定で、見分けられない形がある（R4）。
+- 補完の候補は、language-data の名前と別名と短い名前の表で、利用者が自分の名前を足す仕組みはない。
+- 入れ子の構文解析で、コードブロックの多い大きな文書では、入力の合間の描画の p95 が増える（上の数字）。
+- Tauri の窓（WKWebView）での遅延読み込みと見え方、実 IME での入力、WebKit で変換の確定の直後に届く Enter は、未確認（chromium の模擬と、コードを読んだ範囲）。mac の Ctrl+Space は、OS の入力ソースの切り替えと重なることがある（Alt+` と Alt+i も使える）。
+
+### やらないこと
+
+- フェンスの行のボタン、言語のメニュー（補完だけにする）。
+- コードの実行、コピーのボタン。
+- ` を 3 つ打った時点で閉じのフェンスを入れる動き（Obsidian の型）、Enter を 2 回で抜ける動き。
+- 言語名のあいまい照合。
+- 引用とリスト以外の入れ物（HTML ブロックなど）の中のコードブロックへの支援。
+
+### 判断を見直す条件
+
+- 実際の文書で、描画までの p95 の増加が気になるとき（入れ子の解析を、表示範囲だけにする、読み込む言語を絞る、など）。
+- 短い名前の表に足してほしい名前が出たとき。
+- 重複の防止の誤判定が出たとき。

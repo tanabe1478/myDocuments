@@ -46,6 +46,15 @@ for (const [name, selector] of [
       expect(contrastRatio(color(variable(b, '--md-color-mark')), band)).toBeGreaterThanOrEqual(1.5);
     });
 
+    it('keeps every color of the code block tokens readable on the code band (AA), and different from each other (ADR-004 追補（コードブロック）)', () => {
+      const names = ['keyword', 'string', 'comment', 'number', 'function', 'type', 'attribute'].map((n) => `--md-code-${n}`);
+      for (const name of names) {
+        expect(contrastRatio(color(variable(b, name)), band), name).toBeGreaterThanOrEqual(WCAG_AA);
+        expect(contrastRatio(color(variable(b, name)), surface), `${name} on the surface`).toBeGreaterThanOrEqual(WCAG_AA);
+      }
+      expect(new Set(names.map((n) => variable(b, n))).size).toBe(names.length);
+    });
+
     it('keeps the quote text readable on the surface (AA)', () => {
       expect(contrastRatio(color(variable(b, '--md-color-quote')), surface)).toBeGreaterThanOrEqual(WCAG_AA);
     });

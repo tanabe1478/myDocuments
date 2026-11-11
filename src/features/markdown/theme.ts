@@ -31,6 +31,10 @@ export const markdownTheme = EditorView.theme({
     borderBottomLeftRadius: '6px',
     borderBottomRightRadius: '6px',
   },
+  // コードブロックの中身の既定の見た目。言語が分かると、構文木が CodeText を置き換え、tag のない文字は monospace の tag を受け継がない。
+  // 行の class は色（tag のある文字の色はその上に重なる）、mark の class は等幅と大きさ（codeHighlight.ts）。フェンスの行には付けない。
+  '.cm-line.cm-md-fence-code': { color: 'var(--md-color-code)' },
+  '.cm-md-code-text': { fontFamily: 'var(--md-font-family-mono)', fontSize: '0.92em' },
   // 引用: 行の左（本文の余白の中）に細い縦線。続く行で 1 本につながる。
   '.cm-md-quote': { position: 'relative' },
   '.cm-md-quote::before': {
