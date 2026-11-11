@@ -173,7 +173,45 @@
     "equals": true,
     "timeout": 4000
    },
-   "note": "画面の止まり（描画の間隔）の集計"
+   "note": "画面の止まり（描画の間隔）の集計。操作（打鍵）のあと 1 秒ほどの見張りの分"
+  },
+  {
+   "wait": 2500
+  },
+  {
+   "expect": {
+    "eval": "(window.__mdePerf.flush(), true)",
+    "equals": true
+   },
+   "note": "操作がなくなって 2.5 秒。見張り（最後の操作から 1 秒）は止まっている。ここまでのフレームを書かせる"
+  },
+  {
+   "wait": 1500
+  },
+  {
+   "expect": {
+    "eval": "(window.__framesRows = window.__mdeE2E.logging.entries.filter((e) => e.source === 'perf-system' && e.event === 'frames').length, true)",
+    "equals": true
+   }
+  },
+  {
+   "wait": 2500
+  },
+  {
+   "expect": {
+    "eval": "(window.__mdePerf.flush(), true)",
+    "equals": true
+   }
+  },
+  {
+   "wait": 1500
+  },
+  {
+   "expect": {
+    "eval": "window.__mdeE2E.logging.entries.filter((e) => e.source === 'perf-system' && e.event === 'frames').length === window.__framesRows",
+    "equals": true
+   },
+   "note": "操作のない 2.5 秒の間、見張りは動かず、frames の行は増えない（ADR-007 の R20）"
   },
   {
    "expect": {

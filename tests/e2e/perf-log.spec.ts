@@ -141,6 +141,7 @@ test.describe('各計測点の行 (Q2)', () => {
     expect(gauges!.data.doc_lines).toBeGreaterThan(8);
     expect(gauges!.data.dom_nodes).toBeGreaterThan(20);
     expect(gauges!.data.heap_used_mb === null || typeof gauges!.data.heap_used_mb === 'number').toBe(true);
+    // 見張りは操作（上の入力）のあと 1 秒ほどだけ動き、その分の frames が、まとめに入る（R20）。
     await expect.poll(async () => (await named(page, 'perf-system', 'frames')).length).toBeGreaterThan(0);
     const [frames] = await named(page, 'perf-system', 'frames');
     expect(Object.keys(frames!.data)).toEqual(['frames', 'stalls', 'max_ms']);
@@ -197,6 +198,42 @@ test.describe('各計測点の行 (Q2)', () => {
     await page.clock.runFor(1500);
     await seen(page, 'perf-system', 'gauges');
     expect(await named(page, 'perf', 'input.keydown-to-update')).not.toEqual([]);
+  });
+});
+
+test.describe('画面の止まりの見張りは、操作のあとだけ (R20)', () => {
+  test('操作がない間は rAF の見張りが動かず（フレームの行が増えない）、操作のあと 1 秒ほどだけ動く（偽の時計。見張りが続けば 6 秒で約 370 フレーム）', async ({ page }) => {
+    await page.clock.install();
+    await launchWith(page, { preferences: { appLog: true } });
+    await expect.poll(() => setLoggingCalls(page)).toEqual([true]);
+    await expect.poll(() => page.evaluate(() => window.__mdeE2E!.logging.enabled)).toBe(true);
+    /** まとめを書かせ、ロガーが渡す（1 秒ごと。偽の時計）まで進めて、これまでのフレームの行を返す。 */
+    const framesSoFar = async () => {
+      await flushPerf(page);
+      await page.clock.runFor(1500);
+      return (await named(page, 'perf-system', 'frames')).map((e) => e.data);
+    };
+
+    // 文書を開く操作のあと 1 秒ほどは見張る。そのあとの 20 秒は操作がないので、フレームの行は 1 行も増えない。
+    await page.clock.runFor(2000);
+    const before = (await framesSoFar()).length;
+    await page.clock.runFor(20_000);
+    expect((await framesSoFar()).length).toBe(before);
+
+    // 打鍵のあと: 見張りが始まり、フレームの行が 1 行出る。6 秒進めても、数えるのは操作のあとの 1 秒ほど（60 フレーム前後）だけ。
+    await focusEnd(page);
+    await page.keyboard.press('a');
+    await page.clock.runFor(6000);
+    const rows = await framesSoFar();
+    expect(rows.length).toBe(before + 1);
+    const last = rows.at(-1)!;
+    expect(Object.keys(last)).toEqual(['frames', 'stalls', 'max_ms']);
+    expect(last.frames).toBeGreaterThanOrEqual(20);
+    expect(last.frames).toBeLessThanOrEqual(120);
+
+    // 見張りが止まったあとは、また増えない。
+    await page.clock.runFor(10_000);
+    expect((await framesSoFar()).length).toBe(before + 1);
   });
 });
 

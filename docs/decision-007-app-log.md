@@ -6,6 +6,8 @@ Accepted（2026-11-10、承認者: プロジェクトオーナー）。実機で
 
 R16（2026-11-11）で、「性能の計測」の節を足した。実機で、時間がたつと重い感じがし、タイピング音だけが打鍵から遅れて鳴る（文字の表示は遅れない。再起動で直る）という不具合が出た。R14 のログは、失敗と状態の変化しか書かないので、どこが遅くなったかは分からなかった。
 
+R20（2026-11-11）で、R16 の画面の止まり（frames）の見張りを、操作のあと 1 秒だけに変えた（下の「性能の計測（R16）」の「画面の止まり」と「R20: 見張りを操作のあとだけにした」）。
+
 ## Context
 
 この ADR の前には、ログの仕組みがなかった。`src/` に `console` の呼び出しは 0 件で、Rust 側にもログの crate がない。失敗を `catch {}` で捨てている箇所が 20 ある。実機の窓（WKWebView）には、利用者が開発者ツールを開いて見る習慣もない。不具合の瞬間の状態（AudioContext の state、素材の読み込み、時計）は、再起動すると消える。
@@ -174,15 +176,41 @@ tauri-plugin-log（Rust の `log` crate と、JavaScript 向けの `@tauri-apps/
 1 分ごとに 1 行ずつ（source は perf-system）。
 
 - gauges: doc_chars（本文の文字数）、doc_lines（行数）、dom_nodes（DOM の要素の数）、heap_used_mb（JS のメモリ。performance.memory がある環境だけで、なければ null。WKWebView にあるかは未確認）。本文とパスは書かない。
-- frames: requestAnimationFrame で見た描画の間隔。frames（数えたフレームの数）、stalls（間隔が 50 ms を超えた回数）、max_ms（最大の間隔）。窓が隠れている間は、見張りを止め、戻ったあとの最初のフレームは基準にするだけで数えない。フレームを 1 つも数えなかった 1 分は書かない。
+- frames: requestAnimationFrame で見た描画の間隔。frames（数えたフレームの数）、stalls（間隔が 50 ms を超えた回数）、max_ms（最大の間隔）。数えるのは、操作（キーの入力、IME の変換、ポインタの押下、ホイール、スクロール）のあと、最後の操作から 1 秒（ACTIVE_WATCH_MS）の間だけ。操作がない間は見張らない（R20）。このため frames は、その 1 分の間の「操作のあとの見張りの間」のフレームの数で、1 分の長さに比例しない。stalls と max_ms は、操作の最中（入力の最中、スクロールの最中）の止まりを表す。窓が隠れている間は、見張りを止め、戻ったあとの最初のフレームは基準にするだけで数えない。見張りが止まったあと、次の操作で始めるときも、最初のフレームは基準にするだけで、見張りの合間の時間は止まりと数えない。フレームを 1 つも数えなかった 1 分（操作がなかった 1 分）は書かない。行の形は R16 のまま。
 
 ### オフの間のふるまい
 
-ログがオフの間（既定）は、`perf.enabled` が false で、span は何もしない共通の関数を返し、measure は関数をそのまま呼ぶだけ。時計（performance.now）は読まず、ためず、1 分のタイマー、窓の見え方と pagehide のリスナー、requestAnimationFrame の見張りも動かさない。入力の計測（keydown、compositionupdate のリスナー）は、リスナー自体は付くが、最初に `perf.enabled` を見て戻るだけ。ブリッジの包みも、無効の間は元のメソッドをそのまま呼ぶ（Promise も足さない）。ログがオンになったときに始まり、オフになったときに全部止めて、ためていた分を捨てる（単体テストで確かめている）。
+ログがオフの間（既定）は、`perf.enabled` が false で、span は何もしない共通の関数を返し、measure は関数をそのまま呼ぶだけ。時計（performance.now）は読まず、ためず、1 分のタイマー、窓の見え方と pagehide のリスナー、操作のリスナー、requestAnimationFrame の見張りも動かさない。オンの間も、操作がなければ requestAnimationFrame は要求しない（R20）。入力の計測（keydown、compositionupdate のリスナー）は、リスナー自体は付くが、最初に `perf.enabled` を見て戻るだけ。ブリッジの包みも、無効の間は元のメソッドをそのまま呼ぶ（Promise も足さない）。ログがオンになったときに始まり、オフになったときに全部止めて、ためていた分を捨てる（単体テストで確かめている）。
 
 ### 負荷の確かめ
 
+操作がない間の負荷は、R20 で次のようにした。ログがオンでも、操作がなければ requestAnimationFrame を要求しないので、毎フレームのコールバックと、そのための描画の起床は起こらない。動くのは、1 分のタイマーと、操作のリスナー（document に capture かつ passive。keydown、compositionstart、compositionupdate、pointerdown、wheel、scroll。呼ばれるたびに performance.now を 1 回読んで締め切りを延ばすだけ）だけ。この「操作がない間に rAF を要求しない」ことは、単体テスト（src/logging/perf.test.ts）と、偽の時計の e2e（tests/e2e/perf-log.spec.ts の R20）で確かめている。実機（WKWebView）の CPU と電池の変化は未確認。
+
 オンにしたときの入力の処理時間（keydown の timeStamp から、本文の更新の通知の直後まで。perf/lib/inpage.mjs の入力の処理時間と同じ定義）を、tests/e2e/perf-log.spec.ts が、同じページで、オフ、オン、オフ、オンの順に 150 打鍵ずつ測って比べる（暖機 40 打鍵、切り替え直後の 20 打鍵は捨てる。400 行の文書。Playwright の chromium、macOS）。この Run の測定では、オフとオンの差は、中央値で 0 から 0.2 ms、p95 で -0.1 から 0.5 ms だった（例: 中央値 0.9 ms 対 1.1 ms、p95 1.4 ms 対 1.9 ms）。テストは、増加が中央値で 3 ms 未満、p95 で 10 ms 未満であることを見る。1 回の実行の数字で、環境の負荷で揺れる。WKWebView での増加は未確認。
+
+### R20: 見張りを操作のあとだけにした
+
+R16 の実装は、ログがオンの間、窓が見えている限り requestAnimationFrame を毎フレーム回し続けていた（frames の見張り）。これには 2 つの問題があった。
+
+- CI の失敗: 偽の時計（Playwright の page.clock）を使う e2e「時計の飛び（スリープからの復帰の目印）を、飛んだ秒数で記録する」（tests/e2e/app-log.spec.ts）は、runFor で進めた時間のすべてのフレームのコールバックを実行する。R15 の CI で 0.25 秒だったのが、R16 の CI で 19 から 28 秒になり、30 秒の制限を超えて chromium と chromium-windows で失敗した。
+- 実機の負荷: ログがオンの間は、何も操作していなくても毎秒 60 回コールバックが動き、描画の起床を起こし続ける（CPU と電池）。
+
+原因の確認（このマシンの Playwright の chromium、同じコマンド `npx playwright test tests/e2e/app-log.spec.ts -g 時計の飛び --project=chromium --project=chromium-windows`）。HEAD（R16）のままでは、時計の飛びのテストは chromium で 7.4 秒と 7.5 秒、chromium-windows で 7.4 秒と 6.9 秒（2 回ずつ）。同じ HEAD で見張りの開始だけを止めると、chromium で 0.96 秒、chromium-windows で 1.3 秒。差の約 6 秒が、フレームのコールバックの分（残りは起動とテスト本体）。CI で 19 から 28 秒かかったのは、同じ原因が CI の遅い機械で大きく出たためと見ている（CI での再現は未確認）。変更後は 0.24 秒から 1.7 秒（下の確認）。
+
+変更:
+
+- 見張りは、操作があったときに始まり、最後の操作から ACTIVE_WATCH_MS（1000 ms）たつと止まる。操作のたびに締め切りが延びる（すでに動いていれば、締め切りを延ばすだけで、要求は増やさない）。止めるのは、フレームのコールバックの中で、時刻が締め切りを過ぎていたら次を要求しない、という形で、止めるためのタイマーは足していない。
+- 操作の検知は、perf.ts が、ログがオンの間だけ document に付ける capture かつ passive のリスナー（keydown、compositionstart、compositionupdate、pointerdown、wheel、scroll）。scroll は伝わらないイベントなので capture で拾う。オフにしたときに外す。本文の計測点（アダプター）は変えていない。
+- 1000 ms の理由: 入力に続く描画の仕事（本文を部品へ届ける 200 ms の待ちなど）と、打鍵の間隔をまたいで 1 回の見張りにつなげられる長さで、操作が止まればすぐ何も動かさなくなる長さ。実機のデータで決めた値ではなく、実機のログを見て見直す。
+- 窓が隠れている間は止める（今まで通り）。戻ったときは、締め切りの前なら続け、過ぎていれば次の操作まで始めない。始めたときの最初のフレームは基準にするだけで、見張りの合間の時間は止まりと数えない。
+- 行の形（frames、stalls、max_ms）と、ほかの計測（区間のまとめ、50 ms の記録、量の推移、音の遅れの見積もり、bridge の計測）は変えていない。変わったのは、frames の意味だけ（上の「画面の止まり」）。
+- 割り切り: 長く操作がなかったあと、最初の 1 回の操作の処理そのものの止まりは、frames には入らない（見張りがまだ始まっていないため。その処理は input.* の区間と 50 ms の記録に入る）。続く操作の最中の止まりは、frames に入る。
+
+確かめたこと:
+
+- 単体テスト（src/logging/perf.test.ts、perf.dom.test.ts）: 操作がなければフレームを要求しない、操作で始まる、締め切りで止まる、操作が続く間は延びる、動いている間の操作は要求を増やさない、隠れると止まる、締め切りの前に戻れば続く（戻ったあとの最初のフレームは基準だけ）、締め切りのあとに戻っても始めない、見張りの合間の時間を止まりと数えない、操作の最中の 50 ms を超える間隔が stalls と max_ms に入る、オフでは時計もタイマーもリスナーも rAF も動かない、オフにすると操作のリスナーが外れる。実際のブラウザの環境（jsdom）で、リスナーが capture かつ passive で付くこと。
+- e2e（chromium と chromium-windows）: perf-log.spec.ts の R20（偽の時計。操作がない 20 秒の間は frames の行が増えない。打鍵のあと 6 秒進めても、数えるのは 1 秒ほど（約 60 フレーム）。見張りが止まったあとは増えない）。旧実装（HEAD の perf.ts）では、このテストは落ちる。時計の飛びのテストは、期待する記録を変えずに、chromium 1.0 秒、chromium-windows 1.7 秒（この 1 件だけを走らせたとき）、app-log と perf-log の全体を走らせたときは両方とも約 0.24 秒（このマシンの値）。
+- verify Skill のシナリオ performance-log.json に、操作がない 2.5 秒の間は frames の行が増えない、という確認を足した。
 
 ### 音の遅れの見積もり
 
@@ -239,7 +267,7 @@ jq -c 'select(.event=="output.latency" or .event=="output.latency-high")' app.lo
 
 ### この節で確かめたこと
 
-- 単体テスト: まとめの行の形と分布、50 ms の記録と上限、回数の制限に掛からないこと、区間の数の上限と other、量の推移、画面の止まり（窓が隠れる間を含む）、オフの間に時計もタイマーもリスナーも rAF も動かないこと、pagehide（src/logging/perf.test.ts）。各計測点（アダプターの入力、Markdown の装飾と表、documentFeed、controller と草稿、workerHost、ブリッジの包み）、ctx.perf（レジストリ）、音の区間と遅れの見積もりと warn、N1、N2、オフとオンでの作り直しと素材を取り直さないこと、architecture（段 2 に口がないこと、部品が logging を import しないこと）。
+- 単体テスト: まとめの行の形と分布、50 ms の記録と上限、回数の制限に掛からないこと、区間の数の上限と other、量の推移、画面の止まり（操作のあとだけ見張ること、窓が隠れる間を含む。R20）、オフの間に時計もタイマーもリスナーも rAF も動かないこと、pagehide（src/logging/perf.test.ts）。各計測点（アダプターの入力、Markdown の装飾と表、documentFeed、controller と草稿、workerHost、ブリッジの包み）、ctx.perf（レジストリ）、音の区間と遅れの見積もりと warn、N1、N2、オフとオンでの作り直しと素材を取り直さないこと、architecture（段 2 に口がないこと、部品が logging を import しないこと）。
 - e2e（chromium と chromium-windows。tests/e2e/perf-log.spec.ts）: 既定では appendLog が 1 回も呼ばれないこと、各計測点の行、50 ms の warn、1 分のタイマー（偽の時計）、本文の目印とパスが出ないこと、sound.start-delay と output.latency（chromium は --mute-audio）、設定のオフとオンでの作り直しと素材を取り直さないこと、オンとオフの入力の処理時間の比較。
 - verify Skill のシナリオ performance-log.json と performance-log-off.json。
 
@@ -249,6 +277,7 @@ jq -c 'select(.event=="output.latency" or .event=="output.latency-high")' app.lo
 - 実機の WKWebView で、getOutputTimestamp の値が聞こえる遅れを反映するか。設定のオフとオンの作り直しで、遅れが消えるか。
 - WKWebView で performance.memory が使えるか（使えなければ heap_used_mb は null）。
 - 実機での、計測のオンによる入力の処理時間の増加。
+- 実機の Tauri の窓（WKWebView）での、R20 の前後の CPU と電池の変化（操作がない間に rAF が止まること自体は、Web UI の e2e と単体テストで確かめた）。
 
 ## 限界
 

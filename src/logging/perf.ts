@@ -11,6 +11,8 @@ import type { Logger } from './logger';
  * - 1 回で SLOW_MS 以上かかったら、その場で 1 件（warn）。区間ごとに 1 分に MAX_SLOW_PER_WINDOW 件まで（残りは、まとめの slow に数だけ残る）。
  * - 区間の数は MAX_SPANS まで。超えた名前は 'other' 1 つにまとめる。
  * - 1 分ごとに、量の推移（文書の長さと行数、DOM の要素の数、JS のメモリ）と、描画の間隔（SLOW_FRAME_MS を超えた回数と最大）も 1 行ずつ書く。
+ *   描画の間隔（requestAnimationFrame の見張り）は、操作（キー、IME、ポインタの押下、ホイール、スクロール）のあと ACTIVE_WATCH_MS の間だけ回す。
+ *   操作がない間は requestAnimationFrame を要求しない（毎フレームの呼び出しと描画の起床を、常時は起こさない）。
  * 書くのは名前と数値だけ。本文とパスは扱わない。
  */
 
@@ -18,6 +20,11 @@ import type { Logger } from './logger';
 export const SLOW_MS = 50;
 /** 描画の間隔がこの時間（ms）を超えたら、画面の止まりと数える。 */
 export const SLOW_FRAME_MS = 50;
+/**
+ * 最後の操作から、描画の間隔を見張り続ける時間（ms）。操作のたびに延びる。入力に続く描画の仕事（本文を部品へ届ける 200 ms の待ち、
+ * 装飾の組み立て、スクロールの追いつき）がこの中に収まり、操作がない間は何も動かさないための値。
+ */
+export const ACTIVE_WATCH_MS = 1000;
 /** まとめを書く間隔。 */
 export const SUMMARY_INTERVAL_MS = 60_000;
 /** 区間の名前の数の上限（超えた名前は OTHER_SPAN にまとめる）。 */
@@ -79,11 +86,16 @@ export interface PerfEnvironment {
   visibilityState(): string;
   /** 窓の見え方が変わったときと、pagehide のときの通知を付ける。戻り値で外す。 */
   listen(onVisibility: () => void, onPageHide: () => void): () => void;
+  /** 操作（キー、IME の変換、ポインタの押下、ホイール、スクロール）の通知を付ける。capture かつ passive。戻り値で外す。 */
+  listenActivity(onActivity: () => void): () => void;
   /** JS のヒープの使用量（バイト）。取れない環境は null。 */
   heapUsedBytes(): number | null;
   /** DOM の要素の数。 */
   domNodeCount(): number;
 }
+
+/** 描画の見張りを始める操作。scroll は伝わらないイベントなので、capture で拾う。 */
+const ACTIVITY_EVENTS = ['keydown', 'compositionstart', 'compositionupdate', 'pointerdown', 'wheel', 'scroll'] as const;
 
 function browserEnvironment(): PerfEnvironment {
   return {
@@ -99,6 +111,13 @@ function browserEnvironment(): PerfEnvironment {
       return () => {
         document.removeEventListener('visibilitychange', onVisibility);
         window.removeEventListener('pagehide', onPageHide);
+      };
+    },
+    listenActivity: (onActivity) => {
+      const options = { capture: true, passive: true } as const;
+      for (const type of ACTIVITY_EVENTS) document.addEventListener(type, onActivity, options);
+      return () => {
+        for (const type of ACTIVITY_EVENTS) document.removeEventListener(type, onActivity, options);
       };
     },
     heapUsedBytes: () => {
@@ -132,8 +151,9 @@ function quantile(stats: SpanStats, q: number): number {
 }
 
 /**
- * 計測の仕組み。ロガーが有効になったときに動き出し（1 分ごとのタイマー、描画の間隔の見張り、窓の見え方のリスナー）、
+ * 計測の仕組み。ロガーが有効になったときに動き出し（1 分ごとのタイマー、窓の見え方と操作のリスナー）、
  * 無効になったときに全部止めて、ためていた分を捨てる。ロガーが無効の間は、何も動かない。
+ * 描画の間隔の見張り（requestAnimationFrame）は、操作があったときに始まり、最後の操作から ACTIVE_WATCH_MS たつと止まる。
  */
 export function createPerf(logger: Logger, environment?: PerfEnvironment): PerfController {
   let env: PerfEnvironment | null = environment ?? null;
@@ -143,6 +163,9 @@ export function createPerf(logger: Logger, environment?: PerfEnvironment): PerfC
 
   let timer: unknown = null;
   let unlisten: (() => void) | null = null;
+  let unlistenActivity: (() => void) | null = null;
+  /** この時刻（env.now() の値）まで、描画の間隔を見張る。最後の操作の時刻 + ACTIVE_WATCH_MS。 */
+  let watchUntil = 0;
   let frameHandle: unknown = null;
   let lastFrame: number | null = null;
   let frames = 0;
@@ -267,7 +290,12 @@ export function createPerf(logger: Logger, environment?: PerfEnvironment): PerfC
       if (gap > maxFrameGap) maxFrameGap = gap;
     }
     lastFrame = time;
-    if (env!.visibilityState() === 'visible') frameHandle = env!.requestFrame(onFrame);
+    if (env!.visibilityState() === 'visible' && env!.now() < watchUntil) {
+      frameHandle = env!.requestFrame(onFrame);
+    } else {
+      // 最後の操作から時間がたった（または窓が隠れた）。見張りを止める。次に始めるときの最初のフレームは基準にするだけで、止まっていた間は数えない。
+      lastFrame = null;
+    }
   }
 
   function startFrames(): void {
@@ -282,6 +310,13 @@ export function createPerf(logger: Logger, environment?: PerfEnvironment): PerfC
     lastFrame = null;
   }
 
+  /** 操作があった。見張りの締め切りを延ばし、止まっていれば始める（capture かつ passive のリスナーから。ここでは何も止めず、何も書かない）。 */
+  function onActivity(): void {
+    if (!active) return;
+    watchUntil = env!.now() + ACTIVE_WATCH_MS;
+    if (frameHandle === null) startFrames();
+  }
+
   function start(): void {
     if (active) return;
     env ??= browserEnvironment();
@@ -289,16 +324,19 @@ export function createPerf(logger: Logger, environment?: PerfEnvironment): PerfC
     timer = env.setInterval(writeWindow, SUMMARY_INTERVAL_MS);
     unlisten = env.listen(
       () => {
-        // 窓が隠れている間は、描画の間隔を数えない（隠れる前後の空白を、止まりと見ない）。
-        if (env!.visibilityState() === 'visible') startFrames();
-        else stopFrames();
+        // 窓が隠れている間は、描画の間隔を数えない（隠れる前後の空白を、止まりと見ない）。戻ったときは、締め切り前なら見張りを続ける。
+        if (env!.visibilityState() === 'visible') {
+          if (env!.now() < watchUntil) startFrames();
+        } else {
+          stopFrames();
+        }
       },
       () => {
         writeWindow();
         logger.flush({ sync: true });
       },
     );
-    startFrames();
+    unlistenActivity = env.listenActivity(onActivity);
   }
 
   function stop(): void {
@@ -309,6 +347,9 @@ export function createPerf(logger: Logger, environment?: PerfEnvironment): PerfC
     stopFrames();
     unlisten?.();
     unlisten = null;
+    unlistenActivity?.();
+    unlistenActivity = null;
+    watchUntil = 0;
     spans.clear();
     frames = 0;
     frameStalls = 0;

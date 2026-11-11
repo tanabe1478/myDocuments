@@ -7,6 +7,7 @@ import {
   PERF_SLOW_SOURCE,
   PERF_SOURCE,
   PERF_SYSTEM_SOURCE,
+  ACTIVE_WATCH_MS,
   SLOW_FRAME_MS,
   SLOW_MS,
   SUMMARY_INTERVAL_MS,
@@ -16,21 +17,23 @@ import {
 import type { LogEntry } from './types';
 
 // 性能の計測（R16）の単体テスト。偽の時計・タイマー・描画・窓の見え方で、まとめの行の形、分布、50ms の記録とその上限、
-// 回数の制限に掛からないこと、区間の数の上限、量の推移、画面の止まり、オフの間に何も動かないことを確かめる。
+// 回数の制限に掛からないこと、区間の数の上限、量の推移、画面の止まり（操作のあと一定の時間だけ見張ること）、オフの間に何も動かないことを確かめる。
 
 interface FakeEnv extends PerfEnvironment {
   t: number;
   visibility: string;
   heap: number | null;
   nodes: number;
-  readonly calls: { now: number; setInterval: number; clearInterval: number; requestFrame: number; cancelFrame: number; listen: number };
+  readonly calls: { now: number; setInterval: number; clearInterval: number; requestFrame: number; cancelFrame: number; listen: number; listenActivity: number };
   /** 登録されたタイマーを 1 回発火させる。 */
   tick(): void;
   /** 登録された描画のコールバックを、フレームの時刻 time で呼ぶ。登録がなければ false。 */
   frame(time: number): boolean;
   setVisibility(state: string): void;
   pagehide(): void;
-  readonly pending: () => { interval: boolean; frame: boolean; listeners: boolean };
+  /** 操作（キー、ポインタなど）の通知を 1 回送る。リスナーが付いていなければ、何も起きない。 */
+  activity(): void;
+  readonly pending: () => { interval: boolean; frame: boolean; listeners: boolean; activity: boolean };
 }
 
 function fakeEnv(): FakeEnv {
@@ -38,12 +41,13 @@ function fakeEnv(): FakeEnv {
   let frame: ((time: number) => void) | null = null;
   let onVisibility: (() => void) | null = null;
   let onPageHide: (() => void) | null = null;
+  let onActivity: (() => void) | null = null;
   const env: FakeEnv = {
     t: 1000,
     visibility: 'visible',
     heap: 5 * 1024 * 1024,
     nodes: 1234,
-    calls: { now: 0, setInterval: 0, clearInterval: 0, requestFrame: 0, cancelFrame: 0, listen: 0 },
+    calls: { now: 0, setInterval: 0, clearInterval: 0, requestFrame: 0, cancelFrame: 0, listen: 0, listenActivity: 0 },
     now() {
       env.calls.now += 1;
       return env.t;
@@ -76,6 +80,13 @@ function fakeEnv(): FakeEnv {
         onPageHide = null;
       };
     },
+    listenActivity(fn) {
+      env.calls.listenActivity += 1;
+      onActivity = fn;
+      return () => {
+        onActivity = null;
+      };
+    },
     heapUsedBytes: () => env.heap,
     domNodeCount: () => env.nodes,
     tick: () => interval?.(),
@@ -91,7 +102,8 @@ function fakeEnv(): FakeEnv {
       onVisibility?.();
     },
     pagehide: () => onPageHide?.(),
-    pending: () => ({ interval: interval !== null, frame: frame !== null, listeners: onVisibility !== null }),
+    activity: () => onActivity?.(),
+    pending: () => ({ interval: interval !== null, frame: frame !== null, listeners: onVisibility !== null, activity: onActivity !== null }),
   };
   return env;
 }
@@ -132,8 +144,9 @@ describe('off: nothing runs', () => {
     expect(s.perf.measure('a.b', () => 42)).toBe(42);
     s.perf.record('a.b', 80);
     s.env.tick();
+    s.env.activity(); // リスナーが付いていないので、何も起きない
     expect(s.env.frame(2000)).toBe(false);
-    expect(s.env.calls).toEqual({ now: 0, setInterval: 0, clearInterval: 0, requestFrame: 0, cancelFrame: 0, listen: 0 });
+    expect(s.env.calls).toEqual({ now: 0, setInterval: 0, clearInterval: 0, requestFrame: 0, cancelFrame: 0, listen: 0, listenActivity: 0 });
     expect(s.written()).toEqual([]);
     expect(s.appended).toEqual([]);
   });
@@ -155,10 +168,13 @@ describe('off: nothing runs', () => {
   it('turning the logger off stops everything (interval cleared, rAF cancelled, listeners removed) and discards the counts', () => {
     const s = setup();
     s.logger.setEnabled(true);
-    expect(s.env.pending()).toEqual({ interval: true, frame: true, listeners: true });
+    // オンにしただけでは、描画の見張りは始まらない（操作を待つ）。
+    expect(s.env.pending()).toEqual({ interval: true, frame: false, listeners: true, activity: true });
+    s.env.activity();
+    expect(s.env.pending()).toEqual({ interval: true, frame: true, listeners: true, activity: true });
     took(s, 'a.b', 5);
     s.logger.setEnabled(false);
-    expect(s.env.pending()).toEqual({ interval: false, frame: false, listeners: false });
+    expect(s.env.pending()).toEqual({ interval: false, frame: false, listeners: false, activity: false });
     expect(s.perf.enabled).toBe(false);
     const readsAtOff = s.env.calls.now;
     s.perf.span('a.b')();
@@ -175,7 +191,7 @@ describe('off: nothing runs', () => {
     logger.setEnabled(true);
     const perf = createPerf(logger, env);
     expect(perf.enabled).toBe(true);
-    expect(env.pending()).toEqual({ interval: true, frame: true, listeners: true });
+    expect(env.pending()).toEqual({ interval: true, frame: false, listeners: true, activity: true });
   });
 });
 
@@ -412,10 +428,33 @@ describe('gauges (the quantity trend), once a minute', () => {
   });
 });
 
-describe('frame stalls (the gaps between frames)', () => {
-  it('counts frames, the gaps over SLOW_FRAME_MS and the largest gap, and writes them in the minute summary', () => {
+describe('frame stalls (the gaps between frames), watched only for a while after an operation', () => {
+  /** ログをオンにして、操作を 1 回送った状態（見張りが始まり、最初のフレームを待っている）。env.t は 1000 のまま。 */
+  function watching() {
     const s = setup();
     s.logger.setEnabled(true);
+    s.env.activity();
+    return s;
+  }
+  const frameRows = (s: ReturnType<typeof setup>) => s.rows(PERF_SYSTEM_SOURCE, 'frames');
+
+  it('does not request a frame until there is an operation: enabling, a minute passing and a visibility change all leave the rAF alone', () => {
+    const s = setup();
+    s.logger.setEnabled(true);
+    expect(s.env.calls.requestFrame).toBe(0);
+    s.env.tick();
+    s.env.setVisibility('hidden');
+    s.env.setVisibility('visible');
+    s.env.t += 10 * 60_000;
+    s.env.tick();
+    expect(s.env.calls.requestFrame).toBe(0);
+    expect(s.env.pending().frame).toBe(false);
+    expect(frameRows(s)).toEqual([]);
+  });
+
+  it('an operation starts the watch; counts frames, the gaps over SLOW_FRAME_MS and the largest gap, and writes them in the minute summary', () => {
+    const s = watching();
+    expect(s.env.calls.requestFrame).toBe(1);
     let time = 0;
     for (const gap of [16, 17, 16, 80, 16, SLOW_FRAME_MS, SLOW_FRAME_MS + 1, 16]) {
       time += gap;
@@ -423,60 +462,148 @@ describe('frame stalls (the gaps between frames)', () => {
     }
     s.env.tick();
     // 最初のフレームは基準だけ（間隔がない）。
-    expect(s.rows(PERF_SYSTEM_SOURCE, 'frames')).toEqual([
-      { level: 'info', source: 'perf-system', event: 'frames', data: { frames: 7, stalls: 2, max_ms: 80 } },
-    ]);
+    expect(frameRows(s)).toEqual([{ level: 'info', source: 'perf-system', event: 'frames', data: { frames: 7, stalls: 2, max_ms: 80 } }]);
     // 次の 1 分は、数え直す（フレームの基準は、1 分の区切りをまたいで続く）。
     time += 16;
     s.env.frame(time);
     time += 16;
     s.env.frame(time);
     s.env.tick();
-    expect(s.rows(PERF_SYSTEM_SOURCE, 'frames')[1]!.data).toEqual({ frames: 2, stalls: 0, max_ms: 16 });
+    expect(frameRows(s)[1]!.data).toEqual({ frames: 2, stalls: 0, max_ms: 16 });
   });
 
-  it('does not count while the window is hidden: the loop stops, and after it is visible again the first frame is only a baseline', () => {
-    const s = setup();
-    s.logger.setEnabled(true);
+  it('catches a stall during typing: a gap over 50 ms between frames while operations keep coming counts in stalls and max_ms', () => {
+    const s = watching();
+    s.env.frame(100);
+    s.env.frame(116);
+    s.env.t += 300;
+    s.env.activity(); // 打鍵
+    s.env.frame(116 + 120); // 本文の処理で 120 ms 止まった
+    s.env.t += 16;
+    s.env.activity();
+    s.env.frame(116 + 120 + 16);
+    s.env.tick();
+    expect(frameRows(s)[0]!.data).toEqual({ frames: 3, stalls: 1, max_ms: 120 });
+  });
+
+  it('stops requesting frames once ACTIVE_WATCH_MS has passed since the last operation, and the pending request is not renewed', () => {
+    const s = watching();
+    s.env.frame(100);
+    s.env.t += ACTIVE_WATCH_MS - 1;
+    s.env.frame(116);
+    expect(s.env.pending().frame).toBe(true); // 締め切りの前: 続く
+    s.env.t += 1;
+    expect(s.env.frame(132)).toBe(true); // 締め切りになった: このフレームは数えて、次を要求しない
+    expect(s.env.pending().frame).toBe(false);
+    expect(s.env.calls.requestFrame).toBe(3);
+    s.env.tick();
+    expect(frameRows(s)[0]!.data).toEqual({ frames: 2, stalls: 0, max_ms: 16 });
+  });
+
+  it('keeps watching while operations continue: each operation moves the deadline to its own time + ACTIVE_WATCH_MS', () => {
+    const s = watching();
+    s.env.frame(100);
+    for (let i = 0; i < 5; i++) {
+      s.env.t += ACTIVE_WATCH_MS - 100; // 締め切りの手前で、次の操作
+      s.env.activity();
+      expect(s.env.frame(116 + i * 16)).toBe(true);
+      expect(s.env.pending().frame).toBe(true);
+    }
+    s.env.t += ACTIVE_WATCH_MS; // 最後の操作から ACTIVE_WATCH_MS
+    expect(s.env.frame(500)).toBe(true);
+    expect(s.env.pending().frame).toBe(false);
+  });
+
+  it('an operation while the watch is already running only moves the deadline: no second request', () => {
+    const s = watching();
+    const before = s.env.calls.requestFrame;
+    s.env.activity();
+    s.env.activity();
+    s.env.activity();
+    expect(s.env.calls.requestFrame).toBe(before);
+    expect(s.env.calls.cancelFrame).toBe(0);
+  });
+
+  it('does not count the time between watches as a stall: the first frame of a new watch is only a baseline', () => {
+    const s = watching();
+    s.env.frame(100);
+    s.env.frame(116);
+    s.env.t += ACTIVE_WATCH_MS;
+    s.env.frame(132); // ここで見張りが止まる
+    expect(s.env.pending().frame).toBe(false);
+    s.env.t += 5 * 60_000; // 操作のない 5 分
+    s.env.activity();
+    expect(s.env.pending().frame).toBe(true);
+    s.env.frame(300_000); // 基準だけ
+    s.env.frame(300_016);
+    s.env.tick();
+    expect(frameRows(s)[0]!.data).toEqual({ frames: 3, stalls: 0, max_ms: 16 });
+  });
+
+  it('does not count while the window is hidden: the watch stops, and when it is visible again before the deadline the first frame is only a baseline', () => {
+    const s = watching();
     s.env.frame(100);
     s.env.frame(116);
     s.env.setVisibility('hidden');
     expect(s.env.pending().frame).toBe(false);
     expect(s.env.frame(60_000)).toBe(false);
-    s.env.setVisibility('visible');
+    s.env.setVisibility('visible'); // 締め切り（1000 + ACTIVE_WATCH_MS）の前
     expect(s.env.pending().frame).toBe(true);
     s.env.frame(61_000); // 隠れていた間の空白は、止まりと数えない
     s.env.frame(61_016);
     s.env.tick();
-    expect(s.rows(PERF_SYSTEM_SOURCE, 'frames')[0]!.data).toEqual({ frames: 2, stalls: 0, max_ms: 16 });
+    expect(frameRows(s)[0]!.data).toEqual({ frames: 2, stalls: 0, max_ms: 16 });
   });
 
-  it('does not start the loop when the window is hidden at the start, and starts it when it becomes visible', () => {
+  it('when it becomes visible after the deadline, the watch does not restart by itself', () => {
+    const s = watching();
+    s.env.setVisibility('hidden');
+    s.env.t += 2 * ACTIVE_WATCH_MS;
+    const before = s.env.calls.requestFrame;
+    s.env.setVisibility('visible');
+    expect(s.env.calls.requestFrame).toBe(before);
+    expect(s.env.pending().frame).toBe(false);
+  });
+
+  it('does not start the watch for an operation while the window is hidden, but the operation still counts: becoming visible within the time starts it', () => {
     const env = fakeEnv();
     env.visibility = 'hidden';
     const logger = createLogger({ append: () => {}, now: () => 0, setTimer: () => 1, clearTimer: () => {} });
     const perf = createPerf(logger, env);
     logger.setEnabled(true);
     expect(perf.enabled).toBe(true);
+    env.activity();
     expect(env.calls.requestFrame).toBe(0);
     env.setVisibility('visible');
     expect(env.calls.requestFrame).toBe(1);
   });
 
-  it('writes no frames row for a minute with no frames', () => {
+  it('writes no frames row for a minute with no frames (no operation)', () => {
     const s = setup();
     s.logger.setEnabled(true);
     s.env.tick();
-    expect(s.rows(PERF_SYSTEM_SOURCE, 'frames')).toEqual([]);
+    expect(frameRows(s)).toEqual([]);
   });
 
   it('keeps one frame loop at a time (no duplicate requests when visibility events repeat)', () => {
-    const s = setup();
-    s.logger.setEnabled(true);
+    const s = watching();
     const before = s.env.calls.requestFrame;
     s.env.setVisibility('visible');
     s.env.setVisibility('visible');
     expect(s.env.calls.requestFrame).toBe(before);
+  });
+
+  it('turning the logger off cancels the watch and removes the operation listener; an operation after that does nothing', () => {
+    const s = watching();
+    s.logger.setEnabled(false);
+    expect(s.env.pending()).toEqual({ interval: false, frame: false, listeners: false, activity: false });
+    const before = s.env.calls.requestFrame;
+    s.env.activity();
+    expect(s.env.calls.requestFrame).toBe(before);
+    // オンに戻しても、前の締め切りは引き継がない（操作があるまで、見張りは始まらない）。
+    s.logger.setEnabled(true);
+    expect(s.env.calls.requestFrame).toBe(before);
+    expect(s.env.pending().frame).toBe(false);
   });
 });
 
@@ -499,6 +626,7 @@ describe('what is written', () => {
     s.perf.setDocumentStats(() => ({ chars: 10, lines: 2 }));
     took(s, 'document.save', 70);
     took(s, 'bridge.save_document', 3);
+    s.env.activity();
     s.env.frame(10);
     s.env.frame(100);
     s.env.tick();
